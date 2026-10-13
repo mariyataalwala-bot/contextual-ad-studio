@@ -313,7 +313,12 @@ http.createServer(async (req, res) => {
   if (u.pathname === "/api/diag") {   // memory + can this server reach YouTube?
     const rd = (f) => { try { return fs.readFileSync(f, "utf8").trim(); } catch { return null; } };
     const t0 = Date.now(); let yt1 = null, err = null;
-    try { yt1 = (await ytJson(["searchjson", "potato chips recipe", "3"])).map((r) => r.title); } catch (e) { err = e.message.slice(0, 400); }
+    try {
+      if (u.searchParams.get("mode") === "scan") {   // heavier: a real player frame
+        const d = path.join(OUT_ROOT, "_diag"); fs.mkdirSync(d, { recursive: true });
+        await yt(["scan", "5DW0ixWjn7U", d, "81"]); yt1 = fs.readdirSync(d);
+      } else yt1 = (await ytJson(["searchjson", "potato chips recipe", "3"])).map((r) => r.title);
+    } catch (e) { err = e.message.slice(0, 400); }
     return send(res, 200, { youtube: yt1, error: err, seconds: (Date.now() - t0) / 1000, memLimit: rd("/sys/fs/cgroup/memory.max"), memPeak: rd("/sys/fs/cgroup/memory.peak"), memNow: rd("/sys/fs/cgroup/memory.current"), provider: provider() });
   }
   if (PASSWORD) {   // basic auth so a public URL can't spend your API key
