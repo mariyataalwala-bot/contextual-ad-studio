@@ -294,7 +294,7 @@ async function produce(job) {
   await run(PY, [path.join(PIPE, "scripts", "build_ad.py"), W]);
   say(job, "Rendering (about 5 minutes)…");
   const raw = path.join(W, "out_noaudio.mp4");
-  await run("node", [path.join(PIPE, "scripts", "render.js"), path.join(W, "dist", "contextual-ad.html"), raw, "25", "4"], { log: (l) => { const m = l.match(/frame (\d+) \/ (\d+)/); if (m) job.step = `Rendering… ${Math.round((100 * m[1]) / m[2])}%`; } });
+  await run("node", [path.join(PIPE, "scripts", "render.js"), path.join(W, "dist", "contextual-ad.html"), raw, "25", process.env.RENDER_SUBFRAMES || "4"], { log: (l) => { const m = l.match(/frame (\d+) \/ (\d+)/); if (m) job.step = `Rendering… ${Math.round((100 * m[1]) / m[2])}%`; } });
   say(job, "Adding music and the ad's sound…");
   const final = path.join(W, `${slug(I.brand)}-contextual-ad.mp4`);
   const args = [path.join(PIPE, "scripts", "mux.py"), raw, fs.existsSync(path.join(W, "ad_audio.webm")) ? path.join(W, "ad_audio.webm") : "none", final];

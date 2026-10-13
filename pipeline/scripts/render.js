@@ -4,7 +4,7 @@
 const {chromium}=require('playwright');const {spawn}=require('child_process');const path=require('path');const fs=require('fs');
 (async()=>{
  const a=process.argv.slice(2), html=a[0];
- const b=await chromium.launch();const p=await b.newPage({viewport:{width:1920,height:1080}});
+ const b=await chromium.launch({args:['--disable-dev-shm-usage','--disable-gpu']});const p=await b.newPage({viewport:{width:1920,height:1080}});
  const errs=[];p.on('pageerror',e=>errs.push(e.message));
  await p.goto('file://'+path.resolve(html)+'?render');
  await p.waitForFunction(()=>document.fonts.check('700 40px Poppins'),null,{timeout:20000}).catch(()=>{});

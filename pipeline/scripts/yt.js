@@ -18,7 +18,7 @@ const pad3=n=>String(n).padStart(3,'0');
 const [cmd,...A]=process.argv.slice(2);
 
 (async()=>{
- const b=await chromium.launch({args:['--autoplay-policy=no-user-gesture-required']});
+ const b=await chromium.launch({args:['--autoplay-policy=no-user-gesture-required','--disable-dev-shm-usage','--disable-gpu']});
  try{
  if(cmd==='search'){
    const [q,n='10']=A; const c=await ctx(b); const p=await c.newPage();

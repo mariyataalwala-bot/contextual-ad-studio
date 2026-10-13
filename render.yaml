@@ -4,7 +4,7 @@ services:
     name: contextual-ad-studio
     runtime: docker
     dockerfilePath: ./Dockerfile
-    plan: standard            # 2 GB RAM: headless Chromium + frame rendering need it (free 512 MB will crash)
+    plan: free                # trial: 512 MB RAM. If renders crash, switch to 'standard' (2 GB) in the Render dashboard
     healthCheckPath: /healthz
     envVars:
       - key: GEMINI_API_KEY     # free Gemini key (aistudio.google.com) — entered in the Render dashboard, never in the repo
@@ -13,5 +13,7 @@ services:
         sync: false
       - key: APP_PASSWORD       # login password for the hosted page (anyone with the URL could otherwise use your key)
         sync: false
-      - key: CAPTURE_PARALLEL
-        value: "2"
+      - key: CAPTURE_PARALLEL   # one browser at a time on the free plan
+        value: "1"
+      - key: RENDER_SUBFRAMES   # 1 = no motion blur, ~4x faster and lighter (4 = full quality)
+        value: "1"
