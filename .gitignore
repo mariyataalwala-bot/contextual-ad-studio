@@ -3,3 +3,4 @@ settings.json
 output/
 server.log
 *.log
+_e2e.mjs
