@@ -26,7 +26,7 @@ input:focus{outline:none;border-color:var(--p)}
 .checks{display:grid;grid-template-columns:repeat(3,1fr);gap:14px}
 .chk{border:1px solid var(--line);border-radius:16px;overflow:hidden}.chk .im{position:relative;background:#000}
 .chk .im img{width:100%;display:block}.chk .box{position:absolute;border:3px solid var(--m);background:rgba(176,0,204,.25)}
-.chk .t{padding:12px 14px}.chk h3{margin:0 0 4px;font-size:14px;color:var(--m);letter-spacing:.04em}.chk p{margin:4px 0;font-size:13px}
+.chk .t{padding:12px 14px}.strip{display:flex;gap:4px;overflow-x:auto;padding:6px;background:#F1F1F6}.strip img{height:44px;border-radius:5px;cursor:pointer;opacity:.6;border:2px solid transparent}.strip img.on{opacity:1;border-color:var(--m)}.im{cursor:crosshair;user-select:none}.ic{margin-top:6px;font:inherit;padding:6px 10px;border-radius:10px;border:1.5px solid var(--line)}.chk h3{margin:0 0 4px;font-size:14px;color:var(--m);letter-spacing:.04em}.chk p{margin:4px 0;font-size:13px}
 .kw{display:inline-block;background:rgba(61,255,51,.55);padding:2px 8px;border-radius:6px;margin:3px 4px 0 0;font-weight:600}
 .titlebox{padding:18px;background:#0F0F0F;color:#fff;font-size:14px;line-height:1.5}
 .log{background:#0E0F14;color:#C9CBE0;border-radius:14px;padding:14px;font:12.5px ui-monospace,Consolas,monospace;height:220px;overflow:auto;white-space:pre-wrap}
@@ -40,8 +40,9 @@ video{width:100%;border-radius:14px;background:#000}.hide{display:none}
 <header><div class="logo">✦</div><div><h1>Contextual Ad Studio</h1><small>Mediakart · YouTube contextual ad demos</small></div><div class="sp"></div><button class="ghost" id="setBtn">Settings</button></header>
 <main>
   <section class="card hide" id="settings">
-    <h2>Settings</h2><p class="s">Your Claude API key is stored only on this computer (settings.json in the app folder). It's used to choose videos and moments.</p>
-    <div class="row"><div><label>Claude API key</label><input type="password" id="key" placeholder="sk-ant-…"></div><div style="align-self:end"><button id="saveKey">Save key</button></div></div>
+    <h2>Settings</h2><p class="s">Keys are stored only on this computer (settings.json in the app folder). Gemini's free tier works; Claude gives the best picks. With no key, the app runs in manual mode.</p>
+    <div class="row"><div><label>Gemini API key (free, from aistudio.google.com)</label><input type="password" id="gkey" placeholder="paste key"></div><div><label>Claude API key (optional, paid)</label><input type="password" id="key" placeholder="sk-ant-…"></div></div>
+    <div class="row" style="margin-top:12px"><div><label>Use</label><select id="prov" style="width:100%;font:inherit;padding:11px 14px;border:1.5px solid var(--line);border-radius:12px"><option value="gemini">Gemini (free)</option><option value="claude">Claude</option><option value="none">Manual only (no AI)</option></select></div><div style="align-self:end"><button id="saveKey">Save</button> <span class="s" id="provNow"></span></div></div>
   </section>
 
   <section class="card" id="s1">
@@ -74,11 +75,13 @@ video{width:100%;border-radius:14px;background:#000}.hide{display:none}
     <h2><span class="num">4</span>Approve the three checks</h2><p class="s">Every check must genuinely match the product. Approve to capture and render (about 10 minutes), or try the next video.</p>
     <div class="titlebox" id="vtitle"></div>
     <div class="checks" style="margin-top:14px">
-      <div class="chk"><div class="im" id="imV"></div><div class="t"><h3>VISUAL IDENTIFY</h3><p id="vV"></p><p class="s" id="wV"></p></div></div>
-      <div class="chk"><div class="titlebox" id="kwT" style="min-height:120px"></div><div class="t"><h3>KEYWORDS</h3><p id="vK"></p><p class="s">Exact phrases from the video title.</p></div></div>
-      <div class="chk"><div class="im" id="imO"></div><div class="t"><h3>OBJECT IDENTIFY</h3><p id="vO"></p><p class="s" id="wO"></p></div></div>
+      <div class="chk"><div class="im" id="imV"></div><div class="strip" id="stV"></div><div class="t"><h3>VISUAL IDENTIFY</h3><p id="vV"></p><p class="s" id="wV"></p><select class="ic" id="icV"></select></div></div>
+      <div class="chk"><div class="titlebox" id="kwT" style="min-height:120px"></div><div class="t"><h3>KEYWORDS</h3><p id="vK"></p><label>Keywords (comma-separated, copied from the title)</label><input type="text" id="kwIn"><label style="margin-top:8px">Card text (two short lines, use /)</label><input type="text" id="cardIn"></div></div>
+      <div class="chk"><div class="im" id="imO"></div><div class="strip" id="stO"></div><div class="t"><h3>OBJECT IDENTIFY</h3><p id="vO"></p><p class="s" id="wO"></p><select class="ic" id="icO"></select></div></div>
     </div>
+    <div class="note hide" id="manualNote"><b>Manual mode</b> — the AI is unavailable or out of free quota. Click a frame under each picture to choose the moment, drag on the picture to draw the box, and type the keywords. Only approve if all three genuinely match the product.</div>
     <div class="note hide" id="notes"></div>
+    <p class="s" style="margin-top:10px">Tip: drag on a picture to redraw its box; click a small frame to use a different moment.</p>
     <div class="bar"><button id="approve">Approve &amp; make the video</button><button class="ghost" id="next">Try another video</button></div>
   </section>
 
@@ -92,8 +95,8 @@ const $=id=>document.getElementById(id); let job=null, adSel=null, adList=[], lo
 const api=async(u,b)=>{const r=await fetch(u,b?{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(b)}:{});const j=await r.json();if(!r.ok)throw new Error(j.error||r.statusText);return j;};
 const read=f=>new Promise(r=>{const fr=new FileReader();fr.onload=()=>r(fr.result);fr.readAsDataURL(f);});
 $('setBtn').onclick=()=>$('settings').classList.toggle('hide');
-$('saveKey').onclick=async()=>{await api('/api/settings',{apiKey:$('key').value});$('key').value='';$('settings').classList.add('hide');alert('Saved.');};
-api('/api/status').then(s=>{if(s.keyFromEnv)$('setBtn').classList.add('hide'); else if(!s.hasKey)$('settings').classList.remove('hide'); if(!s.ffmpeg) alert('ffmpeg was not found. Install it once with: winget install Gyan.FFmpeg'); if(s.hosted){$('openF').classList.add('hide');}});
+$('saveKey').onclick=async()=>{const r=await api('/api/settings',{apiKey:$('key').value,geminiKey:$('gkey').value,provider:$('prov').value});$('key').value='';$('gkey').value='';$('provNow').textContent='Using: '+r.provider;$('settings').classList.add('hide');};
+api('/api/status').then(s=>{$('prov').value=s.provider;$('provNow').textContent='Using: '+s.provider; if(s.keyFromEnv)$('setBtn').classList.add('hide'); else if(!s.hasKey)$('settings').classList.remove('hide'); if(!s.ffmpeg) alert('ffmpeg was not found. Install it once with: winget install Gyan.FFmpeg'); if(s.hosted){$('openF').classList.add('hide');}});
 $('logo').onchange=async e=>{logoData=await read(e.target.files[0]);$('logoPrev').innerHTML=`<img src="${logoData}">`;};
 $('packs').onchange=async e=>{packData=await Promise.all([...e.target.files].slice(0,2).map(read));$('packPrev').innerHTML=packData.map(d=>`<img src="${d}">`).join('');};
 $('findAds').onclick=async()=>{
@@ -118,19 +121,54 @@ async function poll(){
   if(j.status==='failed') return;
   setTimeout(poll,1500);
 }
-function boxImg(el,k,box){ el.innerHTML=`<img src="/api/job/${job}/still?k=${k}&_=${Date.now()}"><div class="box" style="left:${box[0]*100}%;top:${box[1]*100}%;width:${box[2]*100}%;height:${box[3]*100}%"></div>`; }
-function showProposal(p){
-  const v=p.pick; $('vtitle').innerHTML=`<b>${p.video.title}</b><br>${p.video.channel} · ${Number(p.video.views).toLocaleString()} views · search typed: “${p.query}”`;
-  boxImg($('imV'),'visual',v.visual.box); boxImg($('imO'),'object',v.object.box);
-  $('vV').innerHTML=`<b>${v.visual.t}s</b> — ${v.visual.what}`; $('wV').textContent=v.visual.why;
-  $('vO').innerHTML=`<b>${v.object.t}s</b> — ${v.object.what}`; $('wO').textContent=v.object.why;
-  let t=p.video.title; v.keywords.forEach(k=>{const i=t.toLowerCase().indexOf(k.toLowerCase()); if(i>=0) t=t.slice(0,i)+'\u0001'+t.slice(i,i+k.length)+'\u0002'+t.slice(i+k.length);});
-  $('kwT').innerHTML=t.replace(/[<>&]/g,c=>({'<':'&lt;','>':'&gt;','&':'&amp;'}[c])).replace(/\u0001/g,'<span class="kw">').replace(/\u0002/g,'</span>');
-  $('vK').innerHTML=v.keywords.map(k=>`<span class="kw">${k}</span>`).join('')+`<br>Card: <b>${v.card.replace('\\n',' / ').replace('\n',' / ')}</b>`;
-  if(v.notes){$('notes').textContent='Note: '+v.notes;$('notes').classList.remove('hide');} else $('notes').classList.add('hide');
+let ED = null, PROP = null;
+// picture with a box you can redraw by dragging
+function boxImg(el, k) {
+  const v = ED[k];
+  el.innerHTML = `<img draggable="false" src="/api/job/${job}/still?k=${k}&_=${Date.now()}"><div class="box" style="left:${v.box[0]*100}%;top:${v.box[1]*100}%;width:${v.box[2]*100}%;height:${v.box[3]*100}%"></div>`;
+  let st = null; const bx = el.querySelector('.box');
+  el.onmousedown = e => { const r = el.getBoundingClientRect(); st = [(e.clientX-r.left)/r.width, (e.clientY-r.top)/r.height]; e.preventDefault(); };
+  el.onmousemove = e => { if (!st) return; const r = el.getBoundingClientRect();
+    const x = Math.min(1, Math.max(0, (e.clientX-r.left)/r.width)), y = Math.min(1, Math.max(0, (e.clientY-r.top)/r.height));
+    const b = [Math.min(st[0],x), Math.min(st[1],y), Math.abs(x-st[0]), Math.abs(y-st[1])];
+    if (b[2] > 0.02 && b[3] > 0.02) { v.box = b; Object.assign(bx.style, {left:b[0]*100+'%', top:b[1]*100+'%', width:b[2]*100+'%', height:b[3]*100+'%'}); } };
+  el.onmouseup = el.onmouseleave = () => { st = null; };
+}
+// strip of scanned frames; clicking one picks that moment
+function strip(el, k, frames) {
+  el.innerHTML = frames.map((t,i) => `<img src="/api/job/${job}/frame?i=${i}" title="${t}s" data-t="${t}" class="${t===ED[k].t?'on':''}">`).join('');
+  el.querySelectorAll('img').forEach(im => im.onclick = () => {
+    ED[k].t = +im.dataset.t; el.querySelectorAll('img').forEach(x => x.classList.toggle('on', x === im));
+    const pic = $(k==='visual'?'imV':'imO'); pic.querySelector('img').src = im.src;
+    $(k==='visual'?'vV':'vO').innerHTML = `<b>${ED[k].t}s</b> — chosen by you`;
+  });
+}
+function renderTitle(title, kws) {
+  let t = title; kws.forEach(k => { const i = t.toLowerCase().indexOf(k.toLowerCase()); if (i >= 0) t = t.slice(0,i)+'\u0001'+t.slice(i,i+k.length)+'\u0002'+t.slice(i+k.length); });
+  $('kwT').innerHTML = t.replace(/[<>&]/g, c => ({'<':'&lt;','>':'&gt;','&':'&amp;'}[c])).replace(/\u0001/g,'<span class="kw">').replace(/\u0002/g,'</span>');
+}
+function showProposal(p) {
+  PROP = p; const v = p.pick;
+  ED = { visual:{t:v.visual.t, box:v.visual.box.slice(), icon:v.visual.icon}, object:{t:v.object.t, box:v.object.box.slice(), icon:v.object.icon} };
+  $('vtitle').innerHTML = `<b>${p.video.title}</b><br>${p.video.channel} · ${Number(p.video.views).toLocaleString()} views · search typed: “${p.query}”`;
+  boxImg($('imV'),'visual'); boxImg($('imO'),'object'); strip($('stV'),'visual',p.frames); strip($('stO'),'object',p.frames);
+  [['icV','visual'],['icO','object']].forEach(([id,k]) => { $(id).innerHTML = p.icons.map(n => `<option ${n===ED[k].icon?'selected':''}>${n}</option>`).join(''); $(id).onchange = () => ED[k].icon = $(id).value; });
+  $('vV').innerHTML = `<b>${v.visual.t}s</b> — ${v.visual.what || 'pick the moment'}`; $('wV').textContent = v.visual.why || '';
+  $('vO').innerHTML = `<b>${v.object.t}s</b> — ${v.object.what || 'pick the object'}`; $('wO').textContent = v.object.why || '';
+  $('kwIn').value = v.keywords.join(', '); $('cardIn').value = (v.card || '').split(/\\n|\n/).join(' / ');
+  renderTitle(p.video.title, v.keywords);
+  $('kwIn').oninput = () => renderTitle(p.video.title, $('kwIn').value.split(',').map(x => x.trim()).filter(Boolean));
+  $('vK').innerHTML = v.keywords.length ? v.keywords.map(k => `<span class="kw">${k}</span>`).join('') : '<span class="s">Type words from the title below.</span>';
+  $('manualNote').classList.toggle('hide', !p.manual);
+  if (v.notes) { $('notes').textContent = 'Note: ' + v.notes; $('notes').classList.remove('hide'); } else $('notes').classList.add('hide');
   $('s4').classList.remove('hide');
 }
-$('approve').onclick=async()=>{await api(`/api/job/${job}/approve`,{});$('s4').classList.add('hide');poll();};
+$('approve').onclick = async () => {
+  const edits = { visual:ED.visual, object:ED.object,
+    keywords: $('kwIn').value.split(',').map(x => x.trim()).filter(Boolean),
+    card: $('cardIn').value.split('/').map(x => x.trim()).filter(Boolean).join('\n') };
+  try { await api(`/api/job/${job}/approve`, {edits}); $('s4').classList.add('hide'); poll(); } catch (e) { alert(e.message); }
+};
 $('next').onclick=async()=>{await api(`/api/job/${job}/next`,{});$('s4').classList.add('hide');poll();};
 $('openF').onclick=()=>api(`/api/job/${job}/open`,{});
 $('again').onclick=()=>location.reload();

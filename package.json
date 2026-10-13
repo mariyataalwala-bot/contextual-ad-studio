@@ -4,6 +4,7 @@
  "description": "Type a brand, pick the ad, approve the three checks, get the Mediakart contextual-ad video.",
  "dependencies": {
   "@anthropic-ai/sdk": "^0.133.0",
+  "@google/genai": "^2.29.0",
   "playwright": "^1.64.0"
  }
 }

@@ -6,6 +6,7 @@ import path from "node:path";
 import { spawn } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import Anthropic from "@anthropic-ai/sdk";
+import { GoogleGenAI } from "@google/genai";
 
 const APP = path.dirname(fileURLToPath(import.meta.url));
 const PIPE = path.join(APP, "pipeline");
@@ -35,15 +36,46 @@ const ENV = { ...process.env, NODE_PATH: path.join(APP, "node_modules"), PYTHONI
 if (FF) ENV.PATH = FF + path.delimiter + ENV.PATH;
 const PY = IS_WIN ? "python" : "python3";
 
-// ---------- settings / Claude client ----------
+// ---------- settings / AI providers (Gemini free tier or Claude) ----------
 const loadSettings = () => { try { return JSON.parse(fs.readFileSync(SETTINGS, "utf8")); } catch { return {}; } };
+const geminiKey = () => loadSettings().geminiKey || process.env.GEMINI_API_KEY;
+const claudeKey = () => loadSettings().apiKey || process.env.ANTHROPIC_API_KEY;
+const provider = () => { const p = loadSettings().provider || process.env.AI_PROVIDER; if (p) return p; return geminiKey() ? "gemini" : claudeKey() ? "claude" : "none"; };
+const GEMINI_MODEL = () => loadSettings().geminiModel || process.env.GEMINI_MODEL || "gemini-flash-latest";
 function claude() {
-  const key = loadSettings().apiKey || process.env.ANTHROPIC_API_KEY;
+  const key = claudeKey();
   if (!key) throw new Error("Add your Claude API key in Settings first.");
   return new Anthropic({ apiKey: key });
 }
+class AIError extends Error {}
 // One structured-JSON call. Images are [{label, file}] JPEG/PNG paths.
 async function ask(system, text, schema, images = [], effort = "high") {
+  const p = provider();
+  if (p === "none") throw new AIError("No AI key set — using manual mode.");
+  try { return p === "gemini" ? await askGemini(system, text, schema, images) : await askClaude(system, text, schema, images, effort); }
+  catch (e) { if (e instanceof AIError) throw e; throw new AIError(e.message || String(e)); }
+}
+async function askGemini(system, text, schema, images) {
+  const ai = new GoogleGenAI({ apiKey: geminiKey() });
+  const parts = [];
+  for (const im of images) {
+    parts.push({ text: im.label });
+    parts.push({ inlineData: { mimeType: im.file.toLowerCase().endsWith(".png") ? "image/png" : "image/jpeg", data: fs.readFileSync(im.file).toString("base64") } });
+  }
+  parts.push({ text });
+  for (let attempt = 0; ; attempt++) {
+    try {
+      const r = await ai.models.generateContent({ model: GEMINI_MODEL(), contents: [{ role: "user", parts }],
+        config: { systemInstruction: system, responseMimeType: "application/json", responseJsonSchema: schema } });
+      return JSON.parse(r.text);
+    } catch (e) {
+      const msg = String(e.message || e); const busy = /429|503|RESOURCE_EXHAUSTED|UNAVAILABLE|overloaded/i.test(msg);
+      if (busy && attempt < 3) { await sleep(15000 * (attempt + 1)); continue; }   // free tier: wait and retry
+      throw new AIError(/429|RESOURCE_EXHAUSTED/.test(msg) ? "Gemini free quota used up for now — switching to manual mode." : "Gemini: " + msg.slice(0, 200));
+    }
+  }
+}
+async function askClaude(system, text, schema, images, effort) {
   const content = [];
   for (const im of images) {
     content.push({ type: "text", text: im.label });
@@ -103,7 +135,7 @@ const RULES = `House rules for Mediakart contextual-ad demos:
 - Never invent claims, numbers or slogans.`;
 const ICONS = ["mesh", "pan", "chip", "bowl", "plate", "tube", "jar", "bottle", "cup", "shirt", "people", "hand", "phone", "shoe", "car"];
 
-// Step A: find the brand's official ads
+// Step A: find the brand's official ads (AI ranks them; without AI: the brand's own channel first)
 async function findAds({ brand, product }) {
   const qs = [`${brand} ad`, `${brand} TVC`, `${brand} ${product || ""} ad`.replace(/\s+/g, " ").trim(), `${brand} official commercial`];
   const seen = new Map();
@@ -112,35 +144,57 @@ async function findAds({ brand, product }) {
   }
   const list = [...seen.values()].filter((r) => { const s = lenSec(r.length); return s >= 6 && s <= 90; });
   if (!list.length) return [];
-  const pick = await ask(
-    "You help an ad agency find a brand's own official TV/YouTube commercials.",
-    `Brand: ${brand}${product ? `\nProduct focus: ${product}` : ""}\nYouTube results (JSON):\n${JSON.stringify(list)}\n\n` +
-      `Return up to 6 that are the brand's OWN official commercials (uploaded by the brand's or its parent company's official channel; not reactions, reviews, compilations or fan uploads). Prefer recent ads that show the product clearly. Rank best first, and say in one short line why each fits.`,
-    { type: "object", additionalProperties: false, required: ["ads"],
-      properties: { ads: { type: "array", items: { type: "object", additionalProperties: false, required: ["id", "why"], properties: { id: { type: "string" }, why: { type: "string" } } } } } },
-    [], "medium");
-  return pick.ads.map((a) => ({ ...seen.get(a.id), why: a.why })).filter((a) => a.id);
+  try {
+    const pick = await ask(
+      "You help an ad agency find a brand's own official TV/YouTube commercials.",
+      `Brand: ${brand}${product ? `\nProduct focus: ${product}` : ""}\nYouTube results (JSON):\n${JSON.stringify(list)}\n\n` +
+        `Return up to 6 that are the brand's OWN official commercials (uploaded by the brand's or its parent company's official channel; not reactions, reviews, compilations or fan uploads). Prefer recent ads that show the product clearly. Rank best first, and say in one short line why each fits.`,
+      { type: "object", additionalProperties: false, required: ["ads"],
+        properties: { ads: { type: "array", items: { type: "object", additionalProperties: false, required: ["id", "why"], properties: { id: { type: "string" }, why: { type: "string" } } } } } },
+      [], "medium");
+    const ads = pick.ads.map((a) => ({ ...seen.get(a.id), why: a.why })).filter((a) => a.id);
+    if (ads.length) return ads;
+  } catch (e) { if (!(e instanceof AIError)) throw e; }
+  const b = brand.toLowerCase().replace(/[^a-z0-9]/g, "");
+  const own = (r) => (r.channel || "").toLowerCase().replace(/[^a-z0-9]/g, "").includes(b);
+  return [...list.filter(own), ...list.filter((r) => !own(r))].slice(0, 8).map((r) => ({ ...r, why: own(r) ? "From the brand's channel" : "Check this is official" }));
 }
 
-// Step B: find a premium content video where all three checks match
+const stillAt = (dir, t) => path.join(dir, `f_${String(Math.round(t * 10)).padStart(5, "0")}.png`);
+const nearest = (stills, t) => stills.reduce((a, s) => (Math.abs(s.t - t) < Math.abs(a.t - t) ? s : a), stills[0]);
+const titleQuery = (title) => title.split(/[|\-–(]/)[0].trim().split(/\s+/).slice(0, 8).join(" ");
+
+// Step B: find a premium content video where all three checks match.
+// With AI (Gemini free tier or Claude) the moments and boxes are proposed; without it — or when the free quota
+// runs out — the app switches to manual mode: you pick the frames, drag the boxes and choose the keywords.
 async function proposeMoments(job) {
   const { brand, product, adTitle } = job.input;
   const W = job.work;
   if (!job.candidates) {
-    say(job, "Planning searches for premium videos…");
-    const plan = await ask("You plan YouTube searches for contextual ad placement.", `${RULES}\n\nBrand: ${brand}\nProduct: ${product || "(infer from the ad)"}\nAd being placed: ${adTitle}\n\nGive 6 YouTube search queries likely to surface premium, professional videos where this product category is clearly on screen (recipes, routines, tutorials, reviews...). Also state the product category in a few words.`,
-      { type: "object", additionalProperties: false, required: ["category", "queries"], properties: { category: { type: "string" }, queries: { type: "array", items: { type: "string" } } } }, [], "medium");
-    job.category = plan.category;
-    const seen = new Map();
-    for (const q of plan.queries.slice(0, 6)) {
+    const seen = new Map(); let queries;
+    if (!job.aiDown) {
+      try {
+        say(job, `Planning searches for premium videos (AI: ${provider()})…`);
+        const plan = await ask("You plan YouTube searches for contextual ad placement.", `${RULES}\n\nBrand: ${brand}\nProduct: ${product || "(infer from the ad)"}\nAd being placed: ${adTitle}\n\nGive 6 YouTube search queries likely to surface premium, professional videos where this product category is clearly on screen (recipes, routines, tutorials, reviews...). Also state the product category in a few words.`,
+          { type: "object", additionalProperties: false, required: ["category", "queries"], properties: { category: { type: "string" }, queries: { type: "array", items: { type: "string" } } } }, [], "medium");
+        job.category = plan.category; queries = plan.queries.slice(0, 6);
+      } catch (e) { if (!(e instanceof AIError)) throw e; job.aiDown = true; say(job, e.message); }
+    }
+    if (!queries) { const p = product || brand; job.category = p; queries = [`${p} recipe`, `${p} review`, `how to use ${p}`, p]; }
+    for (const q of queries) {
       say(job, `Searching YouTube: “${q}”`);
       try { for (const r of await ytJson(["searchjson", q, "10"])) if (!seen.has(r.id)) seen.set(r.id, { ...r, query: q }); } catch {}
     }
     const pool = [...seen.values()].filter((r) => { const s = lenSec(r.length); return s >= 60 && s <= 1800; });
-    say(job, `Ranking ${pool.length} candidate videos…`);
-    const ranked = await ask("You choose premium YouTube videos for contextual ad placement.", `${RULES}\n\nBrand: ${brand}. Product category: ${plan.category}.\nCandidates (JSON):\n${JSON.stringify(pool)}\n\nPick up to 5 candidates, best first: professional channels, the product category clearly the subject (it should appear on screen), titles containing product-category words.`,
-      { type: "object", additionalProperties: false, required: ["ids"], properties: { ids: { type: "array", items: { type: "string" } } } }, [], "high");
-    job.candidates = ranked.ids.map((id) => seen.get(id)).filter(Boolean);
+    job.candidates = pool.slice(0, 8);
+    if (!job.aiDown) {
+      try {
+        say(job, `Ranking ${pool.length} candidate videos…`);
+        const ranked = await ask("You choose premium YouTube videos for contextual ad placement.", `${RULES}\n\nBrand: ${brand}. Product category: ${job.category}.\nCandidates (JSON):\n${JSON.stringify(pool)}\n\nPick up to 5 candidates, best first: professional channels, the product category clearly the subject (it should appear on screen), titles containing product-category words.`,
+          { type: "object", additionalProperties: false, required: ["ids"], properties: { ids: { type: "array", items: { type: "string" } } } }, [], "high");
+        const c = ranked.ids.map((id) => seen.get(id)).filter(Boolean); if (c.length) job.candidates = c;
+      } catch (e) { if (!(e instanceof AIError)) throw e; job.aiDown = true; say(job, e.message); }
+    }
     job.tried = 0;
   }
   while (job.tried < job.candidates.length) {
@@ -154,43 +208,59 @@ async function proposeMoments(job) {
     say(job, "  scanning 16 frames…");
     const parts = [ts.filter((_, i) => i % 3 === 0), ts.filter((_, i) => i % 3 === 1), ts.filter((_, i) => i % 3 === 2)];
     await Promise.all(parts.map((p) => yt(["scan", cand.id, sdir, ...p.map(String)]).catch(() => {})));
-    const stills = ts.map((t) => ({ t, file: path.join(sdir, `f_${String(Math.round(t * 10)).padStart(5, "0")}.png`) })).filter((s) => fs.existsSync(s.file));
+    const stills = ts.map((t) => ({ t, file: stillAt(sdir, t) })).filter((s) => fs.existsSync(s.file));
     if (stills.length < 8) { say(job, "  skipped: could not capture frames"); continue; }
     for (const s of stills) { const j = s.file.replace(".png", "_s.jpg"); await run("ffmpeg", ["-loglevel", "error", "-y", "-i", s.file, "-vf", "scale=640:-2", "-q:v", "4", j]); s.small = j; }
-    const pick = await ask("You pick the moments for a contextual-ad demo, strictly.", `${RULES}\n\nBrand: ${brand}. Product category: ${job.category}. Ad: ${adTitle}\nVideo title (exact): ${meta.title}\nChannel: ${meta.channel}, ${meta.views} views, length ${L}s${meta.chapters?.length ? `\nChapters: ${JSON.stringify(meta.chapters)}` : ""}\n\nThe ${stills.length} frames above are labelled with their time in seconds.\n` +
-      `Decide whether this video passes the house rules. If it does, choose: open_t (a strong 2-second opening shot), visual (time + what the Visual Identify shows), object (time + the object), keyword phrases that are EXACT substrings of the title (1–3 phrases, product-category words), a 2-line keyword card (max ~10 characters per line, use \\n), an icon for each mark (one of ${ICONS.join(", ")}; use mesh only when a face is the subject), and a YouTube search query that should return this exact video near the top (use distinctive title words).` +
-      ` Times must be among the labelled frame times. Reject (accept=false) if any of the three checks would be a stretch.`,
-      { type: "object", additionalProperties: false, required: ["accept", "reason", "open_t", "visual", "object", "keywords", "card", "query", "notes"],
-        properties: { accept: { type: "boolean" }, reason: { type: "string" }, open_t: { type: "number" },
-          visual: { type: "object", additionalProperties: false, required: ["t", "what", "why", "icon"], properties: { t: { type: "number" }, what: { type: "string" }, why: { type: "string" }, icon: { type: "string", enum: ICONS } } },
-          object: { type: "object", additionalProperties: false, required: ["t", "what", "why", "icon"], properties: { t: { type: "number" }, what: { type: "string" }, why: { type: "string" }, icon: { type: "string", enum: ICONS } } },
-          keywords: { type: "array", items: { type: "string" } }, card: { type: "string" }, query: { type: "string" }, notes: { type: "string" } } },
-      stills.map((s) => ({ label: `t=${s.t}s`, file: s.small })), "high");
-    if (!pick.accept) { say(job, "  rejected: " + pick.reason); continue; }
+    let pick = null;
+    if (!job.aiDown) {
+      try {
+        say(job, "  AI is checking the frames (free Gemini can take ~2 min)…");
+        pick = await ask("You pick the moments for a contextual-ad demo, strictly.", `${RULES}\n\nBrand: ${brand}. Product category: ${job.category}. Ad: ${adTitle}\nVideo title (exact): ${meta.title}\nChannel: ${meta.channel}, ${meta.views} views, length ${L}s${meta.chapters?.length ? `\nChapters: ${JSON.stringify(meta.chapters)}` : ""}\n\nThe ${stills.length} frames above are labelled with their time in seconds.\n` +
+          `Decide whether this video passes the house rules. If it does, choose: open_t (a strong 2-second opening shot), visual (time + what the Visual Identify shows), object (time + the object), keyword phrases that are EXACT substrings of the title (1–3 phrases, product-category words), a 2-line keyword card (max ~10 characters per line, use \\n), an icon for each mark (one of ${ICONS.join(", ")}; use mesh only when a face is the subject), and a YouTube search query that should return this exact video near the top (use distinctive title words).` +
+          ` Times must be among the labelled frame times. Reject (accept=false) if any of the three checks would be a stretch.`,
+          { type: "object", additionalProperties: false, required: ["accept", "reason", "open_t", "visual", "object", "keywords", "card", "query", "notes"],
+            properties: { accept: { type: "boolean" }, reason: { type: "string" }, open_t: { type: "number" },
+              visual: { type: "object", additionalProperties: false, required: ["t", "what", "why", "icon"], properties: { t: { type: "number" }, what: { type: "string" }, why: { type: "string" }, icon: { type: "string", enum: ICONS } } },
+              object: { type: "object", additionalProperties: false, required: ["t", "what", "why", "icon"], properties: { t: { type: "number" }, what: { type: "string" }, why: { type: "string" }, icon: { type: "string", enum: ICONS } } },
+              keywords: { type: "array", items: { type: "string" } }, card: { type: "string" }, query: { type: "string" }, notes: { type: "string" } } },
+          stills.map((s) => ({ label: `t=${s.t}s`, file: s.small })), "high");
+        if (!pick.accept) { say(job, "  rejected: " + pick.reason); continue; }
+      } catch (e) { if (!(e instanceof AIError)) throw e; job.aiDown = true; pick = null; say(job, e.message); }
+    }
+    const manual = !pick;
+    if (manual) {   // starting point for manual picking
+      const n = stills.length;
+      pick = { open_t: stills[1].t, notes: "", query: "", keywords: [], card: "",
+        visual: { t: stills[Math.floor(n * 0.35)].t, what: "", why: "", icon: "hand" },
+        object: { t: stills[Math.floor(n * 0.65)].t, what: "", why: "", icon: "bowl" } };
+    }
+    pick.open_t = nearest(stills, pick.open_t).t;
+    for (const k of ["visual", "object"]) { const s = nearest(stills, pick[k].t); pick[k].t = s.t; pick[k].still = s.file; }
     const tl = meta.title.toLowerCase();
-    pick.keywords = pick.keywords.filter((k) => k && tl.includes(k.toLowerCase())).slice(0, 3);
-    if (!pick.keywords.length) { say(job, "  rejected: no exact title keywords"); continue; }
-    // precise boxes on the two freeze frames
-    const fdir = path.join(W, "freeze", cand.id); fs.mkdirSync(fdir, { recursive: true });
-    await yt(["scan", cand.id, fdir, String(pick.visual.t), String(pick.object.t)]);
-    const ff = (t) => path.join(fdir, `f_${String(Math.round(t * 10)).padStart(5, "0")}.png`);
+    pick.keywords = (pick.keywords || []).filter((k) => k && tl.includes(k.toLowerCase())).slice(0, 3);
+    if (!manual && !pick.keywords.length) { say(job, "  rejected: no exact title keywords"); continue; }
+    const c = (v) => Math.max(0, Math.min(1, v));
     for (const k of ["visual", "object"]) {
-      const f = ff(pick[k].t); if (!fs.existsSync(f)) throw new Error("could not capture the freeze frame");
-      const g = f.replace(".png", "_grid.jpg");
-      await run("ffmpeg", ["-loglevel", "error", "-y", "-i", f, "-vf", "drawgrid=w=iw/10:h=ih/10:t=1:c=yellow@0.8", "-q:v", "3", g]);
-      const b = await ask("You place a highlight box on a video frame.", `Draw a tight box around: ${pick[k].what}.\nThe yellow grid lines are every 10% of width and height. Return the box as fractions of the frame: x, y (top-left) and w, h, all between 0 and 1. Keep it on the subject; leave out on-screen captions where possible.`,
-        { type: "object", additionalProperties: false, required: ["x", "y", "w", "h"], properties: { x: { type: "number" }, y: { type: "number" }, w: { type: "number" }, h: { type: "number" } } },
-        [{ label: `${k} frame`, file: g }], "medium");
-      const c = (v) => Math.max(0, Math.min(1, v));
-      pick[k].box = [c(b.x), c(b.y), Math.min(c(b.w), 1 - c(b.x)), Math.min(c(b.h), 1 - c(b.y))];
-      pick[k].still = f;
+      pick[k].box = [0.2, 0.2, 0.6, 0.6];
+      if (manual || job.aiDown) continue;
+      const g = pick[k].still.replace(".png", "_grid.jpg");
+      await run("ffmpeg", ["-loglevel", "error", "-y", "-i", pick[k].still, "-vf", "drawgrid=w=iw/10:h=ih/10:t=1:c=yellow@0.8", "-q:v", "3", g]);
+      try {
+        say(job, `  AI is placing the ${k} box…`);
+        const b = await ask("You place a highlight box on a video frame.", `Draw a tight box around: ${pick[k].what}.\nThe yellow grid lines are every 10% of width and height. Return the box as fractions of the frame: x, y (top-left) and w, h, all between 0 and 1. Keep it on the subject; leave out on-screen captions where possible.`,
+          { type: "object", additionalProperties: false, required: ["x", "y", "w", "h"], properties: { x: { type: "number" }, y: { type: "number" }, w: { type: "number" }, h: { type: "number" } } },
+          [{ label: `${k} frame`, file: g }], "medium");
+        pick[k].box = [c(b.x), c(b.y), Math.min(c(b.w), 1 - c(b.x)), Math.min(c(b.h), 1 - c(b.y))];
+      } catch (e) { if (!(e instanceof AIError)) throw e; job.aiDown = true; say(job, e.message); }
     }
     // the search query must show this video on the first screen
-    let q = pick.query;
-    for (const tryQ of [q, meta.title.split(/[|\-–(]/)[0].trim().split(/\s+/).slice(0, 8).join(" ")]) {
+    let q = pick.query || titleQuery(meta.title);
+    for (const tryQ of [q, titleQuery(meta.title)]) {
       try { const r = await ytJson(["searchjson", tryQ, "3"]); if (r.some((x) => x.id === cand.id)) { q = tryQ; break; } } catch {}
     }
-    job.proposal = { video: { id: cand.id, title: meta.title, channel: meta.channel, views: meta.views, length: L }, pick, query: q };
+    job.scan = stills;
+    job.proposal = { video: { id: cand.id, title: meta.title, channel: meta.channel, views: meta.views, length: L }, pick, query: q,
+      manual: manual || !!job.aiDown, frames: stills.map((s) => s.t), icons: ICONS };
     return true;
   }
   return false;
@@ -249,8 +319,8 @@ http.createServer(async (req, res) => {
   }
   try {
     if (req.method === "GET" && u.pathname === "/") return send(res, 200, fs.readFileSync(path.join(APP, "ui.html")), "text/html; charset=utf-8");
-    if (u.pathname === "/api/status") return send(res, 200, { hasKey: !!(loadSettings().apiKey || process.env.ANTHROPIC_API_KEY), keyFromEnv: !!process.env.ANTHROPIC_API_KEY, ffmpeg: !!FF || !IS_WIN, hosted: !IS_WIN, outDir: OUT_ROOT });
-    if (req.method === "POST" && u.pathname === "/api/settings") { const b = await body(req); const s = loadSettings(); if (b.apiKey) s.apiKey = b.apiKey.trim(); fs.writeFileSync(SETTINGS, JSON.stringify(s)); return send(res, 200, { ok: true }); }
+    if (u.pathname === "/api/status") return send(res, 200, { hasKey: provider() !== "none", provider: provider(), keyFromEnv: !!(process.env.ANTHROPIC_API_KEY || process.env.GEMINI_API_KEY), ffmpeg: !!FF || !IS_WIN, hosted: !IS_WIN, outDir: OUT_ROOT });
+    if (req.method === "POST" && u.pathname === "/api/settings") { const b = await body(req); const s = loadSettings(); if (b.apiKey) s.apiKey = b.apiKey.trim(); if (b.geminiKey) s.geminiKey = b.geminiKey.trim(); if (b.provider) s.provider = b.provider; fs.writeFileSync(SETTINGS, JSON.stringify(s)); return send(res, 200, { ok: true, provider: provider() }); }
     if (req.method === "POST" && u.pathname === "/api/ads") { const b = await body(req); return send(res, 200, { ads: await findAds(b) }); }
     if (req.method === "POST" && u.pathname === "/api/start") {
       const b = await body(req);
@@ -272,9 +342,22 @@ http.createServer(async (req, res) => {
     if (jm && jobs[jm[1]]) {
       const job = jobs[jm[1]], act = jm[3];
       if (!act) return send(res, 200, { status: job.status, step: job.step, log: job.log.slice(-40), proposal: job.proposal && { ...job.proposal, pick: { ...job.proposal.pick, visual: { ...job.proposal.pick.visual, still: undefined }, object: { ...job.proposal.pick.object, still: undefined } } }, output: job.output });
+      if (act === "frame") { const s = job.scan?.[+u.searchParams.get("i")]; return s ? send(res, 200, fs.readFileSync(s.small), "image/jpeg") : send(res, 404, {}); }
       if (act === "still") { const k = u.searchParams.get("k"); const f = job.proposal?.pick?.[k]?.still; return f ? send(res, 200, fs.readFileSync(f), "image/png") : send(res, 404, {}); }
       if (act === "video" && job.output) { const st = fs.statSync(job.output); res.writeHead(200, { "Content-Type": "video/mp4", "Content-Length": st.size, "Content-Disposition": u.searchParams.get("dl") ? `attachment; filename="${path.basename(job.output)}"` : "inline" }); return fs.createReadStream(job.output).pipe(res); }
       if (act === "approve" && req.method === "POST") {
+        const e = (await body(req)).edits, P = job.proposal;
+        if (e && P) {   // manual adjustments from the approval screen
+          for (const k of ["visual", "object"]) if (e[k]) {
+            if (e[k].t != null) { const s = nearest(job.scan, +e[k].t); P.pick[k].t = s.t; P.pick[k].still = s.file; }
+            if (Array.isArray(e[k].box) && e[k].box.length === 4) P.pick[k].box = e[k].box.map((v) => Math.max(0, Math.min(1, +v)));
+            if (ICONS.includes(e[k].icon)) P.pick[k].icon = e[k].icon;
+          }
+          if (Array.isArray(e.keywords)) P.pick.keywords = e.keywords.map((k) => String(k).trim()).filter((k) => k && P.video.title.toLowerCase().includes(k.toLowerCase())).slice(0, 3);
+          if (typeof e.card === "string" && e.card.trim()) P.pick.card = e.card.trim();
+        }
+        if (!P.pick.keywords.length) return send(res, 400, { error: "Add at least one keyword — it must be words copied exactly from the video title." });
+        if (!P.pick.card) P.pick.card = P.pick.keywords[0].split(/\s+/).slice(0, 2).join("\n");
         job.status = "running";
         (async () => { try { await produce(job); job.status = "done"; say(job, "Done — saved to " + job.output); } catch (e) { job.status = "failed"; say(job, "Error: " + e.message); } })();
         return send(res, 200, { ok: true });
