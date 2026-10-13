@@ -1,0 +1,295 @@
+<title>Contextual Ad</title>
+<style>
+#shape{display:none}
+#stage{font-family:'Poppins','Geist',system-ui,sans-serif;background:#fff}
+.ab{position:absolute}
+.fx{display:flex;align-items:center}
+/* header */
+#icon{left:24px;top:14px;width:76px;height:76px;border-radius:18px;background:radial-gradient(circle at 50% 50%,#D36EF9 0,#9B2BE0 34%,#4A0A8C 70%,#23004D 100%);box-shadow:0 6px 16px rgba(60,0,110,.25)}
+#title{left:118px;top:26px;font-size:40px;font-weight:700;letter-spacing:-.01em;color:#0B0B0B;white-space:nowrap}
+#brand{left:1640px;top:12px;height:96px;max-width:240px;object-fit:contain}
+#mk{left:1510px;top:791px;width:204px;height:40px}
+/* black laptop photo; screen sits exactly in its display */
+#laptop{left:0;top:112px;width:1420px;height:926px}
+#screen{left:245px;top:168px;width:942px;height:530px;overflow:hidden;background:#fff}
+#page{left:0;top:0;width:1812px;height:1100px;transform-origin:0 0;background:#fff;font-family:'Roboto','Geist',sans-serif}
+.pg{position:absolute;left:0;top:110px;width:1812px;height:910px}
+.pl{position:absolute;border-radius:12px;overflow:hidden;background:#000}
+.pl>img{position:absolute;left:0;top:0;width:100%;height:100%;object-fit:cover}
+/* light browser chrome */
+#chrome{left:0;top:0;width:1812px;height:110px;background:#DEE1E6}
+#tab{left:12px;top:8px;width:360px;height:42px;border-radius:12px 12px 0 0;background:#fff;color:#202124;font-size:15px;line-height:42px;padding-left:44px;box-sizing:border-box;white-space:nowrap;overflow:hidden}
+#tab i{position:absolute;left:14px;top:13px;width:22px;height:16px;border-radius:4px;background:#FF0000}
+#tab i:after{content:'';position:absolute;left:8px;top:4px;border:4px solid transparent;border-left:7px solid #fff;border-right:0}
+#bar{left:0;top:50px;width:1812px;height:60px;background:#fff}
+#url{left:120px;top:60px;width:1560px;height:40px;border-radius:20px;background:#F1F3F4;color:#202124;font-size:17px;line-height:40px;padding-left:22px;box-sizing:border-box;white-space:nowrap}
+.nav{position:absolute;top:68px;width:24px;height:24px;color:#5F6368;font-size:22px;line-height:24px;text-align:center}
+#typed{position:absolute;background:#fff;color:#0F0F0F;white-space:nowrap;overflow:hidden}
+#caret{display:inline-block;width:1.5px;background:#0F0F0F;margin-left:1px;vertical-align:middle}
+/* identify marks (page px) */
+.ov{position:absolute;background:rgba(150,0,200,.46)}
+.band{position:absolute;background:linear-gradient(180deg,rgba(176,0,204,0),rgba(176,0,204,.55) 45%,rgba(176,0,204,.55) 55%,rgba(176,0,204,0))}
+.tag{position:absolute;white-space:nowrap;background:#B000CC;color:#fff;font-weight:700;letter-spacing:-.01em;padding:4px 26px 10px;border-radius:6px;font-family:'Poppins',sans-serif;font-size:62px}
+.tag:after{content:'';position:absolute;left:50%;margin-left:-16px;border:16px solid transparent}
+.tag.up:after{top:-30px;border-bottom-color:#B000CC;border-top-width:14px}
+.tag.dn:after{bottom:-30px;border-top-color:#B000CC;border-bottom-width:14px}
+.hlg{position:absolute;background:rgba(74,255,45,.62)}
+.ico{position:absolute;overflow:visible}
+/* AI check list */
+#panel{left:1383px;top:152px;width:445px;height:615px;border-radius:32px;background:#5C63DC;color:#fff;box-shadow:0 14px 34px rgba(60,66,190,.28)}
+#panel .hd{position:absolute;left:0;width:445px;top:12px;text-align:center;font-size:42px;font-weight:600;letter-spacing:-.005em}
+.item{position:absolute;left:23px;height:130px;width:400px}
+.cb{position:absolute;left:0;width:40px;height:40px;border-radius:9px;box-sizing:border-box;border:3px solid #E9EAFF}
+.cbf{position:absolute;left:0;width:40px;height:40px;border-radius:9px;background:#3DFF33}
+.it{position:absolute;left:61px;font-size:25px;font-weight:700;line-height:32px;letter-spacing:.01em;text-shadow:0 2px 3px rgba(20,20,90,.35)}
+.thumb{position:absolute;left:1663px;width:140px;height:128px;border-radius:14px;overflow:hidden;border:2px solid #fff;box-sizing:border-box;background:#222}
+.thumb img{width:100%;height:100%;display:block;object-fit:cover}
+#kwcard{left:1661px;width:140px;height:130px;border-radius:16px;background:#fff;color:#0B0B0B;font-size:27px;font-weight:500;line-height:34px;padding:20px 0 0 10px;box-sizing:border-box}
+/* callout */
+#callout{left:612px;top:692px;width:296px;height:112px;background:#5B62DB;color:#fff;font-size:31px;font-weight:600;line-height:37px;text-align:center;padding-top:19px;box-sizing:border-box}
+#arrow{left:747px;width:26px}
+/* ad */
+#skip{right:0;bottom:70px;height:96px;padding:0 26px 0 30px;background:rgba(0,0,0,.82);color:#fff;font-size:46px;font-weight:500;gap:18px;font-family:'Roboto','Geist',sans-serif}
+#border{box-sizing:border-box;border:11px solid #AC00C9;border-radius:6px}
+#endc{left:0;top:0;width:100%;height:100%;background:#fff;font-family:'Poppins',sans-serif}
+</style>
+
+<div data-slot="over">
+  <div class="ab" id="icon"><svg class="ab" style="left:19px;top:19px" width="38" height="38" viewBox="0 0 24 24"><defs><linearGradient id="sg" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#FFE3FF"/><stop offset="1" stop-color="#E7A6FF"/></linearGradient></defs><path d="M12 1.5c.6 5.6 4.9 9.9 10.5 10.5-5.6.6-9.9 4.9-10.5 10.5C11.4 16.9 7.1 12.6 1.5 12 7.1 11.4 11.4 7.1 12 1.5Z" fill="url(#sg)"/></svg></div>
+  <div class="ab" id="title"><span id="title1"></span><span id="title2"></span></div>
+  <img class="ab" id="brand" src="logo.png">
+
+  <img class="ab" id="laptop" src="laptop_black.png">
+  <div class="ab" id="screen">
+    <div class="ab" id="page">
+      <div class="ab" id="chrome"><div class="ab" id="tab"><i></i><span id="tabT">YouTube</span></div>
+        <div class="ab" id="bar"></div>
+        <div class="nav" style="left:22px">←</div><div class="nav" style="left:54px">→</div><div class="nav" style="left:86px">↻</div>
+        <div class="ab" id="url">youtube.com</div></div>
+      <img class="pg" id="home" src="home.png">
+      <div id="typed"><span id="typedT"></span><span id="caret"></span></div>
+      <img class="pg" id="res" src="results.png">
+      <div class="ab" id="load" style="left:0;top:110px;width:1812px;height:910px;background:#fff"></div>
+      <img class="pg" id="watch" src="watch.png">
+      <div class="pl" id="player"><img id="vid" src="open/001.jpg" style="object-fit:contain"><img id="adv" src="ad/001.jpg"></div>
+
+      <div class="band" id="band"></div>
+      <div class="ov" id="ovVis"></div><svg class="ico" id="icoVis"></svg><div class="tag" id="tagVis">Visual Identify</div>
+      <div id="kws"></div>
+      <div class="tag up" id="tagKw" style="font-size:50px;padding:0 22px 4px;letter-spacing:.02em">KEYWORDS</div>
+      <div class="ov" id="ovObj"></div><svg class="ico" id="icoObj"></svg><div class="tag" id="tagObj">Object Identify</div>
+
+      <div class="pl" id="adbox" style="background:transparent">
+        <div class="ab" id="endc"></div>
+        <div class="ab fx" id="skip">Skip Ad <svg width="34" height="34" viewBox="0 0 24 24" fill="#fff"><path d="M5 4l11 8-11 8z"/><rect x="17.5" y="4" width="2.6" height="16"/></svg></div>
+        <div class="ab" style="left:0;bottom:0;width:100%;height:7px;background:rgba(255,255,255,.4)"></div>
+        <div class="ab" id="adBar" style="left:0;bottom:0;width:0;height:7px;background:#FFCC00"></div>
+      </div>
+      <div class="ab" id="border"></div>
+    </div>
+  </div>
+
+  <div class="ab" id="panel">
+    <div class="hd">AI Check list</div>
+    <div class="item" style="top:141px"><div class="cb"></div><div class="cbf" id="f0"></div><div class="it" style="top:-12px">VISUAL<br>IDENTIFY</div></div>
+    <div class="item" style="top:315px"><div class="cb"></div><div class="cbf" id="f1"></div><div class="it" style="top:4px">KEYWORDS</div></div>
+    <div class="item" style="top:496px"><div class="cb"></div><div class="cbf" id="f2"></div><div class="it" style="top:-12px">OBJECT<br>IDENTIFY</div></div>
+  </div>
+  <div class="thumb" id="th0" style="top:248px"><img src="thumb_visual.jpg"></div>
+  <div class="ab" id="kwcard" style="top:424px"></div>
+  <div class="thumb" id="th2" style="top:604px"><img src="thumb_object.jpg"></div>
+
+  <svg class="ab" id="arrow" width="26" height="60" viewBox="0 0 26 60"><path d="M13 0 L26 18 H17 V60 H9 V18 H0 Z" fill="#5B62DB"/></svg>
+  <div class="ab" id="callout"><span id="callT"></span></div>
+  <img class="ab" id="mk" src="mediakart.png">
+</div><!--/over-->
+
+<script>
+/*__CFG__*/
+const C=window.CFG, $=id=>document.getElementById(id);
+const W=1920,H=1080, SCR=[245,168,942,530], SF=942/1812;
+// ---------- page geometry from pages.json ----------
+const PL=[C.pages.watch.player[0], C.pages.watch.player[1]+110, C.pages.watch.player[2], C.pages.watch.player[3]];
+const VA=C.video.aspect;                      // source width/height
+const dw=Math.min(PL[2],PL[3]*VA), dh=dw/VA, VX=PL[0]+(PL[2]-dw)/2, VY=PL[1]+(PL[3]-dh)/2;   // video picture inside the player
+const boxPage=b=>[VX+b[0]*dw, VY+b[1]*dh, b[2]*dw, b[3]*dh];
+// ---------- timeline ----------
+const Q=C.search.query, TYPE0=1.35, TYPE_END=TYPE0+Math.min(1.8,Q.length*0.055), RES=TYPE_END+0.3;
+const CUR0=0.5, CLICK1=1.2, CLICK=RES+1.15, T_LOAD=CLICK+0.15, T_WATCH=T_LOAD+0.65, ZP=T_WATCH+0.6, PANEL=ZP+0.7;
+const B=PANEL-4.3;   // everything after the panel follows the house timing
+const VIS=8.4+B, CHK0=9.7+B, VIS_OUT=10.5+B;
+const ZKW=12.0+B, KW0=12.8+B, CHK1=14.1+B, KW_OUT=15.0+B, ZP2=15.0+B;
+const OBJ=16.6+B, CHK2=17.9+B, OBJ_OUT=18.7+B, ZF=18.7+B;
+const AD0=20.3+B, ADLEN=C.ad.seconds, ENDC=AD0+ADLEN, T=ENDC+(C.endcard?3.6:0.4);
+const SEQ=[[0,'open',1],[4.9+B,'open',1],[6.9+B,'open',51],[6.9+B,'visual',1],[8.3+B,'visual',36],[10.6+B,'visual',36],[12.2+B,'visual',76],
+           [15.1+B,'object',1],[16.5+B,'object',36],[18.8+B,'object',36],[20.2+B,'object',71]];
+function srcAt(t){let k=SEQ[0];for(const s of SEQ){if(s[0]<=t)k=s;else break;} const i=SEQ.indexOf(k),n=SEQ[i+1];let f=k[2]; if(n&&n[1]===k[1]&&n[0]>k[0]) f=k[2]+(n[2]-k[2])*M.clamp((t-k[0])/(n[0]-k[0])); return [k[1],Math.round(f)];}
+window.TIMES={AD0,ADLEN,T};
+// ---------- keywords geometry ----------
+const KR=[]; (C.keywords.phrases||[]).forEach(ph=>(C.pages.watch.phrases[ph]||[]).forEach(r=>KR.push([r[0]-2,r[1]+110-4,r[2]+4,r[3]+8])));
+const kwL=Math.min(...KR.map(r=>r[0])), kwR=Math.max(...KR.map(r=>r[0]+r[2])), kwB=Math.max(...KR.map(r=>r[1]+r[3]));
+const SP=942/PL[2], viewH=530/SP;
+const camYkw=Math.max(PL[1], kwB+118-viewH), camXkw=Math.min(PL[0], kwL-30);
+// ---------- camera ----------
+const CS=M.SOFT;
+const camS=M.track(SF,[[ZP,SP,CS],[ZF,SF,CS]]);
+const camX=M.track(0,[[ZP,PL[0],CS],[ZKW,camXkw,CS],[ZP2,PL[0],CS],[ZF,0,CS]]);
+const camY=M.track(0,[[ZP,PL[1],CS],[ZKW,camYkw,CS],[ZP2,PL[1],CS],[ZF,0,CS]]);
+// ---------- helpers ----------
+const show=(el,o,tr='')=>{ if(o<0.002){el.style.display='none';return false;} el.style.display=''; el.style.opacity=o.toFixed(4); if(tr!==null) el.style.transform=tr; return true; };
+const fade=(t,a,b,d=0.25)=>M.clamp((t-a)/d)*(b==null?1:1-M.clamp((t-b)/0.25));
+const pop=(t,t0)=>0.6+0.4*M.S(t-t0,16,0.62);
+const place=(el,r)=>Object.assign(el.style,{left:r[0]+'px',top:r[1]+'px',width:r[2]+'px',height:r[3]+'px'});
+const ICONS={ // white line icons, each [viewBox, paths]
+ pan:['0 0 44 40',['M3 22h38c0 8-8 13-19 13S3 30 3 22Z','M41 23l1.5-2','M3 23l-1.5-2','M12 22c1-2 3-3 5-2M19 21c1-2 4-3 6-1M27 22c1-2 3-2 5-1','M15 15c-1.5-2 1.5-3 0-5M22 14c-1.5-2 1.5-3 0-5M29 15c-1.5-2 1.5-3 0-5']],
+ chip:['0 0 36 32',['M4 18C3 10 10 4 18 4s15 5 14 13c-1 7-7 11-14 11S5 25 4 18Z','M9 12c2 1 3 3 5 3s3-2 5-2 3 2 5 2','M8 18c2 1 3 3 5 3s3-2 5-2 3 2 5 2 3-1 5-2']],
+ bowl:['0 0 40 36',['M4 17h32c0 9-7 15-16 15S4 26 4 17Z','M10 16c0-4 3-7 6-7 2 0 3 2 3 4','M18 15c1-4 4-6 7-5 2 1 2 3 1 5','M26 16c2-3 5-3 7-1']],
+ plate:['0 0 40 40',['M20 31a11 11 0 1 0 0-22 11 11 0 0 0 0 22Z','M20 27a7 7 0 1 0 0-14 7 7 0 0 0 0 14Z','M4 6v9a2 2 0 0 0 4 0V6M6 15v19','M34 6c-2 0-3 3-3 8h3v20']],
+ tube:['0 0 24 48',['M2 2h20l-4 34H6Z','M2 5.5h20','M8 36h8v9H8Z','M7 14h10M7.6 19h8.8']],
+ jar:['0 0 32 32',['M6 6h20v5H6Z','M7 11h18v15a3 3 0 0 1-3 3H10a3 3 0 0 1-3-3Z','M11 18h10M11 22h7']],
+ bottle:['0 0 24 40',['M9 2h6v6l3 4v24a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2V12l3-4Z','M6 18h12M6 28h12']],
+ cup:['0 0 32 32',['M5 10h18v10a8 8 0 0 1-8 8h-2a8 8 0 0 1-8-8Z','M23 13h2a4 4 0 0 1 0 8h-2','M10 3c-1 2 1 3 0 5M15 3c-1 2 1 3 0 5']],
+ shirt:['0 0 32 32',['M11 3l5 4 5-4 8 5-3 6-4-2v17H10V12l-4 2-3-6Z']],
+ people:['0 0 36 34',['M12 15a5 5 0 1 0 0-10 5 5 0 0 0 0 10Z','M2 31c0-6 4.5-10 10-10s10 4 10 10','M25 14a4.5 4.5 0 1 0 0-9','M27 21c4 1 7 4.5 7 10']],
+ hand:['0 0 32 32',['M10 16V6a2 2 0 0 1 4 0v8M14 13V4a2 2 0 0 1 4 0v9M18 13V6a2 2 0 0 1 4 0v9M22 15v-4a2 2 0 0 1 4 0v8c0 6-4 10-10 10h-1c-4 0-6-2-8-5l-4-6a2 2 0 0 1 3-3l3 3']],
+ phone:['0 0 24 36',['M5 2h14a2 2 0 0 1 2 2v28a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2Z','M10 30h4']],
+ shoe:['0 0 40 24',['M2 18c0-6 2-12 4-14l6 4 6-1c4 6 12 6 18 8 2 1 2 5 0 5H4a2 2 0 0 1-2-2Z','M2 18h36']],
+ car:['0 0 40 28',['M4 20v-5l4-8h24l4 8v5Z','M4 20v4h5v-4M31 20v4h5v-4','M9 15h22']],
+};
+function drawIcon(svg,name,box){
+  const s=Math.max(110,Math.min(240,Math.min(box[2],box[3])*0.5));
+  if(name==='mesh'){ // face mesh fitted to the box
+    const w=box[2],h=box[3],cx=w/2,cy=h/2,rx=Math.min(w*0.32,h*0.3),ry=rx*1.25;
+    let x=`<ellipse cx="${cx}" cy="${cy}" rx="${rx}" ry="${ry}" fill="none" stroke="#fff" stroke-width="5"/>`;
+    const P=[[0,-.72],[-.45,-.5],[.45,-.5],[-.62,-.12],[.62,-.12],[-.3,-.22],[.3,-.22],[0,-.1],[-.48,.22],[.48,.22],[0,.18],[-.25,.48],[.25,.48],[0,.62],[-.15,.05],[.15,.05]].map(([a,b])=>[cx+a*rx,cy+b*ry]);
+    const E=[[0,1],[0,2],[1,3],[2,4],[1,5],[2,6],[5,7],[6,7],[3,8],[4,9],[5,14],[6,15],[14,7],[15,7],[14,10],[15,10],[8,11],[9,12],[10,11],[10,12],[11,13],[12,13],[3,5],[4,6],[8,14],[9,15]];
+    x+=E.map(([a,b])=>`<line x1="${P[a][0]}" y1="${P[a][1]}" x2="${P[b][0]}" y2="${P[b][1]}" stroke="#fff" stroke-width="2.4" stroke-dasharray="7 6" opacity=".9"/>`).join('')+P.map(([a,b])=>`<circle cx="${a}" cy="${b}" r="5.5" fill="#fff"/>`).join('');
+    svg.setAttribute('width',w); svg.setAttribute('height',h); svg.setAttribute('viewBox',`0 0 ${w} ${h}`); svg.innerHTML=x; svg.style.left=box[0]+'px'; svg.style.top=box[1]+'px'; return;}
+  const ic=ICONS[name]||ICONS.chip, vb=ic[0].split(' ').map(Number), k=s/Math.max(vb[2],vb[3]), iw=vb[2]*k, ih=vb[3]*k;
+  svg.setAttribute('width',iw); svg.setAttribute('height',ih); svg.setAttribute('viewBox',ic[0]); svg.setAttribute('fill','none'); svg.setAttribute('stroke','#fff');
+  svg.setAttribute('stroke-width',(2.6/k*1.6).toFixed(2)); svg.setAttribute('stroke-linecap','round'); svg.setAttribute('stroke-linejoin','round');
+  svg.innerHTML=ic[1].map(d=>`<path d="${d}"/>`).join(''); svg.style.left=(box[0]+box[2]/2-iw/2)+'px'; svg.style.top=(box[1]+box[3]/2-ih/2)+'px';
+}
+const drawOn=(svg,t0,t)=>{const d=M.clamp((t-t0)/0.7); svg.querySelectorAll('path,ellipse,line').forEach(p=>{p.setAttribute('pathLength','1');p.style.strokeDasharray=p.tagName==='line'?'':'1';if(p.tagName!=='line')p.style.strokeDashoffset=(1-M.eio(d)).toFixed(4);});};
+// tag above the box if there is room in the player, else below, else inside
+function tagPlace(el,box){ const top=PL[1], bot=PL[1]+PL[3];
+  if(box[1]-125>=top+4){el.className='tag dn'; el.style.top=(box[1]-118)+'px'; el.dataset.o='50% 100%';}
+  else if(box[1]+box[3]+125<=bot-4){el.className='tag up'; el.style.top=(box[1]+box[3]+30)+'px'; el.dataset.o='50% 0';}
+  else {el.className='tag'; el.style.top=(box[1]+12)+'px'; el.dataset.o='50% 0';}
+  el.dataset.cx=box[0]+box[2]/2; }
+const centerTag=(el)=>{const w=el.offsetWidth||400; let l=+el.dataset.cx-w/2; l=Math.max(PL[0]+8,Math.min(PL[0]+PL[2]-w-8,l)); el.style.left=l+'px'; el.style.transformOrigin=el.dataset.o;};
+
+// ---------- one-time setup from config ----------
+document.title=C.title; $('title1').textContent=C.brand+' '; $('title2').textContent=C.titleSuffix||'Contextual ads';
+if(C.logo) $('brand').src=C.logo; else $('brand').style.display='none';
+const VB=boxPage(C.visual.box), OB=boxPage(C.object.box);
+place($('ovVis'),VB); place($('ovObj'),OB); drawIcon($('icoVis'),C.visual.icon,VB); drawIcon($('icoObj'),C.object.icon,OB);
+tagPlace($('tagVis'),VB); tagPlace($('tagObj'),OB);
+place($('player'),PL); place($('adbox'),PL); place($('border'),[PL[0]-11,PL[1]-11,PL[2]+22,PL[3]+22]);
+KR.forEach((r,i)=>{const d=document.createElement('div'); d.className='hlg'; d.id='kw'+i; place(d,r); d.dataset.w=r[2]; $('kws').appendChild(d);});
+$('tagKw').style.top=(kwB+30)+'px'; $('tagKw').dataset.cx=(kwL+kwR)/2; $('tagKw').dataset.o='50% 0';
+$('kwcard').innerHTML=C.keywords.card.replace(/\n/g,'<br>');
+const hm=C.pages.home; $('typed').style.cssText+=`;left:${hm.input[0]}px;top:${hm.input[1]+110}px;width:${hm.input[2]}px;height:${hm.input[3]}px;line-height:${hm.input[3]}px;font-size:${hm.font};font-family:${hm.family}`;
+$('caret').style.height=(parseFloat(hm.font)*1.2)+'px';
+if(C.video.adAspect&&Math.abs(C.video.adAspect-PL[2]/PL[3])>0.05) $('adv').style.objectFit='contain';
+if(C.endcard){ const E=C.endcard, ps=(E.packs||[]);
+  let h=`<img class="ab" src="${E.logo||C.logo}" style="left:70px;top:70px;height:240px;max-width:420px;object-fit:contain">`+
+        `<div class="ab" style="left:76px;top:340px;font-size:56px;font-weight:700;line-height:62px;letter-spacing:-.02em;color:${E.color||'#111'}">${E.tagline||''}</div>`+
+        `<div class="ab" style="left:78px;top:490px;font-size:23px;font-weight:600;color:#2B2B2B;letter-spacing:.06em">${E.sub||''}</div>`;
+  ps.slice(0,2).forEach((p,i)=>{h+=`<img class="ab pk" src="${p}" style="left:${ps.length>1?(470+i*400):700}px;top:${i?70:150}px;height:${i?470:420}px;mix-blend-mode:multiply">`;});
+  $('endc').innerHTML=h; }
+const checkSVG=`<svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="3.4" stroke-linecap="round" stroke-linejoin="round"><path class="ck" d="M6 12.5l4 4 8-9" pathLength="1" stroke-dasharray="1" stroke-dashoffset="1"/></svg>`;
+['f0','f1','f2'].forEach(id=>$(id).innerHTML=checkSVG);
+const CALL='Contextual Ads\nPushed by AI';
+// cursor (stage px): search box → result thumbnail
+const toStage=(px,py)=>[SCR[0]+px*SF, SCR[1]+py*SF];
+const SB=toStage(hm.input[0]+hm.input[2]*0.35, hm.input[1]+110+hm.input[3]/2);
+const tg=C.pages.results.find(r=>r.target); if(!tg) throw new Error('target video not on the results page: rerun yt.js pages with a more specific query'); const TG=toStage(tg.thumb[0]+tg.thumb[2]/2, tg.thumb[1]+110+tg.thumb[3]/2);
+const cpath=M.path([[CUR0,1000,640],[1.05,SB[0],SB[1]],[RES+0.3,SB[0],SB[1]],[CLICK-0.2,TG[0],TG[1]],[T,TG[0],TG[1]]]);
+const presses=M.presses([CLICK1,CLICK]);
+M.setText($('url'),'youtube.com');
+
+function seek(t){
+  const ho=M.clamp(t/0.3);
+  $('icon').style.opacity=ho; $('icon').style.transform=`scale(${(0.7+0.3*M.S(t,12,0.7)).toFixed(4)})`;
+  $('title').style.opacity=ho; $('title2').style.clipPath=`inset(0 ${(100-100*M.eo((t-0.1)/0.8)).toFixed(2)}% 0 0)`;
+  $('brand').style.opacity=M.clamp((t-0.3)/0.4);
+
+  const s=camS(t), fx=camX(t), fy=camY(t);
+  $('page').style.transform=`translate(${(-fx*s).toFixed(3)}px,${(-fy*s).toFixed(3)}px) scale(${s.toFixed(5)})`;
+  // home → typing → results → loading → watch
+  const n=Math.round(M.clamp((t-TYPE0)/(TYPE_END-TYPE0))*Q.length);
+  show($('home'),1-M.clamp((t-RES)/0.12),null);
+  if(show($('typed'),(t>=TYPE0-0.15?1:0)*(1-M.clamp((t-RES)/0.12)),null)){ M.setText($('typedT'),Q.slice(0,n)); $('caret').style.opacity=(t<TYPE_END+0.05||Math.floor(t*2.4)%2===0)?1:0; }
+  const onWatch=t>=T_LOAD, onRes=t>=RES;
+  M.setText($('url'), onWatch?`youtube.com/watch?v=${C.video.id}`:(onRes?`youtube.com/results?search_query=${encodeURIComponent(Q).replace(/%20/g,'+')}`:'youtube.com'));
+  M.setText($('tabT'), onWatch?C.video.tabTitle:(onRes?Q+' - YouTube':'YouTube'));
+  show($('res'),M.clamp((t-RES)/0.12)*(1-M.clamp((t-T_LOAD)/0.15)),null);
+  show($('load'),M.clamp((t-T_LOAD)/0.15)*(1-M.clamp((t-T_WATCH)/0.3)),null);
+  show($('watch'),M.clamp((t-T_WATCH)/0.3),null); show($('player'),M.clamp((t-T_WATCH)/0.3),null);
+
+  // scan band sweeps the picture before Visual Identify
+  const bu=(t-(VIS-1.0))/0.85;
+  if(show($('band'),(bu>0&&bu<1)?Math.min(1,bu*6,(1-bu)*6):0,null)){const bh=dh*0.28; place($('band'),[VX,VY-bh/2+dh*M.eio(bu),dw,bh]);}
+  // VISUAL
+  if(show($('ovVis'),fade(t,VIS,VIS_OUT),null)) $('ovVis').style.clipPath=`inset(0 0 ${(100-100*M.eo((t-VIS)/0.4)).toFixed(2)}% 0)`;
+  if(show($('icoVis'),fade(t,VIS+0.35,VIS_OUT,0.3),null)) drawOn($('icoVis'),VIS+0.35,t);
+  if(show($('tagVis'),fade(t,VIS+0.3,VIS_OUT,0.15),`scale(${pop(t,VIS+0.3).toFixed(4)})`)) centerTag($('tagVis'));
+  // KEYWORDS
+  KR.forEach((r,i)=>{const e=$('kw'+i), k0=KW0+0.45*i; if(show(e,fade(t,k0,KW_OUT,0.08),null)) e.style.width=(r[2]*M.eo((t-k0)/0.35)).toFixed(1)+'px';});
+  if(show($('tagKw'),fade(t,KW0+0.35,KW_OUT,0.15),`scale(${pop(t,KW0+0.35).toFixed(4)})`)) centerTag($('tagKw'));
+  // OBJECT
+  if(show($('ovObj'),fade(t,OBJ,OBJ_OUT),null)) $('ovObj').style.clipPath=`inset(0 ${(100-100*M.eo((t-OBJ)/0.4)).toFixed(2)}% 0 0)`;
+  if(show($('icoObj'),fade(t,OBJ+0.35,OBJ_OUT,0.3),null)) drawOn($('icoObj'),OBJ+0.35,t);
+  if(show($('tagObj'),fade(t,OBJ+0.3,OBJ_OUT,0.15),`scale(${pop(t,OBJ+0.3).toFixed(4)})`)) centerTag($('tagObj'));
+
+  // check list
+  const pp=M.S(t-PANEL,9,0.86);
+  show($('panel'),M.clamp((t-PANEL)/0.12),`translateX(${((1-pp)*560).toFixed(2)}px)`);
+  [[CHK0,'f0','th0'],[CHK1,'f1','kwcard'],[CHK2,'f2','th2']].forEach(([tc,f,th])=>{
+    const e=$(f); if(show(e,M.clamp((t-tc)/0.08),`scale(${pop(t,tc).toFixed(4)})`)) e.querySelector('.ck').style.strokeDashoffset=(1-M.eo((t-tc-0.05)/0.3)).toFixed(4);
+    const tp=M.S(t-tc-0.15,12,0.72);
+    if(show($(th),M.clamp((t-tc-0.15)/0.15)*M.clamp((t-PANEL)/0.12),`translateX(${((1-pp)*560).toFixed(2)}px) scale(${(0.6+0.4*tp).toFixed(4)})`)) $(th).style.transformOrigin='50% 50%';
+  });
+
+  // mid-roll
+  const a=t-AD0;
+  show($('border'),M.clamp(a/0.2),null); show($('adv'),a>=0?1:0,null);
+  if(show($('adbox'),a>=0?1:0,null)){
+    $('adBar').style.width=(M.clamp(a/(ADLEN+(C.endcard?3.4:0)))*100).toFixed(3)+'%';
+    const e=t-ENDC;
+    if(show($('endc'),C.endcard?M.clamp(e/0.35):0,null)) document.querySelectorAll('#endc .pk').forEach((p,i)=>{const q=M.S(e-0.25-0.2*i,10,0.8); p.style.transform=`translateY(${((1-q)*120).toFixed(2)}px) rotate(${((i?4:-6)*q).toFixed(2)}deg)`; p.style.opacity=M.clamp((e-0.25-0.2*i)/0.2);});
+  }
+  // callout types in under the player
+  const ct=AD0+0.5, cv=M.clamp((t-ct)/0.2);
+  if(show($('callout'),cv,`translateY(${((1-M.S(t-ct,10,0.8))*30).toFixed(2)}px)`)){ const k=Math.round(M.clamp((t-ct-0.15)/0.8)*CALL.length); $('callT').innerHTML=CALL.slice(0,k).replace('\n','<br>'); }
+  if(show($('arrow'),M.clamp((t-ct-0.15)/0.2),null)){const L=52*M.eo((t-ct-0.15)/0.35); $('arrow').style.top=(692-L)+'px'; $('arrow').setAttribute('height',L.toFixed(1)); $('arrow').setAttribute('viewBox',`0 0 26 ${Math.max(L,0.1).toFixed(1)}`); $('arrow').firstChild.setAttribute('d',`M13 0 L26 18 H17 V${L.toFixed(1)} H9 V18 H0 Z`);}
+
+  const cur=$('cursor'), co=M.clamp((t-CUR0)/0.15)*(1-M.clamp((t-T_WATCH)/0.2));
+  if(co<0.002) cur.style.display='none';
+  else{const c=cpath(t); cur.style.display=''; cur.style.opacity=co; cur.style.transform=`translate(${(c.x-3).toFixed(2)}px,${(c.y-3).toFixed(2)}px) scale(${(1-0.13*presses(t)).toFixed(4)})`;}
+}
+
+const vid=$('vid'), adv=$('adv'); let curV='', curA=-1;
+const pad3=n=>String(n).padStart(3,'0'), ADN=C.ad.frames;
+window.seekA=async(t)=>{
+  const w=[]; const [fo,fr]=srcAt(t); const key=fo+fr;
+  if(key!==curV){curV=key; vid.src=`${fo}/${pad3(fr)}.jpg`; w.push(vid.decode().catch(()=>{}));}
+  const af=Math.max(1,Math.min(ADN,Math.floor((t-AD0)*25)+1)); if(t>=AD0&&af!==curA){curA=af; adv.src=`ad/${pad3(af)}.jpg`; w.push(adv.decode().catch(()=>{}));}
+  await Promise.all(w); seek(t);};
+
+const lk=document.createElement('link'); lk.rel='stylesheet'; lk.href='https://fonts.googleapis.com/css2?family=Poppins:wght@500;600;700&family=Roboto:wght@400;500&display=block'; document.head.appendChild(lk);
+$('stage').style.width=W+'px'; $('stage').style.height=H+'px'; $('wrap').style.width=W+'px'; $('wrap').style.height=H+'px';
+$('cursor').style.width='34px';
+window.seek=seek; window.DURATION=T;
+const RENDER=location.search.includes('render');
+document.body.classList.add(RENDER?'render':'preview');
+seek(0);
+if(!RENDER){
+  const fit=()=>{const k=Math.min(innerWidth/W,(innerHeight-30)/H);$('wrap').style.transform=`translate(-50%,-50%) scale(${k})`;};
+  fit(); addEventListener('resize',fit);
+  const t0=performance.now();
+  const loop=async()=>{await window.seekA(((performance.now()-t0)/1000)%(T+0.8));requestAnimationFrame(loop);};
+  requestAnimationFrame(loop);
+}
+</script>
