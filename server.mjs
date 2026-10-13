@@ -139,9 +139,8 @@ const ICONS = ["mesh", "pan", "chip", "bowl", "plate", "tube", "jar", "bottle", 
 async function findAds({ brand, product }) {
   const qs = [`${brand} ad`, `${brand} TVC`, `${brand} ${product || ""} ad`.replace(/\s+/g, " ").trim(), `${brand} official commercial`];
   const seen = new Map();
-  for (const q of [...new Set(qs)]) {
-    try { for (const r of await ytJson(["searchjson", q, "12"])) if (!seen.has(r.id)) seen.set(r.id, r); } catch {}
-  }
+  try { for (const r of await ytJson(["searchjson", [...new Set(qs)].join("||"), "12"])) if (!seen.has(r.id)) seen.set(r.id, r); }
+  catch (e) { console.error("ad search failed:", e.message); throw new Error("YouTube search failed on this server: " + e.message.slice(0, 200)); }
   const list = [...seen.values()].filter((r) => { const s = lenSec(r.length); return s >= 6 && s <= 90; });
   if (!list.length) return [];
   try {
@@ -181,10 +180,9 @@ async function proposeMoments(job) {
       } catch (e) { if (!(e instanceof AIError)) throw e; job.aiDown = true; say(job, e.message); }
     }
     if (!queries) { const p = product || brand; job.category = p; queries = [`${p} recipe`, `${p} review`, `how to use ${p}`, p]; }
-    for (const q of queries) {
-      say(job, `Searching YouTube: “${q}”`);
-      try { for (const r of await ytJson(["searchjson", q, "10"])) if (!seen.has(r.id)) seen.set(r.id, { ...r, query: q }); } catch {}
-    }
+    say(job, `Searching YouTube: ${queries.map((q) => `“${q}”`).join(", ")}`);
+    try { for (const r of await ytJson(["searchjson", queries.join("||"), "10"])) if (!seen.has(r.id)) seen.set(r.id, r); }
+    catch (e) { console.error("video search failed:", e.message); say(job, "YouTube search failed: " + e.message.slice(0, 160)); }
     const pool = [...seen.values()].filter((r) => { const s = lenSec(r.length); return s >= 60 && s <= 1800; });
     job.candidates = pool.slice(0, 8);
     if (!job.aiDown) {
@@ -312,6 +310,12 @@ function saveData(dataUrl, file) { const m = /^data:[^;]+;base64,(.*)$/.exec(dat
 http.createServer(async (req, res) => {
   const u = new URL(req.url, "http://x");
   if (u.pathname === "/healthz") return send(res, 200, { ok: true });
+  if (u.pathname === "/api/diag") {   // memory + can this server reach YouTube?
+    const rd = (f) => { try { return fs.readFileSync(f, "utf8").trim(); } catch { return null; } };
+    const t0 = Date.now(); let yt1 = null, err = null;
+    try { yt1 = (await ytJson(["searchjson", "potato chips recipe", "3"])).map((r) => r.title); } catch (e) { err = e.message.slice(0, 400); }
+    return send(res, 200, { youtube: yt1, error: err, seconds: (Date.now() - t0) / 1000, memLimit: rd("/sys/fs/cgroup/memory.max"), memPeak: rd("/sys/fs/cgroup/memory.peak"), memNow: rd("/sys/fs/cgroup/memory.current"), provider: provider() });
+  }
   if (PASSWORD) {   // basic auth so a public URL can't spend your API key
     const [, b64] = (req.headers.authorization || "").split(" ");
     const pw = b64 ? Buffer.from(b64, "base64").toString().split(":").slice(1).join(":") : "";

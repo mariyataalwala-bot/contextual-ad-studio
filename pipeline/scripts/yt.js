@@ -12,13 +12,17 @@
 const {chromium}=require('playwright'); const fs=require('fs'); const path=require('path');
 const HIDE='.ytp-chrome-bottom,.ytp-chrome-top,.ytp-gradient-bottom,.ytp-gradient-top,.ytp-ce-element,.ytp-paid-content-overlay,.ytp-caption-window-container,.ytp-pause-overlay,.ytp-spinner,.ytp-bezel,.ytp-tooltip,.ytp-overlays-container{display:none!important}';
 const ctx=async(b,vp={width:1920,height:1080},scheme='light')=>{const c=await b.newContext({viewport:vp,locale:'en-IN',colorScheme:scheme});
-  await c.addCookies([{name:'PREF',value:'hl=en',domain:'.youtube.com',path:'/'},{name:'SOCS',value:'CAI',domain:'.youtube.com',path:'/'}]); return c;};
+  await c.addCookies([{name:'PREF',value:'hl=en',domain:'.youtube.com',path:'/'},{name:'SOCS',value:'CAI',domain:'.youtube.com',path:'/'}]);
+  if(LIGHT_ALL) await c.route('**/*',r=>['image','media','font'].includes(r.request().resourceType())?r.abort():r.continue());
+  return c;};
+let LIGHT_ALL=false;
 const skipAds=async p=>{for(let i=0;i<40;i++){const ad=await p.evaluate(()=>document.querySelector('#movie_player')?.classList.contains('ad-showing')).catch(()=>false); if(!ad) return; await p.click('.ytp-skip-ad-button,.ytp-ad-skip-button-modern,.ytp-ad-skip-button',{timeout:800}).catch(()=>{}); await p.waitForTimeout(1500);}};
 const pad3=n=>String(n).padStart(3,'0');
 const [cmd,...A]=process.argv.slice(2);
 
 (async()=>{
- const b=await chromium.launch({args:['--autoplay-policy=no-user-gesture-required','--disable-dev-shm-usage','--disable-gpu']});
+ const b=await chromium.launch({args:['--autoplay-policy=no-user-gesture-required','--disable-dev-shm-usage','--disable-gpu','--disable-extensions','--renderer-process-limit=1','--js-flags=--max-old-space-size=256']});
+ const LIGHT=['search','searchjson','meta'].includes(cmd);
  try{
  if(cmd==='search'){
    const [q,n='10']=A; const c=await ctx(b); const p=await c.newPage();
@@ -27,16 +31,20 @@ const [cmd,...A]=process.argv.slice(2);
    console.log('## '+q); r.forEach((x,i)=>console.log(`${i+1}. ${x.t} | ${x.ch} | ${x.meta} | ${x.len} | ${x.url}`));
  }
  else if(cmd==='searchjson'){
-   const [q,n='12']=A; const c=await ctx(b); const p=await c.newPage();
-   await p.goto('https://www.youtube.com/results?search_query='+encodeURIComponent(q),{waitUntil:'domcontentloaded',timeout:60000}); await p.waitForTimeout(4500);
+   const [qs,n='12']=A; LIGHT_ALL=true; const c=await ctx(b); const p=await c.newPage(); const all=[];
+   for(const q of qs.split('||')){
+   await p.goto('https://www.youtube.com/results?search_query='+encodeURIComponent(q),{waitUntil:'domcontentloaded',timeout:60000}); await p.waitForTimeout(4000);
    const r=await p.evaluate(n=>[...document.querySelectorAll('ytd-video-renderer')].slice(0,n).map(e=>{const a=e.querySelector('a#thumbnail');const href=(a&&a.href)||'';const m=href.match(/[?&]v=([A-Za-z0-9_-]{11})/);
      const meta=e.querySelector('#metadata-line'); const len=e.querySelector('ytd-thumbnail-overlay-time-status-renderer, badge-shape');
      return {id:m?m[1]:null,title:(e.querySelector('#video-title')||{}).textContent?.trim(),channel:(e.querySelector('#channel-info #text, ytd-channel-name #text')||{}).textContent?.trim(),
        meta:meta?meta.innerText.split('\n').join(' · '):'',length:len?len.innerText.trim().split('\n')[0]:''};}).filter(x=>x.id),+n);
-   console.log(JSON.stringify(r));
+   r.forEach(x=>{x.query=q; all.push(x);});
+   if(!r.length){ const t=await p.evaluate(()=>document.body.innerText.slice(0,300)); console.error('no results for',q,'| page says:',t.replace(/\s+/g,' ')); }
+   }
+   console.log(JSON.stringify(all));
  }
  else if(cmd==='meta'){
-   const [id]=A; const c=await ctx(b); const p=await c.newPage();
+   const [id]=A; LIGHT_ALL=true; const c=await ctx(b); const p=await c.newPage();
    await p.goto('https://www.youtube.com/watch?v='+id,{waitUntil:'domcontentloaded',timeout:60000}); await p.waitForTimeout(5000);
    const r=await p.evaluate(()=>{const v=ytInitialPlayerResponse.videoDetails, s=JSON.stringify(window.ytInitialData||{}); const ch=[]; const re=/"chapterRenderer":\{"title":\{"simpleText":"([^"]+)"\},"timeRangeStartMillis":(\d+)/g; let m; while((m=re.exec(s))) ch.push([+m[2]/1000,m[1]]);
      const caps=(ytInitialPlayerResponse.captions?.playerCaptionsTracklistRenderer?.captionTracks||[]).map(x=>x.languageCode+(x.kind?'/'+x.kind:''));
