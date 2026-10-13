@@ -7,7 +7,9 @@ services:
     plan: standard            # 2 GB RAM: headless Chromium + frame rendering need it (free 512 MB will crash)
     healthCheckPath: /healthz
     envVars:
-      - key: ANTHROPIC_API_KEY  # your Claude API key — entered in the Render dashboard, never in the repo
+      - key: GEMINI_API_KEY     # free Gemini key (aistudio.google.com) — entered in the Render dashboard, never in the repo
+        sync: false
+      - key: ANTHROPIC_API_KEY  # optional Claude key (better picks); leave empty to use Gemini
         sync: false
       - key: APP_PASSWORD       # login password for the hosted page (anyone with the URL could otherwise use your key)
         sync: false
