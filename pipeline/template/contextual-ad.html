@@ -9,8 +9,12 @@
 #title{left:118px;top:26px;font-size:40px;font-weight:700;letter-spacing:-.01em;color:#0B0B0B;white-space:nowrap}
 #brand{left:1640px;top:12px;height:96px;max-width:240px;object-fit:contain}
 #mk{left:1510px;top:791px;width:204px;height:40px}
-/* black laptop photo; screen sits exactly in its display */
-#laptop{left:0;top:112px;width:1420px;height:926px}
+/* white laptop (house template): lid + screen + base */
+#lid{left:227px;top:142px;width:981px;height:601px;border-radius:34px 34px 0 0;background:linear-gradient(180deg,#F1F1F1,#E6E6E6);box-shadow:inset 0 0 0 1.5px #DADADA}
+#camdot{left:713px;top:149px;width:7px;height:7px;border-radius:50%;background:#B9B9B9}
+#base{left:76px;top:728px;width:1282px;height:30px;border-radius:4px 4px 60px 60px/4px 4px 30px 30px;background:linear-gradient(180deg,#F7F7F7 0,#E9E9E9 45%,#CFCFCF 100%)}
+#notch{left:616px;top:728px;width:202px;height:13px;border-radius:0 0 12px 12px;background:linear-gradient(180deg,#DCDCDC,#F2F2F2)}
+#lshadow{left:90px;top:752px;width:1254px;height:36px;border-radius:50%;background:rgba(0,0,0,.22);filter:blur(14px)}
 #screen{left:245px;top:168px;width:942px;height:530px;overflow:hidden;background:#fff}
 #page{left:0;top:0;width:1812px;height:1100px;transform-origin:0 0;background:#fff;font-family:'Roboto','Geist',sans-serif}
 .pg{position:absolute;left:0;top:110px;width:1812px;height:910px}
@@ -59,7 +63,8 @@
   <div class="ab" id="title"><span id="title1"></span><span id="title2"></span></div>
   <img class="ab" id="brand" src="logo.png">
 
-  <img class="ab" id="laptop" src="laptop_black.png">
+  <div class="ab" id="lshadow"></div>
+  <div class="ab" id="lid"></div><div class="ab" id="camdot"></div>
   <div class="ab" id="screen">
     <div class="ab" id="page">
       <div class="ab" id="chrome"><div class="ab" id="tab"><i></i><span id="tabT">YouTube</span></div>
@@ -88,6 +93,7 @@
       <div class="ab" id="border"></div>
     </div>
   </div>
+  <div class="ab" id="base"></div><div class="ab" id="notch"></div>
 
   <div class="ab" id="panel">
     <div class="hd">AI Check list</div>
