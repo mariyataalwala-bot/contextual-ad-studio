@@ -109,14 +109,73 @@ function run(cmd, args, { log, cwd } = {}) {
   });
 }
 const yt = (args, opts) => run("node", [path.join(PIPE, "scripts", "yt.js"), ...args], opts);
-const ytJson = async (args) => { const s = (await yt(args)).trim(); const i = [s.indexOf("["), s.indexOf("{")].filter((x) => x >= 0); return JSON.parse(s.slice(Math.min(...i))); };
+const ytBrowserJson = async (args) => { const s = (await yt(args)).trim(); const i = [s.indexOf("["), s.indexOf("{")].filter((x) => x >= 0); return JSON.parse(s.slice(Math.min(...i))); };
+
+// ---------- YouTube Data API v3 (official): search + video details without a browser ----------
+// Key from Google Cloud Console (APIs & Services → enable "YouTube Data API v3" → Credentials → API key).
+// Free quota: 10,000 units/day; a search costs 100, video details cost 1 → roughly 80–90 searches a day.
+const youtubeKey = () => loadSettings().youtubeKey || process.env.YOUTUBE_API_KEY;
+let ytApiDisabledUntil = 0;   // after a quota error, use the browser until midnight Pacific time
+async function ytApi(endpoint, params) {
+  const url = `https://www.googleapis.com/youtube/v3/${endpoint}?` + new URLSearchParams({ ...params, key: youtubeKey() });
+  const r = await fetch(url);
+  const j = await r.json();
+  if (!r.ok) { const reason = j.error?.errors?.[0]?.reason || j.error?.status || r.status; const e = new Error(`YouTube API ${reason}: ${j.error?.message || ""}`.slice(0, 240)); e.reason = reason; throw e; }
+  return j;
+}
+const isoSec = (d) => { const m = /PT(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?/.exec(d || "") || []; return (+m[1] || 0) * 3600 + (+m[2] || 0) * 60 + (+m[3] || 0); };
+const mmss = (s) => `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
+const views = (n) => { n = +n || 0; return n >= 1e6 ? (n / 1e6).toFixed(1) + "M" : n >= 1e3 ? Math.round(n / 1e3) + "K" : String(n); };
+async function ytApiDetails(ids) {
+  const out = new Map();
+  for (let i = 0; i < ids.length; i += 50) {
+    const j = await ytApi("videos", { part: "snippet,contentDetails,statistics", id: ids.slice(i, i + 50).join(",") });
+    for (const v of j.items || []) out.set(v.id, v);
+  }
+  return out;
+}
+async function ytApiSearch(queries, n) {
+  const all = [];
+  for (const q of queries) {
+    const s = await ytApi("search", { part: "snippet", type: "video", q, maxResults: String(Math.min(+n || 10, 25)), regionCode: "IN", relevanceLanguage: "en", safeSearch: "moderate" });
+    const ids = (s.items || []).map((x) => x.id.videoId).filter(Boolean);
+    const det = await ytApiDetails(ids);
+    for (const id of ids) {
+      const v = det.get(id); if (!v) continue;
+      const sec = isoSec(v.contentDetails.duration);
+      all.push({ id, title: v.snippet.title, channel: v.snippet.channelTitle, meta: `${views(v.statistics.viewCount)} views · ${v.snippet.publishedAt.slice(0, 10)}`, length: mmss(sec), query: q, definition: v.contentDetails.definition });
+    }
+  }
+  return all;
+}
+async function ytApiMeta(id) {
+  const v = (await ytApiDetails([id])).get(id);
+  if (!v) throw new Error("video not found or private: " + id);
+  const desc = v.snippet.description || "", chapters = [];
+  for (const line of desc.split(/\r?\n/)) { const m = /^\s*(?:(\d{1,2}):)?(\d{1,2}):(\d{2})\s*[-–—:]?\s*(.+)$/.exec(line); if (m) chapters.push([(+m[1] || 0) * 3600 + +m[2] * 60 + +m[3], m[4].trim()]); }
+  return { title: v.snippet.title, channel: v.snippet.channelTitle, views: v.statistics.viewCount, length: isoSec(v.contentDetails.duration), keywords: v.snippet.tags || [],
+    chapters: chapters.length >= 2 && chapters[0][0] === 0 ? chapters : [], captions: v.contentDetails.caption === "true" ? ["available"] : [],
+    size: v.contentDetails.definition === "hd" ? [1280, 720] : [640, 360], description: desc.slice(0, 800) };
+}
+// searchjson / meta go through the official API when a key is set; everything else (and any API failure) uses the browser.
+async function ytJson(args) {
+  if (youtubeKey() && Date.now() > ytApiDisabledUntil && (args[0] === "searchjson" || args[0] === "meta")) {
+    try { return args[0] === "meta" ? await ytApiMeta(args[1]) : await ytApiSearch(String(args[1]).split("||"), args[2]); }
+    catch (e) {
+      console.error(e.message);
+      if (e.reason === "quotaExceeded" || e.reason === "dailyLimitExceeded") ytApiDisabledUntil = Date.now() + 6 * 3600e3;
+      if (e.reason === "keyInvalid" || e.reason === "API_KEY_INVALID" || e.reason === "accessNotConfigured" || e.reason === 403) ytApiDisabledUntil = Date.now() + 600e3;
+    }
+  }
+  return ytBrowserJson(args);
+}
 const slug = (s) => s.toLowerCase().normalize("NFKD").replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") || "brand";
 const vidOf = (s) => (String(s).match(/(?:v=|youtu\.be\/|shorts\/)([A-Za-z0-9_-]{11})/) || String(s).match(/^([A-Za-z0-9_-]{11})$/) || [])[1];
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const lenSec = (l) => { const p = String(l || "").split(":").map(Number); return p.some(isNaN) ? 0 : p.reduce((a, b) => a * 60 + b, 0); };
 
 // ---------- jobs ----------
-const jobs = {};
+const jobs = {}, adJobs = {};
 function newJob(data) {
   const id = Date.now().toString(36);
   jobs[id] = { id, status: "running", step: "", log: [], ...data };
@@ -328,9 +387,15 @@ http.createServer(async (req, res) => {
   }
   try {
     if (req.method === "GET" && u.pathname === "/") return send(res, 200, fs.readFileSync(path.join(APP, "ui.html")), "text/html; charset=utf-8");
-    if (u.pathname === "/api/status") return send(res, 200, { hasKey: provider() !== "none", provider: provider(), keyFromEnv: !!(process.env.ANTHROPIC_API_KEY || process.env.GEMINI_API_KEY), ffmpeg: !!FF || !IS_WIN, hosted: !IS_WIN, outDir: OUT_ROOT });
-    if (req.method === "POST" && u.pathname === "/api/settings") { const b = await body(req); const s = loadSettings(); if (b.apiKey) s.apiKey = b.apiKey.trim(); if (b.geminiKey) s.geminiKey = b.geminiKey.trim(); if (b.provider) s.provider = b.provider; fs.writeFileSync(SETTINGS, JSON.stringify(s)); return send(res, 200, { ok: true, provider: provider() }); }
-    if (req.method === "POST" && u.pathname === "/api/ads") { const b = await body(req); return send(res, 200, { ads: await findAds(b) }); }
+    if (u.pathname === "/api/status") return send(res, 200, { hasKey: provider() !== "none", provider: provider(), youtube: youtubeKey() ? (Date.now() > ytApiDisabledUntil ? "api" : "browser (API paused)") : "browser", keyFromEnv: !!(process.env.ANTHROPIC_API_KEY || process.env.GEMINI_API_KEY), ffmpeg: !!FF || !IS_WIN, hosted: !IS_WIN, outDir: OUT_ROOT });
+    if (req.method === "POST" && u.pathname === "/api/settings") { const b = await body(req); const s = loadSettings(); if (b.apiKey) s.apiKey = b.apiKey.trim(); if (b.geminiKey) s.geminiKey = b.geminiKey.trim(); if (b.youtubeKey) { s.youtubeKey = b.youtubeKey.trim(); ytApiDisabledUntil = 0; } if (b.provider) s.provider = b.provider; fs.writeFileSync(SETTINGS, JSON.stringify(s)); return send(res, 200, { ok: true, provider: provider() }); }
+    if (req.method === "POST" && u.pathname === "/api/ads") {   // runs in the background (share links cut requests at ~100 s)
+      const b = await body(req); const id = "a" + Date.now().toString(36); adJobs[id] = { status: "running" };
+      findAds(b).then((ads) => { adJobs[id] = { status: "done", ads }; }).catch((e) => { adJobs[id] = { status: "failed", error: e.message }; });
+      return send(res, 200, { id });
+    }
+    const am = u.pathname.match(/^\/api\/ads\/(\w+)$/);
+    if (am) return adJobs[am[1]] ? send(res, 200, adJobs[am[1]]) : send(res, 404, { error: "unknown search" });
     if (req.method === "POST" && u.pathname === "/api/start") {
       const b = await body(req);
       const adId = vidOf(b.adId || b.adUrl); if (!adId) return send(res, 400, { error: "Pick an ad or paste a YouTube link." });

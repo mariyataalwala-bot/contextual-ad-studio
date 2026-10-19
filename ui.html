@@ -42,6 +42,7 @@ video{width:100%;border-radius:14px;background:#000}.hide{display:none}
   <section class="card hide" id="settings">
     <h2>Settings</h2><p class="s">Keys are stored only on this computer (settings.json in the app folder). Gemini's free tier works; Claude gives the best picks. With no key, the app runs in manual mode.</p>
     <div class="row"><div><label>Gemini API key (free, from aistudio.google.com)</label><input type="password" id="gkey" placeholder="paste key"></div><div><label>Claude API key (optional, paid)</label><input type="password" id="key" placeholder="sk-ant-…"></div></div>
+    <div class="row" style="margin-top:12px"><div><label>YouTube Data API key (free, from console.cloud.google.com)</label><input type="password" id="ykey" placeholder="paste key"></div><div style="align-self:end"><span class="s" id="ytNow"></span></div></div>
     <div class="row" style="margin-top:12px"><div><label>Use</label><select id="prov" style="width:100%;font:inherit;padding:11px 14px;border:1.5px solid var(--line);border-radius:12px"><option value="gemini">Gemini (free)</option><option value="claude">Claude</option><option value="none">Manual only (no AI)</option></select></div><div style="align-self:end"><button id="saveKey">Save</button> <span class="s" id="provNow"></span></div></div>
   </section>
 
@@ -95,14 +96,16 @@ const $=id=>document.getElementById(id); let job=null, adSel=null, adList=[], lo
 const api=async(u,b)=>{const r=await fetch(u,b?{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(b)}:{});const j=await r.json();if(!r.ok)throw new Error(j.error||r.statusText);return j;};
 const read=f=>new Promise(r=>{const fr=new FileReader();fr.onload=()=>r(fr.result);fr.readAsDataURL(f);});
 $('setBtn').onclick=()=>$('settings').classList.toggle('hide');
-$('saveKey').onclick=async()=>{const r=await api('/api/settings',{apiKey:$('key').value,geminiKey:$('gkey').value,provider:$('prov').value});$('key').value='';$('gkey').value='';$('provNow').textContent='Using: '+r.provider;$('settings').classList.add('hide');};
-api('/api/status').then(s=>{$('prov').value=s.provider;$('provNow').textContent='Using: '+s.provider; if(s.keyFromEnv)$('setBtn').classList.add('hide'); else if(!s.hasKey)$('settings').classList.remove('hide'); if(!s.ffmpeg) alert('ffmpeg was not found. Install it once with: winget install Gyan.FFmpeg'); if(s.hosted){$('openF').classList.add('hide');}});
+$('saveKey').onclick=async()=>{const r=await api('/api/settings',{apiKey:$('key').value,geminiKey:$('gkey').value,youtubeKey:$('ykey').value,provider:$('prov').value});$('key').value='';$('gkey').value='';$('ykey').value='';$('provNow').textContent='Using: '+r.provider;const s=await api('/api/status');$('ytNow').textContent='YouTube search: '+s.youtube;$('settings').classList.add('hide');};
+api('/api/status').then(s=>{$('prov').value=s.provider;$('provNow').textContent='Using: '+s.provider;$('ytNow').textContent='YouTube search: '+s.youtube; if(s.keyFromEnv)$('setBtn').classList.add('hide'); else if(!s.hasKey)$('settings').classList.remove('hide'); if(!s.ffmpeg) alert('ffmpeg was not found. Install it once with: winget install Gyan.FFmpeg'); if(s.hosted){$('openF').classList.add('hide');}});
 $('logo').onchange=async e=>{logoData=await read(e.target.files[0]);$('logoPrev').innerHTML=`<img src="${logoData}">`;};
 $('packs').onchange=async e=>{packData=await Promise.all([...e.target.files].slice(0,2).map(read));$('packPrev').innerHTML=packData.map(d=>`<img src="${d}">`).join('');};
 $('findAds').onclick=async()=>{
   if(!$('brand').value.trim()) return alert('Type the brand name.'); if(!logoData) return alert('Upload the brand logo.');
   $('findAds').disabled=true; $('adsMsg').textContent='Searching YouTube for official ads…';
-  try{ const r=await api('/api/ads',{brand:$('brand').value.trim(),product:$('product').value.trim()}); adList=r.ads;
+  try{ const st=await api('/api/ads',{brand:$('brand').value.trim(),product:$('product').value.trim()}); let r;
+    for(;;){ await new Promise(z=>setTimeout(z,2000)); r=await api('/api/ads/'+st.id); if(r.status==='failed') throw new Error(r.error); if(r.status==='done') break; }
+    adList=r.ads;
     $('ads').innerHTML=adList.length?adList.map((a,i)=>`<div class="ad" data-i="${i}"><img src="https://i.ytimg.com/vi/${a.id}/mqdefault.jpg"><div><b>${a.title}</b><span>${a.channel} · ${a.length}</span><br><span>${a.why||''}</span></div></div>`).join(''):'<p class="s">No official ads found — paste a link below.</p>';
     document.querySelectorAll('.ad').forEach(el=>el.onclick=()=>{document.querySelectorAll('.ad').forEach(x=>x.classList.remove('sel'));el.classList.add('sel');adSel=adList[+el.dataset.i];$('start').disabled=false;});
     $('s2').classList.remove('hide'); $('adsMsg').textContent='';
