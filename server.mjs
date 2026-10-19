@@ -149,16 +149,27 @@ async function ytApiDetails(ids) {
   }
   return out;
 }
+const subsCache = new Map();
+async function channelSubs(ids) {
+  const need = [...new Set(ids)].filter((c) => c && !subsCache.has(c));
+  for (let i = 0; i < need.length; i += 50) {
+    const j = await ytApi("channels", { part: "statistics", id: need.slice(i, i + 50).join(",") });
+    for (const c of j.items || []) subsCache.set(c.id, +c.statistics.subscriberCount || 0);
+  }
+  return (id) => subsCache.get(id) ?? null;
+}
 async function ytApiSearch(queries, n) {
   const all = [];
   for (const q of queries) {
     const s = await ytApi("search", { part: "snippet", type: "video", q, maxResults: String(Math.min(+n || 10, 25)), regionCode: "IN", relevanceLanguage: "en", safeSearch: "moderate" });
     const ids = (s.items || []).map((x) => x.id.videoId).filter(Boolean);
     const det = await ytApiDetails(ids);
+    const subs = await channelSubs([...det.values()].map((v) => v.snippet.channelId)).catch(() => () => null);
     for (const id of ids) {
       const v = det.get(id); if (!v) continue;
-      const sec = isoSec(v.contentDetails.duration);
-      all.push({ id, title: v.snippet.title, channel: v.snippet.channelTitle, meta: `${views(v.statistics.viewCount)} views · ${v.snippet.publishedAt.slice(0, 10)}`, length: mmss(sec), query: q, definition: v.contentDetails.definition, aspect: aspectOf(v) });
+      const sec = isoSec(v.contentDetails.duration), sc = subs(v.snippet.channelId);
+      all.push({ id, title: v.snippet.title, channel: v.snippet.channelTitle, meta: `${views(v.statistics.viewCount)} views · ${v.snippet.publishedAt.slice(0, 10)}${sc != null ? ` · channel ${views(sc)} subscribers` : ""}`,
+        length: mmss(sec), query: q, definition: v.contentDetails.definition, aspect: aspectOf(v), subs: sc, views: +v.statistics.viewCount || 0 });
     }
   }
   return all;
@@ -207,7 +218,8 @@ function newJob(data) {
 const say = (job, msg) => { job.step = msg; job.log.push(new Date().toLocaleTimeString() + "  " + msg); };
 
 const RULES = `House rules for Mediakart contextual-ad demos:
-- Content videos must be premium and professional: studio/clean footage, a well-known professional channel, good lighting, 720p or better. Reject street/roadside footage, shaky vlogs, celebrity home tours, pranks, anything unhygienic or unprofessional.
+- Content videos must be PREMIUM: produced by celebrity chefs, well-known professional creators, studios or media brands (e.g. for food in India: Chef Ranveer Brar, Kunal Kapur, Your Food Lab / Chef Sanjyot Keer, Sanjeev Kapoor Khazana, Hebbars Kitchen; globally: Tasty, Bon Appétit, America's Test Kitchen), with studio-quality cinematography, lighting and styling, HD. Prefer English or neat bilingual titles over clickbait titles.
+- Reject: home-kitchen / amateur production even on big channels, clickbait titles ("guarantee", "you'll never…", ALL CAPS), street/roadside footage, shaky vlogs, celebrity home tours, pranks, anything unhygienic or unprofessional.
 - All three AI checks must literally match the brand's product:
   Visual Identify = the product category in action (e.g. potato chips frying, cream being applied, tea being poured).
   Keywords = exact phrases from the video's title about the product category.
@@ -263,7 +275,7 @@ async function proposeMoments(job) {
     if (!job.aiDown) {
       try {
         say(job, `Planning searches for premium videos (AI: ${provider()})…`);
-        const plan = await ask("You plan YouTube searches for contextual ad placement.", `${RULES}\n\nBrand: ${brand}\nProduct: ${product || "(infer from the ad)"}\nAd being placed: ${adTitle}\n\nGive 6 YouTube search queries likely to surface premium, professional videos where this product category is clearly on screen (recipes, routines, tutorials, reviews...). Also state the product category in a few words.`,
+        const plan = await ask("You plan YouTube searches for contextual ad placement.", `${RULES}\n\nBrand: ${brand}\nProduct: ${product || "(infer from the ad)"}\nAd being placed: ${adTitle}\n\nGive 6 YouTube search queries likely to surface premium, professional videos where this product category is clearly on screen (recipes, routines, tutorials, reviews...). At least 3 queries must name a specific top professional creator or studio in this category (e.g. "Kunal Kapur <dish>", "Your Food Lab <dish>"). Also state the product category in a few words.`,
           { type: "object", additionalProperties: false, required: ["category", "queries"], properties: { category: { type: "string" }, queries: { type: "array", items: { type: "string" } } } }, [], "medium");
         job.category = plan.category; queries = plan.queries.slice(0, 6);
       } catch (e) { if (!(e instanceof AIError)) throw e; job.aiDown = true; job.aiError = e.message; say(job, e.message); }
@@ -272,12 +284,16 @@ async function proposeMoments(job) {
     say(job, `Searching YouTube: ${queries.map((q) => `“${q}”`).join(", ")}`);
     try { for (const r of await ytJson(["searchjson", queries.join("||"), "10"])) if (!seen.has(r.id)) seen.set(r.id, r); }
     catch (e) { console.error("video search failed:", e.message); say(job, "YouTube search failed: " + e.message.slice(0, 160)); }
-    const pool = [...seen.values()].filter((r) => { const s = lenSec(r.length); return s >= 60 && s <= 1800; });
+    const premiumScore = (r) => (r.subs || 0) / 1e6 * 2 + Math.log10((r.views || 1)) + (/[A-Z]{6,}|guarantee|never|shocking|गारंटी/i.test(r.title || "") ? -3 : 0);
+    let pool = [...seen.values()].filter((r) => { const s = lenSec(r.length); return s >= 60 && s <= 1800 && isCTV(r) && (r.definition == null || r.definition === "hd"); });
+    const big = pool.filter((r) => r.subs == null || (r.subs >= 1e6 && r.views >= 1e5));   // premium = 1M+ subscribers, 100K+ views
+    if (big.length >= 3) pool = big;
+    pool.sort((x, y) => premiumScore(y) - premiumScore(x));
     job.candidates = pool.slice(0, 5);
     if (!job.aiDown) {
       try {
         say(job, `Ranking ${pool.length} candidate videos…`);
-        const ranked = await ask("You choose premium YouTube videos for contextual ad placement.", `${RULES}\n\nBrand: ${brand}. Product category: ${job.category}.\nCandidates (JSON):\n${JSON.stringify(pool)}\n\nPick up to 4 candidates, best first: professional channels, the product category clearly the subject (it should appear on screen), titles containing product-category words.`,
+        const ranked = await ask("You choose premium YouTube videos for contextual ad placement.", `${RULES}\n\nBrand: ${brand}. Product category: ${job.category}.\nCandidates (JSON):\n${JSON.stringify(pool)}\n\nPick up to 4 candidates, best first. Rank by PRODUCTION QUALITY first (celebrity chef / professional studio / media brand; the subscriber count in "meta" helps), then by how clearly the product category is the subject, then titles containing product-category words. Skip amateur or clickbait videos even if they have many views.`,
           { type: "object", additionalProperties: false, required: ["ids"], properties: { ids: { type: "array", items: { type: "string" } } } }, [], "high");
         const c = ranked.ids.map((id) => seen.get(id)).filter(Boolean); if (c.length) job.candidates = c;
       } catch (e) { if (!(e instanceof AIError)) throw e; job.aiDown = true; job.aiError = e.message; say(job, e.message); }
@@ -337,7 +353,11 @@ async function proposeMoments(job) {
         const b = await ask("You place a highlight box on a video frame.", `Draw a tight box around: ${pick[k].what}.\nThe yellow grid lines are every 10% of width and height. Return the box as fractions of the frame: x, y (top-left) and w, h, all between 0 and 1. Keep it on the subject; leave out on-screen captions where possible.`,
           { type: "object", additionalProperties: false, required: ["x", "y", "w", "h"], properties: { x: { type: "number" }, y: { type: "number" }, w: { type: "number" }, h: { type: "number" } } },
           [{ label: `${k} frame`, file: g }], "medium");
-        pick[k].box = [c(b.x), c(b.y), Math.min(c(b.w), 1 - c(b.x)), Math.min(c(b.h), 1 - c(b.y))];
+        // pad AI boxes a little and never let them be slivers (min 20% × 25% of the picture)
+        let [x, y, w, h] = [c(b.x), c(b.y), c(b.w), c(b.h)]; const cx = x + w / 2, cy = y + h / 2;
+        w = Math.min(1, Math.max(w * 1.15, 0.2)); h = Math.min(1, Math.max(h * 1.15, 0.25));
+        x = Math.min(Math.max(0, cx - w / 2), 1 - w); y = Math.min(Math.max(0, cy - h / 2), 1 - h);
+        pick[k].box = [x, y, w, h].map((v) => +v.toFixed(4));
       } catch (e) { if (!(e instanceof AIError)) throw e; job.aiDown = true; job.aiError = e.message; say(job, e.message); }
     }));
     // the search query must show this video on the first screen
