@@ -60,8 +60,10 @@ const [cmd,...A]=process.argv.slice(2);
        await p.goto(`https://www.youtube.com/watch?v=${id}&t=${Math.floor(t)}s`,{waitUntil:'domcontentloaded',timeout:45000});
        await p.waitForSelector('#movie_player video',{timeout:20000}); await skipAds(p); await p.addStyleTag({content:HIDE});
        await p.evaluate(t=>{const v=document.querySelector('#movie_player video'); v.muted=true; v.currentTime=t; v.play().catch(()=>{});},t);
-       await p.waitForFunction(t=>{const v=document.querySelector('#movie_player video');return v.currentTime>=t+0.1&&v.readyState>=3},t,{timeout:15000});
-       await p.evaluate(()=>document.querySelector('#movie_player video').pause()); await p.waitForTimeout(250);
+       await p.waitForFunction(()=>{const v=document.querySelector('#movie_player video');return v.currentTime>0.05&&v.readyState>=3},null,{timeout:15000});   // playback started
+       // then pause and seek back to the exact time, so the still shows precisely t (short shots matter)
+       await p.evaluate(t=>new Promise(r=>{const v=document.querySelector('#movie_player video'); v.pause(); v.addEventListener('seeked',()=>setTimeout(r,150),{once:true}); v.currentTime=t; setTimeout(r,5000);}),t);
+       await p.waitForFunction(()=>{const v=document.querySelector('#movie_player video');return !v.seeking&&v.readyState>=2},null,{timeout:10000}).catch(()=>{}); await p.waitForTimeout(200);
        await (await p.$('#movie_player video')).screenshot({path:path.join(out,`f_${String(Math.round(t*10)).padStart(5,'0')}.png`)}); console.log('ok',t);
      }catch(e){console.log('fail',t,e.message.split('\n')[0]);}
      await c.close();

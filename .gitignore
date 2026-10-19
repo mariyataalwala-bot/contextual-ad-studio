@@ -5,3 +5,5 @@ server.log
 *.log
 _e2e.mjs
 share-link.txt
+_trial.mjs
+_proposal_*.json

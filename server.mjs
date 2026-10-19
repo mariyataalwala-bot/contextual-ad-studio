@@ -420,6 +420,7 @@ http.createServer(async (req, res) => {
       if (act === "still") { const k = u.searchParams.get("k"); const f = job.proposal?.pick?.[k]?.still; return f ? send(res, 200, fs.readFileSync(f), "image/png") : send(res, 404, {}); }
       if (act === "video" && job.output) { const st = fs.statSync(job.output); res.writeHead(200, { "Content-Type": "video/mp4", "Content-Length": st.size, "Content-Disposition": u.searchParams.get("dl") ? `attachment; filename="${path.basename(job.output)}"` : "inline" }); return fs.createReadStream(job.output).pipe(res); }
       if (act === "approve" && req.method === "POST") {
+        if (job.status !== "approve") return send(res, 409, { error: "This job is already " + job.status + "." });
         const e = (await body(req)).edits, P = job.proposal;
         if (e && P) {   // manual adjustments from the approval screen
           for (const k of ["visual", "object"]) if (e[k]) {
@@ -437,6 +438,7 @@ http.createServer(async (req, res) => {
         return send(res, 200, { ok: true });
       }
       if (act === "next" && req.method === "POST") {
+        if (job.status !== "approve") return send(res, 409, { error: "This job is already " + job.status + "." });
         job.status = "running"; job.proposal = null;
         (async () => { try { const ok = await proposeMoments(job); job.status = ok ? "approve" : "failed"; if (!ok) say(job, "No more candidates passed all three checks."); } catch (e) { job.status = "failed"; say(job, "Error: " + e.message); } })();
         return send(res, 200, { ok: true });
