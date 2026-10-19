@@ -123,13 +123,16 @@ async function ytApi(endpoint, params) {
   if (!r.ok) { const reason = j.error?.errors?.[0]?.reason || j.error?.status || r.status; const e = new Error(`YouTube API ${reason}: ${j.error?.message || ""}`.slice(0, 240)); e.reason = reason; throw e; }
   return j;
 }
+const playerSize = (v) => { const w = +v.player?.embedWidth, h = +v.player?.embedHeight; return w && h ? [w, h] : v.contentDetails.definition === "hd" ? [1280, 720] : [640, 360]; };
+const aspectOf = (v) => { const [w, h] = playerSize(v); return +(w / h).toFixed(3); };
+const isCTV = (r) => (r.aspect == null || r.aspect >= 1.5) && !/#shorts?\b|\bshorts\b|\breels?\b|vertical/i.test(r.title || "");   // 16:9 TV / CTV only
 const isoSec = (d) => { const m = /PT(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?/.exec(d || "") || []; return (+m[1] || 0) * 3600 + (+m[2] || 0) * 60 + (+m[3] || 0); };
 const mmss = (s) => `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
 const views = (n) => { n = +n || 0; return n >= 1e6 ? (n / 1e6).toFixed(1) + "M" : n >= 1e3 ? Math.round(n / 1e3) + "K" : String(n); };
 async function ytApiDetails(ids) {
   const out = new Map();
   for (let i = 0; i < ids.length; i += 50) {
-    const j = await ytApi("videos", { part: "snippet,contentDetails,statistics", id: ids.slice(i, i + 50).join(",") });
+    const j = await ytApi("videos", { part: "snippet,contentDetails,statistics,player", id: ids.slice(i, i + 50).join(","), maxWidth: "1280" });
     for (const v of j.items || []) out.set(v.id, v);
   }
   return out;
@@ -143,7 +146,7 @@ async function ytApiSearch(queries, n) {
     for (const id of ids) {
       const v = det.get(id); if (!v) continue;
       const sec = isoSec(v.contentDetails.duration);
-      all.push({ id, title: v.snippet.title, channel: v.snippet.channelTitle, meta: `${views(v.statistics.viewCount)} views · ${v.snippet.publishedAt.slice(0, 10)}`, length: mmss(sec), query: q, definition: v.contentDetails.definition });
+      all.push({ id, title: v.snippet.title, channel: v.snippet.channelTitle, meta: `${views(v.statistics.viewCount)} views · ${v.snippet.publishedAt.slice(0, 10)}`, length: mmss(sec), query: q, definition: v.contentDetails.definition, aspect: aspectOf(v) });
     }
   }
   return all;
@@ -155,7 +158,7 @@ async function ytApiMeta(id) {
   for (const line of desc.split(/\r?\n/)) { const m = /^\s*(?:(\d{1,2}):)?(\d{1,2}):(\d{2})\s*[-–—:]?\s*(.+)$/.exec(line); if (m) chapters.push([(+m[1] || 0) * 3600 + +m[2] * 60 + +m[3], m[4].trim()]); }
   return { title: v.snippet.title, channel: v.snippet.channelTitle, views: v.statistics.viewCount, length: isoSec(v.contentDetails.duration), keywords: v.snippet.tags || [],
     chapters: chapters.length >= 2 && chapters[0][0] === 0 ? chapters : [], captions: v.contentDetails.caption === "true" ? ["available"] : [],
-    size: v.contentDetails.definition === "hd" ? [1280, 720] : [640, 360], description: desc.slice(0, 800) };
+    size: playerSize(v), description: desc.slice(0, 800) };
 }
 // searchjson / meta go through the official API when a key is set; everything else (and any API failure) uses the browser.
 async function ytJson(args) {
@@ -200,22 +203,28 @@ async function findAds({ brand, product }) {
   const seen = new Map();
   try { for (const r of await ytJson(["searchjson", [...new Set(qs)].join("||"), "12"])) if (!seen.has(r.id)) seen.set(r.id, r); }
   catch (e) { console.error("ad search failed:", e.message); throw new Error("YouTube search failed on this server: " + e.message.slice(0, 200)); }
-  const list = [...seen.values()].filter((r) => { const s = lenSec(r.length); return s >= 6 && s <= 90; });
+  const list = [...seen.values()].filter((r) => { const s = lenSec(r.length); return s >= 6 && s <= 90 && isCTV(r); });   // TV/CTV (16:9) only — no vertical mobile/Shorts ads
   if (!list.length) return [];
   try {
     const pick = await ask(
       "You help an ad agency find a brand's own official TV/YouTube commercials.",
       `Brand: ${brand}${product ? `\nProduct focus: ${product}` : ""}\nYouTube results (JSON):\n${JSON.stringify(list)}\n\n` +
-        `Return up to 6 that are the brand's OWN official commercials (uploaded by the brand's or its parent company's official channel; not reactions, reviews, compilations or fan uploads). Prefer recent ads that show the product clearly. Rank best first, and say in one short line why each fits.`,
+        `Return up to 6 that are the brand's OWN official TV / CTV commercials (16:9 TVCs uploaded by the brand's or its parent company's official channel; not vertical mobile/Shorts/Reels ads, not reactions, reviews, compilations or fan uploads). Prefer recent ads that show the product clearly. Rank best first, and say in one short line why each fits.`,
       { type: "object", additionalProperties: false, required: ["ads"],
         properties: { ads: { type: "array", items: { type: "object", additionalProperties: false, required: ["id", "why"], properties: { id: { type: "string" }, why: { type: "string" } } } } } },
       [], "medium");
     const ads = pick.ads.map((a) => ({ ...seen.get(a.id), why: a.why })).filter((a) => a.id);
     if (ads.length) return ads;
   } catch (e) { if (!(e instanceof AIError)) throw e; }
+  // without AI: the brand's own channel first, then titles that mention the product, then TVC-style titles
   const b = brand.toLowerCase().replace(/[^a-z0-9]/g, "");
   const own = (r) => (r.channel || "").toLowerCase().replace(/[^a-z0-9]/g, "").includes(b);
-  return [...list.filter(own), ...list.filter((r) => !own(r))].slice(0, 8).map((r) => ({ ...r, why: own(r) ? "From the brand's channel" : "Check this is official" }));
+  const words = (product || "").toLowerCase().split(/[^a-z0-9]+/).filter((w) => w.length > 2 && w !== b);
+  const stem = (w) => w.replace(/(ising|izing|ing|ers|er|es|s)$/, "");
+  const score = (r) => { const t = (r.title || "").toLowerCase();
+    return (own(r) ? 100 : 0) + words.filter((w) => t.includes(stem(w))).length * 20 + (/\btvc\b|commercial|\bad\b/.test(t) ? 5 : 0); };
+  return [...list].sort((x, y) => score(y) - score(x)).slice(0, 8)
+    .map((r) => ({ ...r, why: (own(r) ? "From the brand's channel" : "Check this is official") + (words.some((w) => (r.title || "").toLowerCase().includes(stem(w))) ? " · mentions the product" : "") + " · 16:9 TV ad" }));
 }
 
 const stillAt = (dir, t) => path.join(dir, `f_${String(Math.round(t * 10)).padStart(5, "0")}.png`);
@@ -404,7 +413,10 @@ http.createServer(async (req, res) => {
       if (!saveData(b.logo, path.join(work, "assets", "logo." + logoExt))) return send(res, 400, { error: "Upload the brand logo." });
       const packs = (b.packs || []).map((p, i) => { const e = (/^data:image\/(\w+)/.exec(p) || [, "png"])[1].replace("jpeg", "jpg"); return saveData(p, path.join(work, "assets", `pack${i + 1}.${e}`)) ? `assets/pack${i + 1}.${e}` : null; }).filter(Boolean);
       let adTitle = b.adTitle, adSeconds;
-      try { const m = await ytJson(["meta", adId]); adTitle = adTitle || m.title; adSeconds = +m.length; } catch {}
+      try {
+        const m = await ytJson(["meta", adId]); adTitle = adTitle || m.title; adSeconds = +m.length;
+        if (m.size && m.size[0] / m.size[1] < 1.5) return send(res, 400, { error: `This ad is vertical (${m.size[0]}×${m.size[1]}) — a mobile/Shorts ad. Pick a 16:9 TV / CTV commercial.` });
+      } catch {}
       const job = newJob({ work, input: { brand: b.brand, product: b.product, adId, adTitle: adTitle || adId, adSeconds, logo: "assets/logo." + logoExt, packs, endcard: !!b.endcard, tagline: b.tagline, music: b.music !== false } });
       (async () => {
         try { const ok = await proposeMoments(job); job.status = ok ? "approve" : "failed"; if (!ok) say(job, "No video passed all three checks. Try a different product focus."); }
