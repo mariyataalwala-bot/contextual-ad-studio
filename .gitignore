@@ -4,3 +4,4 @@ output/
 server.log
 *.log
 _e2e.mjs
+share-link.txt
