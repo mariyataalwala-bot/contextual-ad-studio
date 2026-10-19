@@ -15,7 +15,7 @@ const OUT_ROOT = process.env.OUT_DIR || (IS_WIN ? "D:\\contextual-ads" : path.jo
 const SETTINGS = path.join(APP, "settings.json");
 const PORT = +(process.env.PORT || 4777);
 const HOST = process.env.PORT ? "0.0.0.0" : "127.0.0.1";   // on Render (PORT set) listen publicly
-const PASSWORD = process.env.APP_PASSWORD || "";             // optional login for the hosted app
+const sharePassword = () => process.env.APP_PASSWORD || loadSettings().sharePassword || "";   // login for anyone using the share link / hosted app
 const MODEL = "claude-opus-5-5";
 
 // ---------- environment: ffmpeg from WinGet, node modules from the app ----------
@@ -179,8 +179,16 @@ const lenSec = (l) => { const p = String(l || "").split(":").map(Number); return
 
 // ---------- jobs ----------
 const jobs = {}, adJobs = {};
+let renderChain = Promise.resolve(), waiting = 0;   // one capture+render at a time; others queue
+function queued(job, fn) {
+  waiting++; const ahead = waiting - 1;
+  if (ahead > 0) say(job, `Waiting — ${ahead} video${ahead > 1 ? "s" : ""} ahead in the queue…`);
+  const run = renderChain.then(fn).finally(() => { waiting--; });
+  renderChain = run.catch(() => {});
+  return run;
+}
 function newJob(data) {
-  const id = Date.now().toString(36);
+  const id = (Date.now().toString(36) + Math.random().toString(36).slice(2, 5));
   jobs[id] = { id, status: "running", step: "", log: [], ...data };
   return jobs[id];
 }
@@ -237,6 +245,7 @@ const titleQuery = (title) => title.split(/[|\-–(]/)[0].trim().split(/\s+/).sl
 async function proposeMoments(job) {
   const { brand, product, adTitle } = job.input;
   const W = job.work;
+  if (!job.category) job.category = product || brand;
   if (!job.candidates) {
     const seen = new Map(); let queries;
     if (!job.aiDown) {
@@ -389,15 +398,19 @@ http.createServer(async (req, res) => {
     } catch (e) { err = e.message.slice(0, 400); }
     return send(res, 200, { youtube: yt1, error: err, seconds: (Date.now() - t0) / 1000, memLimit: rd("/sys/fs/cgroup/memory.max"), memPeak: rd("/sys/fs/cgroup/memory.peak"), memNow: rd("/sys/fs/cgroup/memory.current"), provider: provider() });
   }
-  if (PASSWORD) {   // basic auth so a public URL can't spend your API key
+  const viaShare = !!(req.headers["cf-connecting-ip"] || req.headers["x-forwarded-for"]) || !/^(::1|127\.0\.0\.1|::ffff:127\.0\.0\.1)$/.test(req.socket.remoteAddress || "");
+  const PW = sharePassword();
+  if (viaShare || process.env.APP_PASSWORD) {   // people using the link must sign in; you on this PC don't
+    if (!PW) { res.writeHead(503, { "Content-Type": "text/plain" }); return res.end("Sharing isn't set up yet: start share.bat on the host PC."); }
     const [, b64] = (req.headers.authorization || "").split(" ");
     const pw = b64 ? Buffer.from(b64, "base64").toString().split(":").slice(1).join(":") : "";
-    if (pw !== PASSWORD) { res.writeHead(401, { "WWW-Authenticate": 'Basic realm="Contextual Ad Studio"' }); return res.end("Login required"); }
+    if (pw !== PW) { res.writeHead(401, { "WWW-Authenticate": 'Basic realm="Contextual Ad Studio"' }); return res.end("Login required"); }
   }
   try {
     if (req.method === "GET" && u.pathname === "/") return send(res, 200, fs.readFileSync(path.join(APP, "ui.html")), "text/html; charset=utf-8");
-    if (u.pathname === "/api/status") return send(res, 200, { hasKey: provider() !== "none", provider: provider(), youtube: youtubeKey() ? (Date.now() > ytApiDisabledUntil ? "api" : "browser (API paused)") : "browser", keyFromEnv: !!(process.env.ANTHROPIC_API_KEY || process.env.GEMINI_API_KEY), ffmpeg: !!FF || !IS_WIN, hosted: !IS_WIN, outDir: OUT_ROOT });
-    if (req.method === "POST" && u.pathname === "/api/settings") { const b = await body(req); const s = loadSettings(); if (b.apiKey) s.apiKey = b.apiKey.trim(); if (b.geminiKey) s.geminiKey = b.geminiKey.trim(); if (b.youtubeKey) { s.youtubeKey = b.youtubeKey.trim(); ytApiDisabledUntil = 0; } if (b.provider) s.provider = b.provider; fs.writeFileSync(SETTINGS, JSON.stringify(s)); return send(res, 200, { ok: true, provider: provider() }); }
+    const local = !req.headers["cf-connecting-ip"] && !req.headers["x-forwarded-for"] && /^(::1|127\.0\.0\.1|::ffff:127\.0\.0\.1)$/.test(req.socket.remoteAddress || "");
+    if (u.pathname === "/api/status") return send(res, 200, { local, queue: waiting, hasKey: provider() !== "none", provider: provider(), youtube: youtubeKey() ? (Date.now() > ytApiDisabledUntil ? "api" : "browser (API paused)") : "browser", keyFromEnv: !!(process.env.ANTHROPIC_API_KEY || process.env.GEMINI_API_KEY), ffmpeg: !!FF || !IS_WIN, hosted: !IS_WIN, outDir: OUT_ROOT });
+    if (req.method === "POST" && u.pathname === "/api/settings") { if (!local) return send(res, 403, { error: "Settings can only be changed on the computer running the app." }); const b = await body(req); const s = loadSettings(); if (b.apiKey) s.apiKey = b.apiKey.trim(); if (b.geminiKey) s.geminiKey = b.geminiKey.trim(); if (b.youtubeKey) { s.youtubeKey = b.youtubeKey.trim(); ytApiDisabledUntil = 0; } if (b.provider) s.provider = b.provider; fs.writeFileSync(SETTINGS, JSON.stringify(s)); return send(res, 200, { ok: true, provider: provider() }); }
     if (req.method === "POST" && u.pathname === "/api/ads") {   // runs in the background (share links cut requests at ~100 s)
       const b = await body(req); const id = "a" + Date.now().toString(36); adJobs[id] = { status: "running" };
       findAds(b).then((ads) => { adJobs[id] = { status: "done", ads }; }).catch((e) => { adJobs[id] = { status: "failed", error: e.message }; });
@@ -408,7 +421,9 @@ http.createServer(async (req, res) => {
     if (req.method === "POST" && u.pathname === "/api/start") {
       const b = await body(req);
       const adId = vidOf(b.adId || b.adUrl); if (!adId) return send(res, 400, { error: "Pick an ad or paste a YouTube link." });
-      const work = path.join(OUT_ROOT, slug(b.brand)); fs.mkdirSync(path.join(work, "assets"), { recursive: true });
+      if (!String(b.brand || "").trim()) return send(res, 400, { error: "Type the brand name." });
+      const d0 = new Date(), z = (n) => String(n).padStart(2, "0"); const stamp = `${d0.getFullYear()}${z(d0.getMonth() + 1)}${z(d0.getDate())}-${z(d0.getHours())}${z(d0.getMinutes())}`;   // local time
+      const work = path.join(OUT_ROOT, slug(b.brand), stamp); fs.mkdirSync(path.join(work, "assets"), { recursive: true });
       const logoExt = (/^data:image\/(\w+)/.exec(b.logo || "") || [, "png"])[1].replace("jpeg", "jpg");
       if (!saveData(b.logo, path.join(work, "assets", "logo." + logoExt))) return send(res, 400, { error: "Upload the brand logo." });
       const packs = (b.packs || []).map((p, i) => { const e = (/^data:image\/(\w+)/.exec(p) || [, "png"])[1].replace("jpeg", "jpg"); return saveData(p, path.join(work, "assets", `pack${i + 1}.${e}`)) ? `assets/pack${i + 1}.${e}` : null; }).filter(Boolean);
@@ -417,7 +432,13 @@ http.createServer(async (req, res) => {
         const m = await ytJson(["meta", adId]); adTitle = adTitle || m.title; adSeconds = +m.length;
         if (m.size && m.size[0] / m.size[1] < 1.5) return send(res, 400, { error: `This ad is vertical (${m.size[0]}×${m.size[1]}) — a mobile/Shorts ad. Pick a 16:9 TV / CTV commercial.` });
       } catch {}
-      const job = newJob({ work, input: { brand: b.brand, product: b.product, adId, adTitle: adTitle || adId, adSeconds, logo: "assets/logo." + logoExt, packs, endcard: !!b.endcard, tagline: b.tagline, music: b.music !== false } });
+      let ownVideo = null;
+      if (b.videoUrl) {
+        const vid = vidOf(b.videoUrl); if (!vid) return send(res, 400, { error: "That content video link isn't a YouTube video link." });
+        try { const m = await ytJson(["meta", vid]); ownVideo = { id: vid, title: m.title, channel: m.channel, length: mmss(+m.length) }; }
+        catch (e) { return send(res, 400, { error: "Couldn't open that content video: " + e.message.slice(0, 120) }); }
+      }
+      const job = newJob({ work, candidates: ownVideo ? [ownVideo] : undefined, tried: 0, input: { brand: b.brand, product: b.product, adId, adTitle: adTitle || adId, adSeconds, logo: "assets/logo." + logoExt, packs, endcard: !!b.endcard, tagline: b.tagline, music: b.music !== false } });
       (async () => {
         try { const ok = await proposeMoments(job); job.status = ok ? "approve" : "failed"; if (!ok) say(job, "No video passed all three checks. Try a different product focus."); }
         catch (e) { job.status = "failed"; say(job, "Error: " + e.message); }
@@ -428,6 +449,17 @@ http.createServer(async (req, res) => {
     if (jm && jobs[jm[1]]) {
       const job = jobs[jm[1]], act = jm[3];
       if (!act) return send(res, 200, { status: job.status, step: job.step, log: job.log.slice(-40), proposal: job.proposal && { ...job.proposal, pick: { ...job.proposal.pick, visual: { ...job.proposal.pick.visual, still: undefined }, object: { ...job.proposal.pick.object, still: undefined } } }, output: job.output });
+      if (act === "grab" && req.method === "POST") {   // manual mode: capture an exact moment the user typed
+        const t = +(await body(req)).t, P = job.proposal;
+        if (!P || !(t >= 0) || t > P.video.length) return send(res, 400, { error: "Enter a time inside the video (0 – " + mmss(Math.floor(P?.video.length || 0)) + ")." });
+        const have = job.scan.find((x) => Math.abs(x.t - t) < 0.05); if (have) return send(res, 200, { i: job.scan.indexOf(have), t: have.t });
+        const dir = path.join(job.work, "scan", P.video.id); fs.mkdirSync(dir, { recursive: true });
+        await yt(["scan", P.video.id, dir, String(t)]);
+        const f = stillAt(dir, t); if (!fs.existsSync(f)) return send(res, 500, { error: "Couldn't capture that moment — try a slightly different time." });
+        const small = f.replace(".png", "_s.jpg"); await run("ffmpeg", ["-loglevel", "error", "-y", "-i", f, "-vf", "scale=640:-2", "-q:v", "4", small]);
+        job.scan.push({ t, file: f, small }); P.frames = job.scan.map((x) => x.t);
+        return send(res, 200, { i: job.scan.length - 1, t });
+      }
       if (act === "frame") { const s = job.scan?.[+u.searchParams.get("i")]; return s ? send(res, 200, fs.readFileSync(s.small), "image/jpeg") : send(res, 404, {}); }
       if (act === "still") { const k = u.searchParams.get("k"); const f = job.proposal?.pick?.[k]?.still; return f ? send(res, 200, fs.readFileSync(f), "image/png") : send(res, 404, {}); }
       if (act === "video" && job.output) { const st = fs.statSync(job.output); res.writeHead(200, { "Content-Type": "video/mp4", "Content-Length": st.size, "Content-Disposition": u.searchParams.get("dl") ? `attachment; filename="${path.basename(job.output)}"` : "inline" }); return fs.createReadStream(job.output).pipe(res); }
@@ -436,7 +468,7 @@ http.createServer(async (req, res) => {
         const e = (await body(req)).edits, P = job.proposal;
         if (e && P) {   // manual adjustments from the approval screen
           for (const k of ["visual", "object"]) if (e[k]) {
-            if (e[k].t != null) { const s = nearest(job.scan, +e[k].t); P.pick[k].t = s.t; P.pick[k].still = s.file; }
+            if (e[k].t != null) { const s = nearest(job.scan, +e[k].t); P.pick[k].t = s.t; P.pick[k].still = s.file; if (k === "visual" && Math.abs(P.pick.open_t - s.t) < 3) P.pick.open_t = nearest(job.scan, Math.max(2, s.t - 60)).t; }
             if (Array.isArray(e[k].box) && e[k].box.length === 4) P.pick[k].box = e[k].box.map((v) => Math.max(0, Math.min(1, +v)));
             if (ICONS.includes(e[k].icon)) P.pick[k].icon = e[k].icon;
           }
@@ -446,7 +478,7 @@ http.createServer(async (req, res) => {
         if (!P.pick.keywords.length) return send(res, 400, { error: "Add at least one keyword — it must be words copied exactly from the video title." });
         if (!P.pick.card) P.pick.card = P.pick.keywords[0].split(/\s+/).slice(0, 2).join("\n");
         job.status = "running";
-        (async () => { try { await produce(job); job.status = "done"; say(job, "Done — saved to " + job.output); } catch (e) { job.status = "failed"; say(job, "Error: " + e.message); } })();
+        queued(job, () => produce(job)).then(() => { job.status = "done"; say(job, "Done — saved to " + job.output); }).catch((e) => { job.status = "failed"; say(job, "Error: " + e.message); });
         return send(res, 200, { ok: true });
       }
       if (act === "next" && req.method === "POST") {
@@ -455,8 +487,9 @@ http.createServer(async (req, res) => {
         (async () => { try { const ok = await proposeMoments(job); job.status = ok ? "approve" : "failed"; if (!ok) say(job, "No more candidates passed all three checks."); } catch (e) { job.status = "failed"; say(job, "Error: " + e.message); } })();
         return send(res, 200, { ok: true });
       }
-      if (act === "open" && job.output && IS_WIN) { spawn("explorer.exe", ["/select,", job.output], { detached: true }); return send(res, 200, { ok: true }); }
+      if (act === "open" && job.output && IS_WIN && local) { spawn("explorer.exe", ["/select,", job.output], { detached: true }); return send(res, 200, { ok: true }); }
     }
+    if (jm) return send(res, 404, { error: "That job isn't on the server any more (the app was restarted). Start again." });
     send(res, 404, { error: "not found" });
   } catch (e) { send(res, 500, { error: e.message }); }
 }).listen(PORT, HOST, () => {

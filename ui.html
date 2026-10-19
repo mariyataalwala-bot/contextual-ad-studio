@@ -32,7 +32,7 @@ input:focus{outline:none;border-color:var(--p)}
 .log{background:#0E0F14;color:#C9CBE0;border-radius:14px;padding:14px;font:12.5px ui-monospace,Consolas,monospace;height:220px;overflow:auto;white-space:pre-wrap}
 .step{font-weight:600;margin-bottom:10px}.bar{display:flex;gap:10px;flex-wrap:wrap;margin-top:16px;align-items:center}
 .note{background:#FFF7E6;border:1px solid #FFE0A3;border-radius:12px;padding:10px 14px;font-size:13px;margin-top:12px}
-video{width:100%;border-radius:14px;background:#000}.hide{display:none}
+video{width:100%;border-radius:14px;background:#000}.hide{display:none!important}.jump{display:flex;gap:6px;padding:6px;background:#F1F1F6}.jump input{padding:7px 10px!important;font-size:13px}.jump button{padding:7px 12px;font-size:13px;white-space:nowrap}.im{touch-action:none}#failNote{background:#FFF0F0;border-color:#F5B5B5}
 .chips{display:flex;gap:16px;align-items:center;font-size:13px;margin-top:12px}
 @media (max-width:760px){.row,.checks{grid-template-columns:1fr}}
 </style></head>
@@ -41,44 +41,46 @@ video{width:100%;border-radius:14px;background:#000}.hide{display:none}
 <main>
   <section class="card hide" id="settings">
     <h2>Settings</h2><p class="s">Keys are stored only on this computer (settings.json in the app folder). Gemini's free tier works; Claude gives the best picks. With no key, the app runs in manual mode.</p>
-    <div class="row"><div><label>Gemini API key (free, from aistudio.google.com)</label><input type="password" id="gkey" placeholder="paste key"></div><div><label>Claude API key (optional, paid)</label><input type="password" id="key" placeholder="sk-ant-…"></div></div>
-    <div class="row" style="margin-top:12px"><div><label>YouTube Data API key (free, from console.cloud.google.com)</label><input type="password" id="ykey" placeholder="paste key"></div><div style="align-self:end"><span class="s" id="ytNow"></span></div></div>
-    <div class="row" style="margin-top:12px"><div><label>Use</label><select id="prov" style="width:100%;font:inherit;padding:11px 14px;border:1.5px solid var(--line);border-radius:12px"><option value="gemini">Gemini (free)</option><option value="claude">Claude</option><option value="none">Manual only (no AI)</option></select></div><div style="align-self:end"><button id="saveKey">Save</button> <span class="s" id="provNow"></span></div></div>
+    <div class="row"><div><label for="gkey">Gemini API key (free, from aistudio.google.com)</label><input type="password" id="gkey" placeholder="paste key"></div><div><label for="key">Claude API key (optional, paid)</label><input type="password" id="key" placeholder="sk-ant-…"></div></div>
+    <div class="row" style="margin-top:12px"><div><label for="ykey">YouTube Data API key (free, from console.cloud.google.com)</label><input type="password" id="ykey" placeholder="paste key"></div><div style="align-self:end"><span class="s" id="ytNow"></span></div></div>
+    <div class="row" style="margin-top:12px"><div><label for="prov">Use</label><select id="prov" style="width:100%;font:inherit;padding:11px 14px;border:1.5px solid var(--line);border-radius:12px"><option value="gemini">Gemini (free)</option><option value="claude">Claude</option><option value="none">Manual only (no AI)</option></select></div><div style="align-self:end"><button id="saveKey">Save</button> <span class="s" id="provNow"></span></div></div>
   </section>
 
   <section class="card" id="s1">
     <h2><span class="num">1</span>Brand</h2><p class="s">Type the brand and upload its real logo (and packshots for an optional end card). Assets are used unaltered.</p>
     <div class="row">
-      <div><label>Brand name *</label><input type="text" id="brand" placeholder="e.g. Amul"></div>
-      <div><label>Product focus (optional)</label><input type="text" id="product" placeholder="e.g. Amul Comfy thermal wear"></div>
+      <div><label for="brand">Brand name *</label><input type="text" id="brand" placeholder="e.g. Amul"></div>
+      <div><label for="product">Product focus (optional)</label><input type="text" id="product" placeholder="e.g. Amul Comfy thermal wear"></div>
     </div>
     <div class="row" style="margin-top:14px">
-      <div><label>Logo * (PNG/JPG)</label><input type="file" id="logo" accept="image/*"><div class="files" id="logoPrev"></div></div>
-      <div><label>Packshots (optional, for end card)</label><input type="file" id="packs" accept="image/*" multiple><div class="files" id="packPrev"></div></div>
+      <div><label for="logo">Logo * (PNG/JPG)</label><input type="file" id="logo" accept="image/*"><div class="files" id="logoPrev"></div></div>
+      <div><label for="packs">Packshots (optional, for end card)</label><input type="file" id="packs" accept="image/*" multiple><div class="files" id="packPrev"></div></div>
     </div>
     <div class="chips"><label style="margin:0"><input type="checkbox" id="music" checked> Music bed under the demo</label><label style="margin:0"><input type="checkbox" id="endcard"> End card with logo + packshots after the ad</label></div>
     <div class="bar"><button id="findAds">Find this brand's ads →</button><span id="adsMsg" class="s"></span></div>
   </section>
 
   <section class="card hide" id="s2">
-    <h2><span class="num">2</span>Which ad should we place?</h2><p class="s">Official ads found on YouTube. Pick one, or paste a link.</p>
+    <h2><span class="num">2</span>Which ad should we place?</h2><p class="s">The brand's official 16:9 TV / CTV commercials found on YouTube. Pick one, or paste a link.</p>
     <div class="ads" id="ads"></div>
-    <div class="row" style="margin-top:14px"><div><label>…or paste an ad link</label><input type="text" id="adUrl" placeholder="https://www.youtube.com/watch?v=…"></div></div>
+    <div class="row" style="margin-top:14px"><div><label for="adUrl">…or paste an ad link (16:9 TV / CTV ad)</label><input type="text" id="adUrl" placeholder="https://www.youtube.com/watch?v=…"></div>
+      <div><label for="videoUrl">Content video (optional) — your own pick</label><input type="text" id="videoUrl" placeholder="Leave empty and the app finds one"></div></div>
     <div class="bar"><button id="start" disabled>Find the perfect video →</button></div>
   </section>
 
   <section class="card hide" id="s3">
     <h2><span class="num">3</span>Working</h2>
     <div class="step" id="step">Starting…</div><div class="log" id="log"></div>
+    <div class="note hide" id="failNote"><b>Something went wrong.</b> <span id="failMsg"></span><div class="bar"><button id="restart">Start again</button></div></div>
   </section>
 
   <section class="card hide" id="s4">
     <h2><span class="num">4</span>Approve the three checks</h2><p class="s">Every check must genuinely match the product. Approve to capture and render (about 10 minutes), or try the next video.</p>
     <div class="titlebox" id="vtitle"></div>
     <div class="checks" style="margin-top:14px">
-      <div class="chk"><div class="im" id="imV"></div><div class="strip" id="stV"></div><div class="t"><h3>VISUAL IDENTIFY</h3><p id="vV"></p><p class="s" id="wV"></p><select class="ic" id="icV"></select></div></div>
-      <div class="chk"><div class="titlebox" id="kwT" style="min-height:120px"></div><div class="t"><h3>KEYWORDS</h3><p id="vK"></p><label>Keywords (comma-separated, copied from the title)</label><input type="text" id="kwIn"><label style="margin-top:8px">Card text (two short lines, use /)</label><input type="text" id="cardIn"></div></div>
-      <div class="chk"><div class="im" id="imO"></div><div class="strip" id="stO"></div><div class="t"><h3>OBJECT IDENTIFY</h3><p id="vO"></p><p class="s" id="wO"></p><select class="ic" id="icO"></select></div></div>
+      <div class="chk"><div class="im" id="imV"></div><div class="strip" id="stV"></div><div class="jump"><input type="text" id="tV" placeholder="exact time e.g. 8:07"><button class="ghost" id="gV">Use this time</button></div><div class="t"><h3>VISUAL IDENTIFY</h3><p id="vV"></p><p class="s" id="wV"></p><select class="ic" id="icV"></select></div></div>
+      <div class="chk"><div class="titlebox" id="kwT" style="min-height:120px"></div><div class="t"><h3>KEYWORDS</h3><p id="vK"></p><label for="kwIn">Keywords (comma-separated, copied from the title)</label><input type="text" id="kwIn"><label for="cardIn" style="margin-top:8px">Card text (two short lines, use /)</label><input type="text" id="cardIn"></div></div>
+      <div class="chk"><div class="im" id="imO"></div><div class="strip" id="stO"></div><div class="jump"><input type="text" id="tO" placeholder="exact time e.g. 8:05"><button class="ghost" id="gO">Use this time</button></div><div class="t"><h3>OBJECT IDENTIFY</h3><p id="vO"></p><p class="s" id="wO"></p><select class="ic" id="icO"></select></div></div>
     </div>
     <div class="note hide" id="manualNote"><b>Manual mode</b> — the AI is unavailable or out of free quota. Click a frame under each picture to choose the moment, drag on the picture to draw the box, and type the keywords. Only approve if all three genuinely match the product.</div>
     <div class="note hide" id="notes"></div>
@@ -93,11 +95,13 @@ video{width:100%;border-radius:14px;background:#000}.hide{display:none}
 </main>
 <script>
 const $=id=>document.getElementById(id); let job=null, adSel=null, adList=[], logoData=null, packData=[];
+const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const store={get:k=>{try{return localStorage.getItem(k)}catch{return null}},set:(k,v)=>{try{v==null?localStorage.removeItem(k):localStorage.setItem(k,v)}catch{}}};
 const api=async(u,b)=>{const r=await fetch(u,b?{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(b)}:{});const j=await r.json();if(!r.ok)throw new Error(j.error||r.statusText);return j;};
 const read=f=>new Promise(r=>{const fr=new FileReader();fr.onload=()=>r(fr.result);fr.readAsDataURL(f);});
 $('setBtn').onclick=()=>$('settings').classList.toggle('hide');
 $('saveKey').onclick=async()=>{const r=await api('/api/settings',{apiKey:$('key').value,geminiKey:$('gkey').value,youtubeKey:$('ykey').value,provider:$('prov').value});$('key').value='';$('gkey').value='';$('ykey').value='';$('provNow').textContent='Using: '+r.provider;const s=await api('/api/status');$('ytNow').textContent='YouTube search: '+s.youtube;$('settings').classList.add('hide');};
-api('/api/status').then(s=>{$('prov').value=s.provider;$('provNow').textContent='Using: '+s.provider;$('ytNow').textContent='YouTube search: '+s.youtube; if(s.keyFromEnv)$('setBtn').classList.add('hide'); else if(!s.hasKey)$('settings').classList.remove('hide'); if(!s.ffmpeg) alert('ffmpeg was not found. Install it once with: winget install Gyan.FFmpeg'); if(s.hosted){$('openF').classList.add('hide');}});
+api('/api/status').then(s=>{$('prov').value=s.provider;$('provNow').textContent='Using: '+s.provider;$('ytNow').textContent='YouTube search: '+s.youtube; if(s.keyFromEnv||!s.local){$('setBtn').classList.add('hide');$('openF').classList.add('hide');} else if(!s.hasKey)$('settings').classList.remove('hide'); if(!s.ffmpeg) alert('ffmpeg was not found. Install it once with: winget install Gyan.FFmpeg'); if(s.hosted){$('openF').classList.add('hide');}});
 $('logo').onchange=async e=>{logoData=await read(e.target.files[0]);$('logoPrev').innerHTML=`<img src="${logoData}">`;};
 $('packs').onchange=async e=>{packData=await Promise.all([...e.target.files].slice(0,2).map(read));$('packPrev').innerHTML=packData.map(d=>`<img src="${d}">`).join('');};
 $('findAds').onclick=async()=>{
@@ -106,36 +110,47 @@ $('findAds').onclick=async()=>{
   try{ const st=await api('/api/ads',{brand:$('brand').value.trim(),product:$('product').value.trim()}); let r;
     for(;;){ await new Promise(z=>setTimeout(z,2000)); r=await api('/api/ads/'+st.id); if(r.status==='failed') throw new Error(r.error); if(r.status==='done') break; }
     adList=r.ads;
-    $('ads').innerHTML=adList.length?adList.map((a,i)=>`<div class="ad" data-i="${i}"><img src="https://i.ytimg.com/vi/${a.id}/mqdefault.jpg"><div><b>${a.title}</b><span>${a.channel} · ${a.length}</span><br><span>${a.why||''}</span></div></div>`).join(''):'<p class="s">No official ads found — paste a link below.</p>';
+    $('ads').innerHTML=adList.length?adList.map((a,i)=>`<div class="ad" data-i="${i}"><img src="https://i.ytimg.com/vi/${esc(a.id)}/mqdefault.jpg" alt=""><div><b>${esc(a.title)}</b><span>${esc(a.channel)} · ${esc(a.length)}</span><br><span>${esc(a.why)}</span></div></div>`).join(''):'<p class="s">No official 16:9 TV ads found — paste a link below.</p>';
     document.querySelectorAll('.ad').forEach(el=>el.onclick=()=>{document.querySelectorAll('.ad').forEach(x=>x.classList.remove('sel'));el.classList.add('sel');adSel=adList[+el.dataset.i];$('start').disabled=false;});
     $('s2').classList.remove('hide'); $('adsMsg').textContent='';
   }catch(e){alert(e.message);$('adsMsg').textContent='';} $('findAds').disabled=false;
 };
 $('adUrl').oninput=()=>{ if($('adUrl').value.trim()){adSel=null;document.querySelectorAll('.ad').forEach(x=>x.classList.remove('sel'));} $('start').disabled=!(adSel||$('adUrl').value.trim()); };
 $('start').onclick=async()=>{
-  try{ const r=await api('/api/start',{brand:$('brand').value.trim(),product:$('product').value.trim(),adId:adSel?.id,adTitle:adSel?.title,adUrl:$('adUrl').value.trim(),logo:logoData,packs:packData,endcard:$('endcard').checked,music:$('music').checked});
-    job=r.id; ['s1','s2','s4','s5'].forEach(s=>$(s).classList.add('hide')); $('s3').classList.remove('hide'); poll();
-  }catch(e){alert(e.message);}
+  $('start').disabled=true;
+  try{ const r=await api('/api/start',{brand:$('brand').value.trim(),product:$('product').value.trim(),adId:adSel?.id,adTitle:adSel?.title,adUrl:$('adUrl').value.trim(),videoUrl:$('videoUrl').value.trim(),logo:logoData,packs:packData,endcard:$('endcard').checked,music:$('music').checked});
+    job=r.id; store.set('cadJob',job); showWorking(); poll();
+  }catch(e){alert(e.message);} $('start').disabled=false;
 };
+function showWorking(){ ['s1','s2','s4','s5'].forEach(s=>$(s).classList.add('hide')); $('failNote').classList.add('hide'); $('s3').classList.remove('hide'); }
+let pollFails=0;
 async function poll(){
-  const j=await api('/api/job/'+job); $('step').textContent=j.step; $('log').textContent=j.log.join('\n'); $('log').scrollTop=1e9;
+  let j;
+  try{ j=await api('/api/job/'+job); pollFails=0; }
+  catch(e){ if(/isn't on the server|not found/i.test(e.message)) { store.set('cadJob',null); return fail(e.message); }
+    $('step').textContent='Connection hiccup — retrying…'; setTimeout(poll, Math.min(15000, 2000*(++pollFails))); return; }
+  $('step').textContent=j.step; $('log').textContent=j.log.join('\n'); $('log').scrollTop=1e9;
   if(j.status==='approve'){ showProposal(j.proposal); return; }
-  if(j.status==='done'){ $('vid').src=`/api/job/${job}/video`; $('dl').href=`/api/job/${job}/video?dl=1`; $('s5').classList.remove('hide'); return; }
-  if(j.status==='failed') return;
+  if(j.status==='done'){ store.set('cadJob',null); $('vid').src=`/api/job/${job}/video`; $('dl').href=`/api/job/${job}/video?dl=1`; $('s5').classList.remove('hide'); $('s5').scrollIntoView({behavior:'smooth'}); return; }
+  if(j.status==='failed'){ store.set('cadJob',null); return fail(j.step); }
   setTimeout(poll,1500);
 }
+function fail(msg){ $('s3').classList.remove('hide'); $('failMsg').textContent=msg||''; $('failNote').classList.remove('hide'); }
+$('restart').onclick=()=>{ store.set('cadJob',null); location.reload(); };
+// resume a job after a refresh
+(async()=>{ const id=store.get('cadJob'); if(!id) return; job=id; showWorking(); poll(); })();
 let ED = null, PROP = null;
 // picture with a box you can redraw by dragging
 function boxImg(el, k) {
   const v = ED[k];
   el.innerHTML = `<img draggable="false" src="/api/job/${job}/still?k=${k}&_=${Date.now()}"><div class="box" style="left:${v.box[0]*100}%;top:${v.box[1]*100}%;width:${v.box[2]*100}%;height:${v.box[3]*100}%"></div>`;
   let st = null; const bx = el.querySelector('.box');
-  el.onmousedown = e => { const r = el.getBoundingClientRect(); st = [(e.clientX-r.left)/r.width, (e.clientY-r.top)/r.height]; e.preventDefault(); };
-  el.onmousemove = e => { if (!st) return; const r = el.getBoundingClientRect();
+  el.onpointerdown = e => { const r = el.getBoundingClientRect(); st = [(e.clientX-r.left)/r.width, (e.clientY-r.top)/r.height]; el.setPointerCapture?.(e.pointerId); e.preventDefault(); };
+  el.onpointermove = e => { if (!st) return; const r = el.getBoundingClientRect();
     const x = Math.min(1, Math.max(0, (e.clientX-r.left)/r.width)), y = Math.min(1, Math.max(0, (e.clientY-r.top)/r.height));
     const b = [Math.min(st[0],x), Math.min(st[1],y), Math.abs(x-st[0]), Math.abs(y-st[1])];
     if (b[2] > 0.02 && b[3] > 0.02) { v.box = b; Object.assign(bx.style, {left:b[0]*100+'%', top:b[1]*100+'%', width:b[2]*100+'%', height:b[3]*100+'%'}); } };
-  el.onmouseup = el.onmouseleave = () => { st = null; };
+  el.onpointerup = el.onpointercancel = () => { st = null; };
 }
 // strip of scanned frames; clicking one picks that moment
 function strip(el, k, frames) {
@@ -153,27 +168,43 @@ function renderTitle(title, kws) {
 function showProposal(p) {
   PROP = p; const v = p.pick;
   ED = { visual:{t:v.visual.t, box:v.visual.box.slice(), icon:v.visual.icon}, object:{t:v.object.t, box:v.object.box.slice(), icon:v.object.icon} };
-  $('vtitle').innerHTML = `<b>${p.video.title}</b><br>${p.video.channel} · ${Number(p.video.views).toLocaleString()} views · search typed: “${p.query}”`;
+  $('vtitle').innerHTML = `<b>${esc(p.video.title)}</b><br>${esc(p.video.channel)} · ${Number(p.video.views).toLocaleString()} views · <a style="color:#9BB3FF" target="_blank" rel="noopener" href="https://youtu.be/${esc(p.video.id)}">watch on YouTube</a> · search typed: “${esc(p.query)}”`;
   boxImg($('imV'),'visual'); boxImg($('imO'),'object'); strip($('stV'),'visual',p.frames); strip($('stO'),'object',p.frames);
   [['icV','visual'],['icO','object']].forEach(([id,k]) => { $(id).innerHTML = p.icons.map(n => `<option ${n===ED[k].icon?'selected':''}>${n}</option>`).join(''); $(id).onchange = () => ED[k].icon = $(id).value; });
-  $('vV').innerHTML = `<b>${v.visual.t}s</b> — ${v.visual.what || 'pick the moment'}`; $('wV').textContent = v.visual.why || '';
-  $('vO').innerHTML = `<b>${v.object.t}s</b> — ${v.object.what || 'pick the object'}`; $('wO').textContent = v.object.why || '';
+  $('vV').innerHTML = `<b>${v.visual.t}s</b> — ${esc(v.visual.what || 'pick the moment')}`; $('wV').textContent = v.visual.why || '';
+  $('vO').innerHTML = `<b>${v.object.t}s</b> — ${esc(v.object.what || 'pick the object')}`; $('wO').textContent = v.object.why || '';
   $('kwIn').value = v.keywords.join(', '); $('cardIn').value = (v.card || '').split(/\\n|\n/).join(' / ');
   renderTitle(p.video.title, v.keywords);
   $('kwIn').oninput = () => renderTitle(p.video.title, $('kwIn').value.split(',').map(x => x.trim()).filter(Boolean));
-  $('vK').innerHTML = v.keywords.length ? v.keywords.map(k => `<span class="kw">${k}</span>`).join('') : '<span class="s">Type words from the title below.</span>';
+  $('vK').innerHTML = v.keywords.length ? v.keywords.map(k => `<span class="kw">${esc(k)}</span>`).join('') : '<span class="s">Type words from the title below.</span>';
   $('manualNote').classList.toggle('hide', !p.manual);
   if (v.notes) { $('notes').textContent = 'Note: ' + v.notes; $('notes').classList.remove('hide'); } else $('notes').classList.add('hide');
   $('s4').classList.remove('hide');
 }
+// manual mode: type an exact time (8:07 or 487) and the app captures that frame
+const toSec = v => { v = String(v).trim(); if (!v) return NaN; return v.includes(':') ? v.split(':').reduce((a, x) => a * 60 + Number(x), 0) : Number(v); };
+[['gV','tV','visual','imV','stV','vV'],['gO','tO','object','imO','stO','vO']].forEach(([b,inp,k,im,stp,lab]) => $(b).onclick = async () => {
+  const t = toSec($(inp).value); if (!(t >= 0)) return alert('Type a time like 8:07');
+  $(b).disabled = true; $(b).textContent = 'Capturing…';
+  try { const r = await api(`/api/job/${job}/grab`, {t}); PROP.frames[r.i] = r.t;
+    const src = `/api/job/${job}/frame?i=${r.i}&_=${Date.now()}`;
+    $(stp).insertAdjacentHTML('beforeend', `<img src="${src}" title="${r.t}s" data-t="${r.t}">`);
+    strip($('stV'),'visual',PROP.frames); strip($('stO'),'object',PROP.frames);
+    ED[k].t = r.t; $(im).querySelector('img').src = src; $(lab).innerHTML = `<b>${r.t}s</b> — chosen by you`;
+    $(stp).querySelectorAll('img').forEach(x => x.classList.toggle('on', +x.dataset.t === r.t));
+  } catch (e) { alert(e.message); }
+  $(b).disabled = false; $(b).textContent = 'Use this time';
+});
 $('approve').onclick = async () => {
   const edits = { visual:ED.visual, object:ED.object,
     keywords: $('kwIn').value.split(',').map(x => x.trim()).filter(Boolean),
     card: $('cardIn').value.split('/').map(x => x.trim()).filter(Boolean).join('\n') };
-  try { await api(`/api/job/${job}/approve`, {edits}); $('s4').classList.add('hide'); poll(); } catch (e) { alert(e.message); }
+  $('approve').disabled = true;
+  try { await api(`/api/job/${job}/approve`, {edits}); store.set('cadJob', job); $('s4').classList.add('hide'); poll(); } catch (e) { alert(e.message); }
+  $('approve').disabled = false;
 };
-$('next').onclick=async()=>{await api(`/api/job/${job}/next`,{});$('s4').classList.add('hide');poll();};
+$('next').onclick=async()=>{ $('next').disabled=true; try{ await api(`/api/job/${job}/next`,{}); $('s4').classList.add('hide'); poll(); }catch(e){ alert(e.message); } $('next').disabled=false; };
 $('openF').onclick=()=>api(`/api/job/${job}/open`,{});
-$('again').onclick=()=>location.reload();
+$('again').onclick=()=>{ store.set('cadJob',null); location.reload(); };
 </script>
 </body></html>

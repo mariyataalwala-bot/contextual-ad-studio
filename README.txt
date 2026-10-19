@@ -20,6 +20,19 @@ HOW TO USE
    It is saved in  D:\contextual-ads\<brand>\<brand>-contextual-ad.mp4
    along with TIMING.md (sources and reasons).
 
+SHARE WITH YOUR TEAM
+- Double-click share.bat, choose a password, and send the link it shows
+  (https://….trycloudflare.com) with the password. They sign in with any username.
+- You on this PC never need the password. Settings can only be changed on this PC.
+- The link changes every time you start sharing; keep the window open while it's in use.
+- Only one video renders at a time; others wait in a queue.
+
+MANUAL MODE (when the free AI quota is used up)
+- On the approval screen: click a small frame, or type an exact time (e.g. 8:07)
+  and press "Use this time"; drag on the picture to draw the box; type keywords
+  copied exactly from the video title.
+- You can also paste your own content video link in step 2.
+
 NEEDS: Node.js, Python, ffmpeg (winget install Gyan.FFmpeg), internet.
 Each video uses a few Claude API calls (vision): usually well under a dollar.
 
