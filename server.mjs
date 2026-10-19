@@ -41,7 +41,8 @@ const loadSettings = () => { try { return JSON.parse(fs.readFileSync(SETTINGS, "
 const geminiKey = () => loadSettings().geminiKey || process.env.GEMINI_API_KEY;
 const claudeKey = () => loadSettings().apiKey || process.env.ANTHROPIC_API_KEY;
 const provider = () => { const p = loadSettings().provider || process.env.AI_PROVIDER; if (p) return p; return geminiKey() ? "gemini" : claudeKey() ? "claude" : "none"; };
-const GEMINI_MODEL = () => loadSettings().geminiModel || process.env.GEMINI_MODEL || "gemini-flash-latest";
+const GEMINI_MODELS = () => [...new Set([loadSettings().geminiModel || process.env.GEMINI_MODEL, "gemini-flash-latest", "gemini-3.8-flash", "gemini-3.7-flash", "gemini-3.6-flash", "gemini-3.5-flash", "gemini-3-flash-preview", "gemini-flash-lite-latest", "gemini-3.5-flash-lite"].filter(Boolean))];
+const geminiOut = new Map();   // model → time its quota is expected back
 function claude() {
   const key = claudeKey();
   if (!key) throw new Error("Add your Claude API key in Settings first.");
@@ -63,17 +64,28 @@ async function askGemini(system, text, schema, images) {
     parts.push({ inlineData: { mimeType: im.file.toLowerCase().endsWith(".png") ? "image/png" : "image/jpeg", data: fs.readFileSync(im.file).toString("base64") } });
   }
   parts.push({ text });
-  for (let attempt = 0; ; attempt++) {
-    try {
-      const r = await ai.models.generateContent({ model: GEMINI_MODEL(), contents: [{ role: "user", parts }],
-        config: { systemInstruction: system, responseMimeType: "application/json", responseJsonSchema: schema } });
-      return JSON.parse(r.text);
-    } catch (e) {
-      const msg = String(e.message || e); const busy = /429|503|RESOURCE_EXHAUSTED|UNAVAILABLE|overloaded/i.test(msg);
-      if (busy && attempt < 3) { await sleep(15000 * (attempt + 1)); continue; }   // free tier: wait and retry
-      throw new AIError(/429|RESOURCE_EXHAUSTED/.test(msg) ? "Gemini free quota used up for now — switching to manual mode." : "Gemini: " + msg.slice(0, 200));
+  let last = "";
+  for (const model of GEMINI_MODELS()) {
+    if ((geminiOut.get(model) || 0) > Date.now()) continue;
+    for (let attempt = 0; attempt < 3; attempt++) {
+      try {
+        const r = await ai.models.generateContent({ model, contents: [{ role: "user", parts }],
+          config: { systemInstruction: system, responseMimeType: "application/json", responseJsonSchema: schema, httpOptions: { timeout: 90000 } } });
+        return JSON.parse(r.text);
+      } catch (e) {
+        last = String(e.message || e);
+        if (/429|RESOURCE_EXHAUSTED/i.test(last)) {   // quota: a daily limit → skip this model for hours; a per-minute limit → one short wait, then the next model
+          if (/PerDay|per.?day|daily/i.test(last) || attempt > 0) { geminiOut.set(model, Date.now() + (/PerDay|per.?day|daily/i.test(last) ? 3 * 3600e3 : 120e3)); break; }
+          await sleep(5000); continue;
+        }
+        if (/404|not found|no longer available|not supported/i.test(last)) { geminiOut.set(model, Date.now() + 24 * 3600e3); break; }
+        if (/503|UNAVAILABLE|overloaded|timed? ?out|aborted/i.test(last)) { geminiOut.set(model, Date.now() + 300e3); break; }   // busy/slow model → next one
+        if (/JSON/.test(last) && attempt < 2) continue;
+        throw new AIError("Gemini: " + last.slice(0, 200));
+      }
     }
   }
+  throw new AIError("All free Gemini models are out of quota for now (it resets daily, ~12:30 pm IST). Add a Claude key in Settings, or tick 'Let me review the picks' to choose them yourself.");
 }
 async function askClaude(system, text, schema, images, effort) {
   const content = [];
@@ -254,21 +266,21 @@ async function proposeMoments(job) {
         const plan = await ask("You plan YouTube searches for contextual ad placement.", `${RULES}\n\nBrand: ${brand}\nProduct: ${product || "(infer from the ad)"}\nAd being placed: ${adTitle}\n\nGive 6 YouTube search queries likely to surface premium, professional videos where this product category is clearly on screen (recipes, routines, tutorials, reviews...). Also state the product category in a few words.`,
           { type: "object", additionalProperties: false, required: ["category", "queries"], properties: { category: { type: "string" }, queries: { type: "array", items: { type: "string" } } } }, [], "medium");
         job.category = plan.category; queries = plan.queries.slice(0, 6);
-      } catch (e) { if (!(e instanceof AIError)) throw e; job.aiDown = true; say(job, e.message); }
+      } catch (e) { if (!(e instanceof AIError)) throw e; job.aiDown = true; job.aiError = e.message; say(job, e.message); }
     }
     if (!queries) { const p = product || brand; job.category = p; queries = [`${p} recipe`, `${p} review`, `how to use ${p}`, p]; }
     say(job, `Searching YouTube: ${queries.map((q) => `“${q}”`).join(", ")}`);
     try { for (const r of await ytJson(["searchjson", queries.join("||"), "10"])) if (!seen.has(r.id)) seen.set(r.id, r); }
     catch (e) { console.error("video search failed:", e.message); say(job, "YouTube search failed: " + e.message.slice(0, 160)); }
     const pool = [...seen.values()].filter((r) => { const s = lenSec(r.length); return s >= 60 && s <= 1800; });
-    job.candidates = pool.slice(0, 8);
+    job.candidates = pool.slice(0, 5);
     if (!job.aiDown) {
       try {
         say(job, `Ranking ${pool.length} candidate videos…`);
-        const ranked = await ask("You choose premium YouTube videos for contextual ad placement.", `${RULES}\n\nBrand: ${brand}. Product category: ${job.category}.\nCandidates (JSON):\n${JSON.stringify(pool)}\n\nPick up to 5 candidates, best first: professional channels, the product category clearly the subject (it should appear on screen), titles containing product-category words.`,
+        const ranked = await ask("You choose premium YouTube videos for contextual ad placement.", `${RULES}\n\nBrand: ${brand}. Product category: ${job.category}.\nCandidates (JSON):\n${JSON.stringify(pool)}\n\nPick up to 4 candidates, best first: professional channels, the product category clearly the subject (it should appear on screen), titles containing product-category words.`,
           { type: "object", additionalProperties: false, required: ["ids"], properties: { ids: { type: "array", items: { type: "string" } } } }, [], "high");
         const c = ranked.ids.map((id) => seen.get(id)).filter(Boolean); if (c.length) job.candidates = c;
-      } catch (e) { if (!(e instanceof AIError)) throw e; job.aiDown = true; say(job, e.message); }
+      } catch (e) { if (!(e instanceof AIError)) throw e; job.aiDown = true; job.aiError = e.message; say(job, e.message); }
     }
     job.tried = 0;
   }
@@ -300,7 +312,7 @@ async function proposeMoments(job) {
               keywords: { type: "array", items: { type: "string" } }, card: { type: "string" }, query: { type: "string" }, notes: { type: "string" } } },
           stills.map((s) => ({ label: `t=${s.t}s`, file: s.small })), "high");
         if (!pick.accept) { say(job, "  rejected: " + pick.reason); continue; }
-      } catch (e) { if (!(e instanceof AIError)) throw e; job.aiDown = true; pick = null; say(job, e.message); }
+      } catch (e) { if (!(e instanceof AIError)) throw e; job.aiDown = true; job.aiError = e.message; pick = null; say(job, e.message); }
     }
     const manual = !pick;
     if (manual) {   // starting point for manual picking
@@ -315,19 +327,19 @@ async function proposeMoments(job) {
     pick.keywords = (pick.keywords || []).filter((k) => k && tl.includes(k.toLowerCase())).slice(0, 3);
     if (!manual && !pick.keywords.length) { say(job, "  rejected: no exact title keywords"); continue; }
     const c = (v) => Math.max(0, Math.min(1, v));
-    for (const k of ["visual", "object"]) {
+    if (!manual && !job.aiDown) say(job, "  AI is placing both boxes…");
+    await Promise.all(["visual", "object"].map(async (k) => {
       pick[k].box = [0.2, 0.2, 0.6, 0.6];
-      if (manual || job.aiDown) continue;
+      if (manual || job.aiDown) return;
       const g = pick[k].still.replace(".png", "_grid.jpg");
       await run("ffmpeg", ["-loglevel", "error", "-y", "-i", pick[k].still, "-vf", "drawgrid=w=iw/10:h=ih/10:t=1:c=yellow@0.8", "-q:v", "3", g]);
       try {
-        say(job, `  AI is placing the ${k} box…`);
         const b = await ask("You place a highlight box on a video frame.", `Draw a tight box around: ${pick[k].what}.\nThe yellow grid lines are every 10% of width and height. Return the box as fractions of the frame: x, y (top-left) and w, h, all between 0 and 1. Keep it on the subject; leave out on-screen captions where possible.`,
           { type: "object", additionalProperties: false, required: ["x", "y", "w", "h"], properties: { x: { type: "number" }, y: { type: "number" }, w: { type: "number" }, h: { type: "number" } } },
           [{ label: `${k} frame`, file: g }], "medium");
         pick[k].box = [c(b.x), c(b.y), Math.min(c(b.w), 1 - c(b.x)), Math.min(c(b.h), 1 - c(b.y))];
-      } catch (e) { if (!(e instanceof AIError)) throw e; job.aiDown = true; say(job, e.message); }
-    }
+      } catch (e) { if (!(e instanceof AIError)) throw e; job.aiDown = true; job.aiError = e.message; say(job, e.message); }
+    }));
     // the search query must show this video on the first screen
     let q = pick.query || titleQuery(meta.title);
     for (const tryQ of [q, titleQuery(meta.title)]) {
@@ -369,7 +381,7 @@ async function produce(job) {
   await run(PY, [path.join(PIPE, "scripts", "build_ad.py"), W]);
   say(job, "Rendering (about 5 minutes)…");
   const raw = path.join(W, "out_noaudio.mp4");
-  await run("node", [path.join(PIPE, "scripts", "render.js"), path.join(W, "dist", "contextual-ad.html"), raw, "25", process.env.RENDER_SUBFRAMES || "4"], { log: (l) => { const m = l.match(/frame (\d+) \/ (\d+)/); if (m) job.step = `Rendering… ${Math.round((100 * m[1]) / m[2])}%`; } });
+  await run("node", [path.join(PIPE, "scripts", "render.js"), path.join(W, "dist", "contextual-ad.html"), raw, "25", job.input.hq ? "4" : (process.env.RENDER_SUBFRAMES || "1")], { log: (l) => { const m = l.match(/frame (\d+) \/ (\d+)/); if (m) job.step = `Rendering… ${Math.round((100 * m[1]) / m[2])}%`; } });
   say(job, "Adding music and the ad's sound…");
   const final = path.join(W, `${slug(I.brand)}-contextual-ad.mp4`);
   const args = [path.join(PIPE, "scripts", "mux.py"), raw, fs.existsSync(path.join(W, "ad_audio.webm")) ? path.join(W, "ad_audio.webm") : "none", final];
@@ -438,9 +450,20 @@ http.createServer(async (req, res) => {
         try { const m = await ytJson(["meta", vid]); ownVideo = { id: vid, title: m.title, channel: m.channel, length: mmss(+m.length) }; }
         catch (e) { return send(res, 400, { error: "Couldn't open that content video: " + e.message.slice(0, 120) }); }
       }
-      const job = newJob({ work, candidates: ownVideo ? [ownVideo] : undefined, tried: 0, input: { brand: b.brand, product: b.product, adId, adTitle: adTitle || adId, adSeconds, logo: "assets/logo." + logoExt, packs, endcard: !!b.endcard, tagline: b.tagline, music: b.music !== false } });
+      const job = newJob({ work, candidates: ownVideo ? [ownVideo] : undefined, tried: 0, input: { review: !!b.review, hq: !!b.hq, brand: b.brand, product: b.product, adId, adTitle: adTitle || adId, adSeconds, logo: "assets/logo." + logoExt, packs, endcard: !!b.endcard, tagline: b.tagline, music: b.music !== false } });
       (async () => {
-        try { const ok = await proposeMoments(job); job.status = ok ? "approve" : "failed"; if (!ok) say(job, "No video passed all three checks. Try a different product focus."); }
+        try {
+          const ok = await proposeMoments(job);
+          if (!ok) { job.status = "failed"; say(job, "No video passed all three checks. Try a different product focus, or paste a content video link."); return; }
+          if (job.input.review || job.proposal.manual) {
+            if (!job.input.review && job.proposal.manual) { job.status = "failed"; say(job, job.aiError || "The AI couldn't pick the moments right now. Tick 'Let me review the picks' to choose them yourself."); return; }
+            job.status = "approve"; return;
+          }
+          const P = job.proposal; if (!P.pick.card) P.pick.card = P.pick.keywords[0].split(/\s+/).slice(0, 2).join("\n");
+          say(job, `Picked: “${P.video.title}” — visual ${P.pick.visual.t}s (${P.pick.visual.what}), object ${P.pick.object.t}s (${P.pick.object.what}), keywords ${P.pick.keywords.join(", ")}`);
+          job.status = "running";
+          await queued(job, () => produce(job)); job.status = "done"; say(job, "Done — saved to " + job.output);
+        }
         catch (e) { job.status = "failed"; say(job, "Error: " + e.message); }
       })();
       return send(res, 200, { id: job.id });

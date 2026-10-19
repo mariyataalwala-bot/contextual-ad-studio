@@ -32,9 +32,12 @@ C['ad']['frames'] = len(list((dist / 'ad').glob('*.jpg'))); C['ad']['seconds'] =
 
 # AI check list thumbnails: crop around each identify box (280x256 aspect), from the freeze frame
 def thumb(src, box, out):
+    vw, vh = size(src)   # measure this frame itself
     x, y, w, h = box[0] * vw, box[1] * vh, box[2] * vw, box[3] * vh
     cx, cy = x + w / 2, y + h / 2; tw = max(w, h * 280 / 256) * 0.9; th = tw * 256 / 280
-    tw, th = min(tw, vw), min(th, vh); x0 = min(max(0, cx - tw / 2), vw - tw); y0 = min(max(0, cy - th / 2), vh - th)
+    if tw > vw: tw = vw; th = tw * 256 / 280
+    if th > vh: th = vh; tw = th * 280 / 256
+    x0 = min(max(0, cx - tw / 2), vw - tw); y0 = min(max(0, cy - th / 2), vh - th)
     subprocess.run(['ffmpeg', '-loglevel', 'error', '-y', '-i', str(src), '-vf', f'crop={int(tw)}:{int(th)}:{int(x0)}:{int(y0)},scale=280:256', '-q:v', '2', str(out)], check=True)
 thumb(dist / 'visual' / '036.jpg', C['visual'].get('thumbBox', C['visual']['box']), dist / 'thumb_visual.jpg')
 thumb(dist / 'object' / '036.jpg', C['object'].get('thumbBox', C['object']['box']), dist / 'thumb_object.jpg')

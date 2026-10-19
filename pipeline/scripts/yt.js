@@ -112,6 +112,23 @@ const [cmd,...A]=process.argv.slice(2);
    const tg=R.results.findIndex(r=>r.target); console.log(JSON.stringify(R.watch,null,1)); console.log('target result index:',tg);
    if(tg<0||R.results[tg].thumb[1]>760){ console.log('ERROR: the chosen video is not on the first screen of results for this query — pick a more specific query (e.g. words from its title) and rerun pages.'); process.exitCode=2; }
  }
+ else if(cmd==='adrec'){   // record the ad in real time: video + sound together (much faster than frame-by-frame)
+   const [id,out]=A; const c=await ctx(b,{width:1920,height:1080}); const p=await c.newPage();
+   await p.goto('https://www.youtube.com/watch?v='+id,{waitUntil:'domcontentloaded',timeout:60000}); await p.waitForSelector('#movie_player video',{timeout:30000}); await p.waitForTimeout(3000); await skipAds(p);
+   // ask for the highest quality the player offers
+   await p.evaluate(()=>{try{const mp=document.querySelector('#movie_player'); const q=mp.getAvailableQualityLevels?.()||[]; const best=q.find(x=>/hd1080|hd720/.test(x))||q[0]; if(best){mp.setPlaybackQualityRange?.(best,best); mp.setPlaybackQuality?.(best);}}catch(e){}});
+   await p.waitForTimeout(1500);
+   const r=await p.evaluate(()=>new Promise(async(res)=>{
+     const v=document.querySelector('#movie_player video'); v.pause(); v.currentTime=0; await new Promise(r=>v.addEventListener('seeked',r,{once:true}));
+     await new Promise(r=>{ if(v.readyState>=3) r(); else v.addEventListener('canplay',r,{once:true}); setTimeout(r,8000); });
+     v.muted=false; v.volume=1; const st=v.captureStream();
+     const types=['video/webm;codecs=vp9,opus','video/webm;codecs=vp8,opus','video/webm'];
+     const rec=new MediaRecorder(st,{mimeType:types.find(t=>MediaRecorder.isTypeSupported(t)),videoBitsPerSecond:12000000,audioBitsPerSecond:192000}); const ch=[];
+     rec.ondataavailable=e=>ch.push(e.data);
+     rec.onstop=async()=>{const buf=new Uint8Array(await new Blob(ch).arrayBuffer()); let s=''; for(let i=0;i<buf.length;i+=32768) s+=String.fromCharCode.apply(null,buf.subarray(i,i+32768)); res({b64:btoa(s),dur:v.duration,w:v.videoWidth,h:v.videoHeight});};
+     rec.start(250); await v.play(); v.addEventListener('ended',()=>rec.stop(),{once:true}); setTimeout(()=>{if(rec.state!=='inactive') rec.stop();},(v.duration+3)*1000);}));
+   fs.writeFileSync(out,Buffer.from(r.b64,'base64')); console.log('recorded',out,'duration',r.dur,'size',r.w+'x'+r.h);
+ }
  else if(cmd==='audio'){
    const [id,out]=A; const c=await ctx(b,{width:1280,height:800}); const p=await c.newPage();
    await p.goto('https://www.youtube.com/watch?v='+id,{waitUntil:'domcontentloaded',timeout:60000}); await p.waitForSelector('#movie_player video',{timeout:30000}); await p.waitForTimeout(4000); await skipAds(p);
