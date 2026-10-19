@@ -50,13 +50,13 @@ function claude() {
 }
 class AIError extends Error {}
 // One structured-JSON call. Images are [{label, file}] JPEG/PNG paths.
-async function ask(system, text, schema, images = [], effort = "high") {
+async function ask(system, text, schema, images = [], effort = "high") {   // effort "medium" + no images → fast lite model first
   const p = provider();
   if (p === "none") throw new AIError("No AI key set — using manual mode.");
-  try { return p === "gemini" ? await askGemini(system, text, schema, images) : await askClaude(system, text, schema, images, effort); }
+  try { return p === "gemini" ? await askGemini(system, text, schema, images, !images.length && effort === "medium") : await askClaude(system, text, schema, images, effort); }
   catch (e) { if (e instanceof AIError) throw e; throw new AIError(e.message || String(e)); }
 }
-async function askGemini(system, text, schema, images) {
+async function askGemini(system, text, schema, images, fast = false) {
   const ai = new GoogleGenAI({ apiKey: geminiKey() });
   const parts = [];
   for (const im of images) {
@@ -65,7 +65,8 @@ async function askGemini(system, text, schema, images) {
   }
   parts.push({ text });
   let last = "";
-  for (const model of GEMINI_MODELS()) {
+  const models = fast ? [...new Set(["gemini-flash-lite-latest", "gemini-3.5-flash-lite", ...GEMINI_MODELS()])] : GEMINI_MODELS();
+  for (const model of models) {
     if ((geminiOut.get(model) || 0) > Date.now()) continue;
     for (let attempt = 0; attempt < 3; attempt++) {
       try {
@@ -225,6 +226,7 @@ const RULES = `House rules for Mediakart contextual-ad demos:
   Keywords = exact phrases from the video's title about the product category.
   Object Identify = the product itself or its direct equivalent clearly visible (bowl of chips, cream tube or jar, teacup...).
 - No stretches: never a bathrobe for a moisturiser, a rival's drink for chips, a breakfast plate for a snack, or "home tour" as a keyword.
+- Visual Identify must show the product category itself on screen (the food being cooked/served, the product being used). Never a presenter's face or a talking-head shot, unless the product is worn on the face (skincare, make-up, eyewear).
 - If the clearest object is a competitor's product, it may be used but must be flagged in "notes".
 - Never invent claims, numbers or slogans.`;
 const ICONS = ["mesh", "pan", "chip", "bowl", "plate", "tube", "jar", "bottle", "cup", "shirt", "people", "hand", "phone", "shoe", "car"];
@@ -306,13 +308,13 @@ async function proposeMoments(job) {
     let meta; try { meta = await ytJson(["meta", cand.id]); } catch { continue; }
     if (meta.size && Math.min(...meta.size) < 480) { say(job, "  skipped: low resolution"); continue; }
     const L = +meta.length, ts = [];
-    for (let i = 0; i < 16; i++) ts.push(+(Math.max(2, L * 0.03) + (L * 0.9 - Math.max(2, L * 0.03)) * i / 15).toFixed(1));
+    for (let i = 0; i < 12; i++) ts.push(+(Math.max(2, L * 0.03) + (L * 0.9 - Math.max(2, L * 0.03)) * i / 11).toFixed(1));
     const sdir = path.join(W, "scan", cand.id); fs.mkdirSync(sdir, { recursive: true });
-    say(job, "  scanning 16 frames…");
-    const parts = [ts.filter((_, i) => i % 3 === 0), ts.filter((_, i) => i % 3 === 1), ts.filter((_, i) => i % 3 === 2)];
+    say(job, "  scanning 12 frames…");
+    const parts = [0, 1, 2, 3].map((k) => ts.filter((_, i) => i % 4 === k));
     await Promise.all(parts.map((p) => yt(["scan", cand.id, sdir, ...p.map(String)]).catch(() => {})));
     const stills = ts.map((t) => ({ t, file: stillAt(sdir, t) })).filter((s) => fs.existsSync(s.file));
-    if (stills.length < 8) { say(job, "  skipped: could not capture frames"); continue; }
+    if (stills.length < 7) { say(job, "  skipped: could not capture frames"); continue; }
     for (const s of stills) { const j = s.file.replace(".png", "_s.jpg"); await run("ffmpeg", ["-loglevel", "error", "-y", "-i", s.file, "-vf", "scale=640:-2", "-q:v", "4", j]); s.small = j; }
     let pick = null;
     if (!job.aiDown) {
@@ -328,6 +330,17 @@ async function proposeMoments(job) {
               keywords: { type: "array", items: { type: "string" } }, card: { type: "string" }, query: { type: "string" }, notes: { type: "string" } } },
           stills.map((s) => ({ label: `t=${s.t}s`, file: s.small })), "high");
         if (!pick.accept) { say(job, "  rejected: " + pick.reason); continue; }
+        const faceOk = /skin|face|make.?up|cosmetic|serum|cream|lotion|sunscreen|eyewear|glasses|lipstick|beauty/i.test(job.category + " " + (product || ""));
+        if (!faceOk && (pick.visual.icon === "mesh" || /(face|presenter|chef|host|talking|man|woman|person|smil)/i.test(pick.visual.what))) {
+          const alt = stills.filter((x) => Math.abs(x.t - pick.visual.t) > 0.01);
+          say(job, "  visual was a person, not the product — asking again…");
+          try {
+            const v2 = await ask("You pick ONE frame for a contextual-ad Visual Identify.", `Product category: ${job.category}. From the labelled frames, pick the frame where the product category itself (e.g. the food being cooked or served, the product in use) fills the picture best. NOT a face or presenter. Times must be among the labels.`,
+              { type: "object", additionalProperties: false, required: ["t", "what", "icon"], properties: { t: { type: "number" }, what: { type: "string" }, icon: { type: "string", enum: ICONS.filter((x) => x !== "mesh") } } },
+              alt.map((x) => ({ label: `t=${x.t}s`, file: x.small })), "high");
+            pick.visual = { ...pick.visual, t: v2.t, what: v2.what, icon: v2.icon, why: "the product category on screen" };
+          } catch (e) { if (!(e instanceof AIError)) throw e; }
+        }
       } catch (e) { if (!(e instanceof AIError)) throw e; job.aiDown = true; job.aiError = e.message; pick = null; say(job, e.message); }
     }
     const manual = !pick;
@@ -389,7 +402,8 @@ async function produce(job) {
   };
   if (I.adSeconds) cfg.ad.seconds = Math.min(45, I.adSeconds);
   fs.writeFileSync(path.join(W, "config.json"), JSON.stringify(cfg, null, 1));
-  say(job, "Capturing YouTube pages, the three moments and the ad (about 3–6 minutes)…");
+  if (job.adReady) { say(job, "Finishing the ad recording…"); await job.adReady; }
+  say(job, "Capturing the YouTube pages and the three moments (about 1 minute)…");
   await run(PY, [path.join(PIPE, "scripts", "capture.py"), W], { log: (l) => job.log.push("   " + l) });
   const pj = JSON.parse(fs.readFileSync(path.join(W, "pages", "pages.json"), "utf8"));
   if (!pj.results.some((r) => r.target)) {
@@ -399,16 +413,35 @@ async function produce(job) {
   }
   say(job, "Building the template…");
   await run(PY, [path.join(PIPE, "scripts", "build_ad.py"), W]);
-  say(job, "Rendering (about 5 minutes)…");
-  const raw = path.join(W, "out_noaudio.mp4");
-  await run("node", [path.join(PIPE, "scripts", "render.js"), path.join(W, "dist", "contextual-ad.html"), raw, "25", job.input.hq ? "4" : (process.env.RENDER_SUBFRAMES || "1")], { log: (l) => { const m = l.match(/frame (\d+) \/ (\d+)/); if (m) job.step = `Rendering… ${Math.round((100 * m[1]) / m[2])}%`; } });
+  await renderMux(job, job.input.preview ? "preview" : "hd");
+  writeTiming(job, cfg);
+}
+async function renderMux(job, kind) {
+  const W = job.work, I = job.input, prev = kind === "preview";
+  say(job, prev ? "Rendering the 720p preview (about 30 seconds)…" : "Rendering full HD (about 1 minute)…");
+  const raw = path.join(W, prev ? "out_preview_noaudio.mp4" : "out_noaudio.mp4");
+  await run("node", [path.join(PIPE, "scripts", "render.js"), path.join(W, "dist", "contextual-ad.html"), raw, "25", I.hq && !prev ? "4" : (process.env.RENDER_SUBFRAMES || "1"), prev ? "0.6667" : "1"],
+    { log: (l) => { const m = l.match(/frame (\d+) \/ (\d+)/); if (m) job.step = `Rendering${prev ? " preview" : ""}… ${Math.round((100 * m[1]) / m[2])}%`; } });
   say(job, "Adding music and the ad's sound…");
-  const final = path.join(W, `${slug(I.brand)}-contextual-ad.mp4`);
+  const final = path.join(W, `${slug(I.brand)}-contextual-ad${prev ? "-preview" : ""}.mp4`);
   const args = [path.join(PIPE, "scripts", "mux.py"), raw, fs.existsSync(path.join(W, "ad_audio.webm")) ? path.join(W, "ad_audio.webm") : "none", final];
   if (!I.music) args.push("--no-music");
   await run(PY, args);
-  job.output = final;
+  job.output = final; job.kind = kind; if (!prev) job.hdOutput = final;
+}
+function writeTiming(job, cfg) {
+  const P = job.proposal, I = job.input, W = job.work;
   fs.writeFileSync(path.join(W, "TIMING.md"), `# ${I.brand} contextual ad\n\n- Content video: ${P.video.title} — ${P.video.channel} — https://www.youtube.com/watch?v=${P.video.id}\n- Ad placed: ${I.adTitle} — https://www.youtube.com/watch?v=${I.adId}\n- Search typed: “${cfg.search.query}”\n\n| Check | Time | What | Why it matches |\n|---|---|---|---|\n| Visual Identify | ${P.pick.visual.t}s | ${P.pick.visual.what} | ${P.pick.visual.why} |\n| Keywords | title | ${P.pick.keywords.join(", ")} | exact title phrases |\n| Object Identify | ${P.pick.object.t}s | ${P.pick.object.what} | ${P.pick.object.why} |\n\nNotes: ${P.pick.notes || "—"}\nThe YouTube player was captured as screenshots and recorded audio; nothing was downloaded as a file.\n`);
+}
+
+// ad recordings are cached per ad id: the same ad is never recorded twice
+async function prefetchAd(adId, work) {
+  const cache = path.join(OUT_ROOT, "_cache", "ads"); fs.mkdirSync(cache, { recursive: true });
+  const c = path.join(cache, adId + ".webm"), dst = path.join(work, "ad_rec.webm");
+  try {
+    if (!fs.existsSync(c) || fs.statSync(c).size < 100000) await yt(["adrec", adId, c]);
+    if (fs.existsSync(c)) fs.copyFileSync(c, dst);
+  } catch (e) { console.error("ad prefetch failed:", e.message); }
 }
 
 // ---------- HTTP ----------
@@ -470,7 +503,8 @@ http.createServer(async (req, res) => {
         try { const m = await ytJson(["meta", vid]); ownVideo = { id: vid, title: m.title, channel: m.channel, length: mmss(+m.length) }; }
         catch (e) { return send(res, 400, { error: "Couldn't open that content video: " + e.message.slice(0, 120) }); }
       }
-      const job = newJob({ work, candidates: ownVideo ? [ownVideo] : undefined, tried: 0, input: { review: !!b.review, hq: !!b.hq, brand: b.brand, product: b.product, adId, adTitle: adTitle || adId, adSeconds, logo: "assets/logo." + logoExt, packs, endcard: !!b.endcard, tagline: b.tagline, music: b.music !== false } });
+      const job = newJob({ work, candidates: ownVideo ? [ownVideo] : undefined, tried: 0, input: { preview: b.preview !== false, review: !!b.review, hq: !!b.hq, brand: b.brand, product: b.product, adId, adTitle: adTitle || adId, adSeconds, logo: "assets/logo." + logoExt, packs, endcard: !!b.endcard, tagline: b.tagline, music: b.music !== false } });
+      job.adReady = prefetchAd(adId, work);   // the ad is known now → record it while the AI picks the video
       (async () => {
         try {
           const ok = await proposeMoments(job);
@@ -491,7 +525,7 @@ http.createServer(async (req, res) => {
     const jm = u.pathname.match(/^\/api\/job\/(\w+)(\/(\w+))?$/);
     if (jm && jobs[jm[1]]) {
       const job = jobs[jm[1]], act = jm[3];
-      if (!act) return send(res, 200, { status: job.status, step: job.step, log: job.log.slice(-40), proposal: job.proposal && { ...job.proposal, pick: { ...job.proposal.pick, visual: { ...job.proposal.pick.visual, still: undefined }, object: { ...job.proposal.pick.object, still: undefined } } }, output: job.output });
+      if (!act) return send(res, 200, { kind: job.kind, hasHD: !!job.hdOutput, status: job.status, step: job.step, log: job.log.slice(-40), proposal: job.proposal && { ...job.proposal, pick: { ...job.proposal.pick, visual: { ...job.proposal.pick.visual, still: undefined }, object: { ...job.proposal.pick.object, still: undefined } } }, output: job.output });
       if (act === "grab" && req.method === "POST") {   // manual mode: capture an exact moment the user typed
         const t = +(await body(req)).t, P = job.proposal;
         if (!P || !(t >= 0) || t > P.video.length) return send(res, 400, { error: "Enter a time inside the video (0 – " + mmss(Math.floor(P?.video.length || 0)) + ")." });
@@ -505,7 +539,22 @@ http.createServer(async (req, res) => {
       }
       if (act === "frame") { const s = job.scan?.[+u.searchParams.get("i")]; return s ? send(res, 200, fs.readFileSync(s.small), "image/jpeg") : send(res, 404, {}); }
       if (act === "still") { const k = u.searchParams.get("k"); const f = job.proposal?.pick?.[k]?.still; return f ? send(res, 200, fs.readFileSync(f), "image/png") : send(res, 404, {}); }
-      if (act === "video" && job.output) { const st = fs.statSync(job.output); res.writeHead(200, { "Content-Type": "video/mp4", "Content-Length": st.size, "Content-Disposition": u.searchParams.get("dl") ? `attachment; filename="${path.basename(job.output)}"` : "inline" }); return fs.createReadStream(job.output).pipe(res); }
+      if (act === "video" && job.output) {
+        if (u.searchParams.get("dl") && !local) return send(res, 403, { error: "Downloads are only available on the computer running the app." });
+        const file = u.searchParams.get("hd") && job.hdOutput ? job.hdOutput : job.output;
+        const st = fs.statSync(file), range = req.headers.range;
+        const head = { "Content-Type": "video/mp4", "Accept-Ranges": "bytes", "Content-Disposition": u.searchParams.get("dl") ? `attachment; filename="${path.basename(file)}"` : "inline" };
+        if (range) { const [s0, e0] = range.replace(/bytes=/, "").split("-"); const s1 = +s0, e1 = e0 ? +e0 : st.size - 1;
+          res.writeHead(206, { ...head, "Content-Range": `bytes ${s1}-${e1}/${st.size}`, "Content-Length": e1 - s1 + 1 }); return fs.createReadStream(file, { start: s1, end: e1 }).pipe(res); }
+        res.writeHead(200, { ...head, "Content-Length": st.size }); return fs.createReadStream(file).pipe(res);
+      }
+      if (act === "hd" && req.method === "POST") {   // full HD from the same captures — no AI, no re-capture
+        if (job.status !== "done") return send(res, 409, { error: "Wait for the preview to finish first." });
+        if (job.hdOutput) return send(res, 200, { ok: true, ready: true });
+        job.status = "running";
+        queued(job, () => renderMux(job, "hd")).then(() => { job.status = "done"; say(job, "Full HD ready — " + job.output); }).catch((e) => { job.status = "failed"; say(job, "Error: " + e.message); });
+        return send(res, 200, { ok: true });
+      }
       if (act === "approve" && req.method === "POST") {
         if (job.status !== "approve") return send(res, 409, { error: "This job is already " + job.status + "." });
         const e = (await body(req)).edits, P = job.proposal;

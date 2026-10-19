@@ -30,6 +30,8 @@ specs = [
     (['seq', vid, str(work / 'object'), f'{b - 1.4:.2f}', f'{b + 1.4:.2f}'], 'cap_object.log'),
     (['adrec', ad, str(work / 'ad_rec.webm')], 'cap_ad.log'),   # ad recorded in real time (video + sound)
 ]
+if (work / 'ad_rec.webm').exists() and (work / 'ad_rec.webm').stat().st_size > 100000:   # already recorded while the AI was picking
+    specs = [s for s in specs if s[0][0] != 'adrec']; open(work / 'cap_ad.log', 'w').write('ad: reused prefetched recording\n')
 # run at most CAPTURE_PARALLEL browsers at once (default: all six; use 2 on small servers)
 par = int(os.environ.get('CAPTURE_PARALLEL', '6')); running = []
 for args, log in specs:

@@ -56,7 +56,7 @@ video{width:100%;border-radius:14px;background:#000}.hide{display:none!important
       <div><label for="logo">Logo * (PNG/JPG)</label><input type="file" id="logo" accept="image/*"><div class="files" id="logoPrev"></div></div>
       <div><label for="packs">Packshots (optional, for end card)</label><input type="file" id="packs" accept="image/*" multiple><div class="files" id="packPrev"></div></div>
     </div>
-    <div class="chips"><label style="margin:0"><input type="checkbox" id="music" checked> Music bed under the demo</label><label style="margin:0"><input type="checkbox" id="endcard"> End card with logo + packshots after the ad</label><label style="margin:0"><input type="checkbox" id="review"> Let me review the picks first</label><label style="margin:0"><input type="checkbox" id="hq"> High quality (motion blur, slower)</label></div>
+    <div class="chips"><label style="margin:0"><input type="checkbox" id="music" checked> Music bed under the demo</label><label style="margin:0"><input type="checkbox" id="endcard"> End card with logo + packshots after the ad</label><label style="margin:0"><input type="checkbox" id="preview" checked> Quick preview (720p, fastest)</label><label style="margin:0"><input type="checkbox" id="review"> Let me review the picks first</label><label style="margin:0"><input type="checkbox" id="hq"> High quality (motion blur, slower)</label></div>
     <div class="bar"><button id="findAds">Find this brand's ads →</button><span id="adsMsg" class="s"></span></div>
   </section>
 
@@ -65,7 +65,7 @@ video{width:100%;border-radius:14px;background:#000}.hide{display:none!important
     <div class="ads" id="ads"></div>
     <div class="row" style="margin-top:14px"><div><label for="adUrl">…or paste an ad link (16:9 TV / CTV ad)</label><input type="text" id="adUrl" placeholder="https://www.youtube.com/watch?v=…"></div>
       <div><label for="videoUrl">Content video (optional) — your own pick</label><input type="text" id="videoUrl" placeholder="Leave empty and the app finds one"></div></div>
-    <div class="bar"><button id="start" disabled>Make the video →</button><span class="s">The app picks the video and the three checks itself — usually ready in about 5–6 minutes.</span></div>
+    <div class="bar"><button id="start" disabled>Make the video →</button><span class="s">The app picks the video and the three checks itself — a preview is usually ready in about 3–4 minutes.</span></div>
   </section>
 
   <section class="card hide" id="s3">
@@ -89,8 +89,9 @@ video{width:100%;border-radius:14px;background:#000}.hide{display:none!important
   </section>
 
   <section class="card hide" id="s5">
-    <h2><span class="num">5</span>Your video</h2><video id="vid" controls></video>
-    <div class="bar"><a id="dl"><button>Download MP4</button></a><button class="ghost" id="openF">Show in folder</button><button class="ghost" id="again">Make another</button></div>
+    <h2><span class="num">5</span>Your video <span class="s" id="kindTag"></span></h2><video id="vid" controls controlsList="nodownload noplaybackrate" disablePictureInPicture oncontextmenu="return false"></video>
+    <div class="bar"><button id="hdBtn" class="hide">Make full HD (about 1 minute)</button><a id="dl"><button>Download MP4</button></a><button class="ghost" id="openF">Show in folder</button><button class="ghost" id="again">Make another</button></div>
+    <p class="s hide" id="viewOnly">Preview only — downloads are available on the computer running the app.</p>
   </section>
 </main>
 <script>
@@ -101,7 +102,8 @@ const api=async(u,b)=>{const r=await fetch(u,b?{method:'POST',headers:{'Content-
 const read=f=>new Promise(r=>{const fr=new FileReader();fr.onload=()=>r(fr.result);fr.readAsDataURL(f);});
 $('setBtn').onclick=()=>$('settings').classList.toggle('hide');
 $('saveKey').onclick=async()=>{const r=await api('/api/settings',{apiKey:$('key').value,geminiKey:$('gkey').value,youtubeKey:$('ykey').value,provider:$('prov').value});$('key').value='';$('gkey').value='';$('ykey').value='';$('provNow').textContent='Using: '+r.provider;const s=await api('/api/status');$('ytNow').textContent='YouTube search: '+s.youtube;$('settings').classList.add('hide');};
-api('/api/status').then(s=>{$('prov').value=s.provider;$('provNow').textContent='Using: '+s.provider;$('ytNow').textContent='YouTube search: '+s.youtube; if(s.keyFromEnv||!s.local){$('setBtn').classList.add('hide');$('openF').classList.add('hide');} else if(!s.hasKey)$('settings').classList.remove('hide'); if(!s.ffmpeg) alert('ffmpeg was not found. Install it once with: winget install Gyan.FFmpeg'); if(s.hosted){$('openF').classList.add('hide');}});
+let LOCAL=true;
+api('/api/status').then(s=>{LOCAL=!!s.local;$('prov').value=s.provider;$('provNow').textContent='Using: '+s.provider;$('ytNow').textContent='YouTube search: '+s.youtube; if(s.keyFromEnv||!s.local){$('setBtn').classList.add('hide');$('openF').classList.add('hide');} else if(!s.hasKey)$('settings').classList.remove('hide'); if(!s.ffmpeg) alert('ffmpeg was not found. Install it once with: winget install Gyan.FFmpeg'); if(s.hosted){$('openF').classList.add('hide');}});
 $('logo').onchange=async e=>{logoData=await read(e.target.files[0]);$('logoPrev').innerHTML=`<img src="${logoData}">`;};
 $('packs').onchange=async e=>{packData=await Promise.all([...e.target.files].slice(0,2).map(read));$('packPrev').innerHTML=packData.map(d=>`<img src="${d}">`).join('');};
 $('findAds').onclick=async()=>{
@@ -118,7 +120,7 @@ $('findAds').onclick=async()=>{
 $('adUrl').oninput=()=>{ if($('adUrl').value.trim()){adSel=null;document.querySelectorAll('.ad').forEach(x=>x.classList.remove('sel'));} $('start').disabled=!(adSel||$('adUrl').value.trim()); };
 $('start').onclick=async()=>{
   $('start').disabled=true;
-  try{ const r=await api('/api/start',{brand:$('brand').value.trim(),product:$('product').value.trim(),adId:adSel?.id,adTitle:adSel?.title,adUrl:$('adUrl').value.trim(),videoUrl:$('videoUrl').value.trim(),review:$('review').checked,hq:$('hq').checked,logo:logoData,packs:packData,endcard:$('endcard').checked,music:$('music').checked});
+  try{ const r=await api('/api/start',{brand:$('brand').value.trim(),product:$('product').value.trim(),adId:adSel?.id,adTitle:adSel?.title,adUrl:$('adUrl').value.trim(),videoUrl:$('videoUrl').value.trim(),preview:$('preview').checked,review:$('review').checked,hq:$('hq').checked,logo:logoData,packs:packData,endcard:$('endcard').checked,music:$('music').checked});
     job=r.id; store.set('cadJob',job); showWorking(); poll();
   }catch(e){alert(e.message);} $('start').disabled=false;
 };
@@ -131,7 +133,10 @@ async function poll(){
     $('step').textContent='Connection hiccup — retrying…'; setTimeout(poll, Math.min(15000, 2000*(++pollFails))); return; }
   $('step').textContent=j.step; $('log').textContent=j.log.join('\n'); $('log').scrollTop=1e9;
   if(j.status==='approve'){ showProposal(j.proposal); return; }
-  if(j.status==='done'){ store.set('cadJob',null); $('vid').src=`/api/job/${job}/video`; $('dl').href=`/api/job/${job}/video?dl=1`; $('s5').classList.remove('hide'); $('s5').scrollIntoView({behavior:'smooth'}); return; }
+  if(j.status==='done'){ store.set('cadJob',null); $('vid').src=`/api/job/${job}/video?_=${Date.now()}`; $('dl').href=`/api/job/${job}/video?dl=1`;
+    $('kindTag').textContent=j.kind==='preview'?'· 720p preview':'· full HD 1080p'; $('hdBtn').classList.toggle('hide',j.kind!=='preview');
+    $('dl').classList.toggle('hide',!LOCAL); $('viewOnly').classList.toggle('hide',LOCAL);
+    $('s5').classList.remove('hide'); $('s5').scrollIntoView({behavior:'smooth'}); return; }
   if(j.status==='failed'){ store.set('cadJob',null); return fail(j.step); }
   setTimeout(poll,1500);
 }
@@ -205,6 +210,7 @@ $('approve').onclick = async () => {
 };
 $('next').onclick=async()=>{ $('next').disabled=true; try{ await api(`/api/job/${job}/next`,{}); $('s4').classList.add('hide'); poll(); }catch(e){ alert(e.message); } $('next').disabled=false; };
 $('openF').onclick=()=>api(`/api/job/${job}/open`,{});
+$('hdBtn').onclick=async()=>{ $('hdBtn').disabled=true; try{ await api(`/api/job/${job}/hd`,{}); $('s5').classList.add('hide'); showWorking(); poll(); }catch(e){ alert(e.message); } $('hdBtn').disabled=false; };
 $('again').onclick=()=>{ store.set('cadJob',null); location.reload(); };
 </script>
 </body></html>
