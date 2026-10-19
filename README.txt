@@ -34,7 +34,7 @@ MANUAL MODE (when the free AI quota is used up)
 - You can also paste your own content video link in step 2.
 
 NEEDS: Node.js, Python, ffmpeg (winget install Gyan.FFmpeg), internet.
-Each video uses a few Claude API calls (vision): usually well under a dollar.
+AI: free Gemini key (a few videos a day) or a Claude key; YouTube Data API key optional.
 
 Notes
 - Videos are captured from the YouTube player as screenshots and recorded audio;
