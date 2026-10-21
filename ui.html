@@ -1,7 +1,7 @@
 <!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Contextual Ad Studio</title>
-<link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Poppins:wght@200;300;400;500;600;700;800&display=swap" rel="stylesheet">
 <style>
 :root{--p:#5C63DC;--p2:#7B4DFF;--m:#B000CC;--g:#3DFF33;--gd:#1FA81A;--ink:#14152B;--mute:#6B6F80;--line:#E6E7EF;--bg:#F5F5FB;--card:#fff;
   --grad:linear-gradient(135deg,#5C63DC 0%,#8B3FE8 55%,#B000CC 100%);--sh:0 1px 2px rgba(20,21,43,.04),0 8px 28px rgba(20,21,43,.06);--r:20px}
@@ -19,7 +19,7 @@ h1{font-size:19px;margin:0;font-weight:700;letter-spacing:-.01em}header small{co
 .stepper li{flex:1;display:flex;align-items:center;gap:10px;padding:10px 14px;border-radius:14px;background:rgba(255,255,255,.6);border:1px solid var(--line);font-size:13px;font-weight:600;color:var(--mute);transition:.25s}
 .stepper li i{font-style:normal;width:24px;height:24px;border-radius:50%;display:grid;place-items:center;font-size:12px;background:#ECEDF5;color:var(--mute);flex:none;transition:.25s}
 .stepper li.on{background:#fff;color:var(--ink);border-color:rgba(92,99,220,.35);box-shadow:var(--sh)}.stepper li.on i{background:var(--grad);color:#fff}
-.stepper li.ok{color:var(--ink)}.stepper li.ok i{background:var(--gd);color:#fff}
+.stepper li.ok{color:var(--ink)}.stepper li.ok i{background:#ECEBFF;color:#5B4FE0}
 /* layout */
 main{max-width:1120px;margin:18px auto 60px;padding:0 20px;display:grid;gap:18px}
 .card{background:var(--card);border:1px solid var(--line);border-radius:var(--r);padding:26px;box-shadow:var(--sh);animation:rise .35s ease both}
@@ -32,7 +32,7 @@ label{display:block;font-size:12.5px;font-weight:600;margin:0 0 7px;color:#3A3C5
 input[type=text],input[type=password],select{width:100%;font:inherit;font-size:14.5px;padding:12px 14px;border:1.5px solid var(--line);border-radius:12px;background:#FBFBFE;color:var(--ink);transition:border-color .15s,box-shadow .15s,background .15s}
 input[type=text]:focus,input[type=password]:focus,select:focus{outline:none;border-color:var(--p);background:#fff;box-shadow:0 0 0 4px rgba(92,99,220,.13)}
 /* buttons */
-button{font:inherit;font-size:14.5px;border:0;border-radius:12px;padding:12px 20px;font-weight:600;cursor:pointer;background:var(--grad);color:#fff;box-shadow:0 6px 18px rgba(123,77,255,.28);transition:transform .12s,box-shadow .12s,opacity .12s}
+button{display:inline-flex;align-items:center;justify-content:center;gap:8px;font:inherit;font-size:14.5px;border:0;border-radius:12px;padding:12px 20px;font-weight:600;cursor:pointer;background:var(--grad);color:#fff;box-shadow:0 6px 18px rgba(123,77,255,.28);transition:transform .12s,box-shadow .12s,opacity .12s}
 button:hover:not(:disabled){transform:translateY(-1px);box-shadow:0 10px 24px rgba(123,77,255,.34)}
 button.ghost{background:#fff;color:var(--p);border:1.5px solid rgba(92,99,220,.45);box-shadow:none}button.ghost:hover:not(:disabled){background:#F4F4FF;box-shadow:none}
 button:disabled{opacity:.45;cursor:default;transform:none}
@@ -66,25 +66,48 @@ button:disabled{opacity:.45;cursor:default;transform:none}
 .skel .a{aspect-ratio:16/9}.skel .b{height:12px;margin:14px 13px 8px;border-radius:6px}.skel .c{height:10px;width:55%;margin:0 13px 16px;border-radius:6px}
 @keyframes sh{from{background-position:100% 0}to{background-position:-200% 0}}
 .or{display:flex;align-items:center;gap:12px;color:var(--mute);font-size:12px;font-weight:600;margin:22px 0 14px}.or::before,.or::after{content:"";flex:1;height:1px;background:var(--line)}
-/* progress */
-.prog{display:grid;grid-template-columns:auto 1fr;gap:26px;align-items:center}
-.ring{position:relative;width:132px;height:132px}.ring svg{transform:rotate(-90deg)}.ring circle{fill:none;stroke-width:11}
-.ring .bg{stroke:#EDEEF7}.ring .fg{stroke:url(#rg);stroke-linecap:round;transition:stroke-dashoffset .8s ease}
-.ring .v{position:absolute;inset:0;display:grid;place-items:center;text-align:center}.ring .v b{font-size:32px;font-weight:800;letter-spacing:-.03em;line-height:1}.ring .v b small{font-size:16px;font-weight:700}
-.ring .v span{display:block;font-size:11px;color:var(--mute);margin-top:4px;font-weight:600;letter-spacing:.04em}
-.track{height:10px;border-radius:99px;background:#EDEEF7;overflow:hidden;margin:12px 0 6px}
-.fill{height:100%;width:0;border-radius:99px;background:var(--grad);position:relative;transition:width .8s ease}
-.fill::after{content:"";position:absolute;inset:0;background:repeating-linear-gradient(45deg,rgba(255,255,255,.22) 0 10px,transparent 10px 20px);background-size:28px 28px;animation:mv 1s linear infinite}
-@keyframes mv{to{background-position:28px 0}}
-.prog.stop .fill::after{animation:none;opacity:0}
-.step{font-weight:600;font-size:15px;line-height:1.45;min-height:22px}
-.times{display:flex;gap:18px;flex-wrap:wrap;font-size:12.5px;color:var(--mute);font-weight:500}.times b{color:var(--ink);font-weight:600}
-.stages{display:grid;grid-template-columns:repeat(5,1fr);gap:8px;margin-top:22px;list-style:none;padding:0}
-.stages li{padding:10px 12px;border-radius:12px;background:#F6F6FB;border:1px solid var(--line);font-size:12.5px;font-weight:600;color:var(--mute);display:flex;align-items:center;gap:8px;transition:.25s}
-.stages li i{font-style:normal;flex:none;width:20px;height:20px;border-radius:50%;border:2px solid #CFD1E3;display:grid;place-items:center;font-size:11px}
-.stages li.on{background:#F2F1FF;border-color:rgba(92,99,220,.4);color:var(--ink)}.stages li.on i{border-color:var(--p);border-top-color:transparent;animation:spin .8s linear infinite}
-.stages li.ok{color:var(--ink);background:#F0FBEF;border-color:#BFE9BC}.stages li.ok i{border-color:var(--gd);background:var(--gd);color:#fff}
-@keyframes spin{to{transform:rotate(360deg)}}
+/* progress — dark render console */
+.hero{position:relative;overflow:hidden;background:#0A0B16;border:1px solid rgba(255,255,255,.06);color:#fff;padding:34px 36px 26px;
+  box-shadow:0 30px 80px -20px rgba(40,20,90,.45),0 2px 6px rgba(10,11,22,.2)}
+.aura{position:absolute;inset:-40%;pointer-events:none;background:radial-gradient(38% 30% at 22% 18%,rgba(92,99,220,.38),transparent 70%),radial-gradient(30% 26% at 82% 8%,rgba(176,0,204,.30),transparent 70%),radial-gradient(40% 30% at 60% 110%,rgba(123,77,255,.22),transparent 70%);filter:blur(10px);animation:drift 14s ease-in-out infinite alternate}
+@keyframes drift{to{transform:translate3d(4%,3%,0) rotate(6deg)}}
+.hero::after{content:"";position:absolute;inset:0;pointer-events:none;background-image:radial-gradient(rgba(255,255,255,.035) 1px,transparent 1px);background-size:22px 22px;-webkit-mask-image:linear-gradient(#000,transparent 70%);mask-image:linear-gradient(#000,transparent 70%)}
+.hero>*:not(.aura){position:relative;z-index:1}
+.hrow{display:flex;align-items:flex-end;justify-content:space-between;gap:24px;flex-wrap:wrap}
+.eyebrow{display:flex;align-items:center;gap:10px;font-size:11.5px;font-weight:600;letter-spacing:.16em;text-transform:uppercase;color:rgba(255,255,255,.55)}
+.chip{padding:3px 9px;border-radius:99px;border:1px solid rgba(255,255,255,.14);font-size:10px;letter-spacing:.14em;color:#D9CCFF;background:rgba(255,255,255,.04)}
+.chip.live::before{content:"";display:inline-block;width:6px;height:6px;border-radius:50%;background:#7CF27A;margin-right:7px;vertical-align:1px;box-shadow:0 0 8px #7CF27A;animation:blink 1.6s ease-in-out infinite}
+@keyframes blink{50%{opacity:.35}}
+.big{font-size:96px;font-weight:200;line-height:.95;letter-spacing:-.05em;font-variant-numeric:tabular-nums;margin-top:10px;
+  background:linear-gradient(180deg,#fff 30%,#C9B8FF 100%);-webkit-background-clip:text;background-clip:text;color:transparent}
+.big sup{font-size:34px;font-weight:300;letter-spacing:0;vertical-align:top;margin-left:6px;position:relative;top:14px;-webkit-text-fill-color:rgba(255,255,255,.45)}
+.meta{display:flex;gap:34px;padding-bottom:10px}
+.meta small{display:block;font-size:10.5px;font-weight:600;letter-spacing:.16em;color:rgba(255,255,255,.42);margin-bottom:4px}
+.meta b{font-size:22px;font-weight:300;font-variant-numeric:tabular-nums;letter-spacing:-.01em}
+.track{position:relative;height:4px;border-radius:99px;background:rgba(255,255,255,.08);margin:26px 0 16px}
+.fill{position:relative;height:100%;width:0;border-radius:99px;background:linear-gradient(90deg,#5C63DC,#8B3FE8 55%,#D04BFF);transition:width 1.1s cubic-bezier(.22,1,.36,1);
+  box-shadow:0 0 14px rgba(176,0,204,.55),0 0 2px rgba(255,255,255,.4)}
+.fill::before{content:"";position:absolute;inset:0;border-radius:inherit;background:linear-gradient(90deg,transparent,rgba(255,255,255,.55),transparent);background-size:40% 100%;background-repeat:no-repeat;animation:sweep 2.4s ease-in-out infinite}
+.fill::after{content:"";position:absolute;right:-5px;top:50%;width:10px;height:10px;margin-top:-5px;border-radius:50%;background:#fff;box-shadow:0 0 0 4px rgba(208,75,255,.25),0 0 18px 4px rgba(208,75,255,.8)}
+@keyframes sweep{from{background-position:-60% 0}to{background-position:160% 0}}
+.hero.stop .fill::before{animation:none;opacity:0}.hero.stop .fill::after{display:none}.hero.stop .fill{filter:saturate(.4);box-shadow:none}
+.step{font-size:14.5px;font-weight:400;line-height:1.5;color:rgba(255,255,255,.82);min-height:22px}
+.timeline{display:grid;grid-template-columns:repeat(5,1fr);list-style:none;padding:0;margin:30px 0 0}
+.timeline li{position:relative;text-align:center;font-size:12px;font-weight:500;color:rgba(255,255,255,.38);transition:color .4s}
+.timeline li::before{content:"";position:absolute;top:8px;left:-50%;right:50%;height:1px;background:rgba(255,255,255,.12);transition:background .4s}
+.timeline li.first::before{display:none}
+.timeline li i{position:relative;z-index:1;display:grid;place-items:center;width:17px;height:17px;margin:0 auto 10px;border-radius:50%;border:1px solid rgba(255,255,255,.25);background:#0A0B16;transition:.4s}
+.timeline li i svg{width:9px;height:9px;opacity:0;grid-area:1/1}
+.timeline li.ok{color:rgba(255,255,255,.8)}.timeline li.ok::before,.timeline li.on::before{background:linear-gradient(90deg,#8B3FE8,#C35BFF)}
+.timeline li.ok i{border-color:transparent;background:linear-gradient(135deg,#6E62F0,#C04BFF)}.timeline li.ok i svg{opacity:1}
+.timeline li.on{color:#fff}.timeline li.on i{border-color:#C9A6FF;background:#1A1340;animation:pulse 1.8s ease-out infinite}
+.timeline li.on i::after{content:"";grid-area:1/1;width:5px;height:5px;border-radius:50%;background:#E3CCFF}
+@keyframes pulse{0%{box-shadow:0 0 0 0 rgba(201,166,255,.55)}100%{box-shadow:0 0 0 12px rgba(201,166,255,0)}}
+.hero details{margin-top:26px;border:0;border-top:1px solid rgba(255,255,255,.07);border-radius:0;overflow:visible}
+.hero summary{background:transparent;color:rgba(255,255,255,.5);padding:14px 0 4px;font-weight:500;font-size:12.5px;letter-spacing:.04em}
+.hero summary::before{color:rgba(255,255,255,.4)}
+.hero .log{background:rgba(0,0,0,.35);border:1px solid rgba(255,255,255,.06);border-radius:12px;margin-top:10px;color:#AEB1CC}
+.hero #failNote{background:rgba(255,90,90,.08);border:1px solid rgba(255,120,120,.28);color:#FFD9D9}
 details{margin-top:18px;border:1px solid var(--line);border-radius:14px;overflow:hidden}
 summary{cursor:pointer;padding:11px 14px;font-size:13px;font-weight:600;color:#3A3C52;background:#FAFAFD;list-style:none;display:flex;align-items:center;gap:8px}
 summary::-webkit-details-marker{display:none}summary::before{content:"›";font-size:18px;line-height:1;transition:.2s;color:var(--mute)}details[open] summary::before{transform:rotate(90deg)}
@@ -113,17 +136,17 @@ video{width:100%;display:block;background:#000}
 .hide{display:none!important}
 /* settings */
 #settings{border-color:rgba(92,99,220,.35)}
-@media (max-width:860px){.checks{grid-template-columns:1fr}.stages{grid-template-columns:repeat(3,1fr)}}
+@media (max-width:860px){.checks{grid-template-columns:1fr}}
 @media (max-width:680px){.row{grid-template-columns:1fr}.card{padding:20px 16px}.hin,.stepper,main{padding-left:16px;padding-right:16px}
-  .stepper li span{display:none}.stepper li{justify-content:center;padding:9px}.prog{grid-template-columns:1fr;justify-items:center;text-align:center}.prog>div:last-child{width:100%}.times{justify-content:center}
-  .stages{grid-template-columns:1fr 1fr}header small{display:none}h1{font-size:16px}#setBtn{padding:9px 12px;white-space:nowrap}.drop{flex-wrap:wrap}.files{margin-left:0}}
+  .stepper li span{display:none}.stepper li{justify-content:center;padding:9px}.hero{padding:26px 20px 20px}.big{font-size:72px}.meta{gap:24px;padding-bottom:4px}.meta b{font-size:18px}
+  .timeline li{font-size:10.5px}header small{display:none}h1{font-size:16px}#setBtn{padding:9px 12px;white-space:nowrap}.drop{flex-wrap:wrap}.files{margin-left:0}}
 </style></head>
 <body>
-<header><div class="hin"><div class="logo">✦</div><div><h1>Contextual Ad Studio</h1><small>Mediakart · YouTube contextual ad demos</small></div><div class="sp"></div><button class="ghost" id="setBtn">⚙ Settings</button></div></header>
+<header><div class="hin"><div class="logo">✦</div><div><h1>Contextual Ad Studio</h1><small>Mediakart · YouTube contextual ad demos</small></div><div class="sp"></div><button class="ghost" id="setBtn"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M4.9 4.9l2.1 2.1M17 17l2.1 2.1M4.9 19.1L7 17M17 7l2.1-2.1"/></svg>Settings</button></div></header>
 <ol class="stepper" id="stepper"><li data-s="1"><i>1</i><span>Brand</span></li><li data-s="2"><i>2</i><span>Pick the ad</span></li><li data-s="3"><i>3</i><span>Making it</span></li><li data-s="4"><i>4</i><span>Watch</span></li></ol>
 <main>
   <section class="card hide" id="settings">
-    <div class="ch"><div class="num">⚙</div><div><h2>Settings</h2><p class="s">Keys are stored only on this computer (settings.json in the app folder). Gemini's free tier works; Claude gives the best picks. With no key, the app runs in manual mode.</p></div></div>
+    <div class="ch"><div class="num"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M4.9 4.9l2.1 2.1M17 17l2.1 2.1M4.9 19.1L7 17M17 7l2.1-2.1"/></svg></div><div><h2>Settings</h2><p class="s">Keys are stored only on this computer (settings.json in the app folder). Gemini's free tier works; Claude gives the best picks. With no key, the app runs in manual mode.</p></div></div>
     <div class="row"><div><label for="gkey">Gemini API key (free, from aistudio.google.com)</label><input type="password" id="gkey" placeholder="paste key"></div><div><label for="key">Claude API key (optional, paid)</label><input type="password" id="key" placeholder="sk-ant-…"></div></div>
     <div class="row" style="margin-top:14px"><div><label for="ykey">YouTube Data API key (free, from console.cloud.google.com)</label><input type="password" id="ykey" placeholder="paste key"></div><div style="align-self:end;padding-bottom:12px"><span class="s" id="ytNow"></span></div></div>
     <div class="row" style="margin-top:14px"><div><label for="prov">Use</label><select id="prov"><option value="gemini">Gemini (free)</option><option value="claude">Claude</option><option value="none">Manual only (no AI)</option></select></div><div style="align-self:end"><button id="saveKey">Save</button> <span class="s" id="provNow" style="margin-left:8px"></span></div></div>
@@ -136,8 +159,8 @@ video{width:100%;display:block;background:#000}
       <div><label for="product">Product focus (optional)</label><input type="text" id="product" placeholder="e.g. Amul Comfy thermal wear" autocomplete="off"></div>
     </div>
     <div class="row" style="margin-top:16px">
-      <label class="drop" id="logoDrop"><input type="file" id="logo" accept="image/*"><div class="ico">⬆</div><div><b>Logo *</b><span>PNG or JPG — click or drop</span></div><div class="files" id="logoPrev"></div></label>
-      <label class="drop" id="packDrop"><input type="file" id="packs" accept="image/*" multiple><div class="ico">▦</div><div><b>Packshots</b><span>Optional, up to 2 — for the end card</span></div><div class="files" id="packPrev"></div></label>
+      <label class="drop" id="logoDrop"><input type="file" id="logo" accept="image/*"><div class="ico"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 16V4M7 9l5-5 5 5"/><path d="M4 16v3a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-3"/></svg></div><div><b>Logo *</b><span>PNG or JPG — click or drop</span></div><div class="files" id="logoPrev"></div></label>
+      <label class="drop" id="packDrop"><input type="file" id="packs" accept="image/*" multiple><div class="ico"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="3"/><circle cx="9" cy="9" r="2"/><path d="M21 15l-5-5L5 21"/></svg></div><div><b>Packshots</b><span>Optional, up to 2 — for the end card</span></div><div class="files" id="packPrev"></div></label>
     </div>
     <div class="opts">
       <label class="tog"><input type="checkbox" id="preview" checked><div><b>Quick preview</b><span>720p, fastest — full HD in one click later</span></div></label>
@@ -158,27 +181,26 @@ video{width:100%;display:block;background:#000}
     <div class="bar"><button id="start" disabled>Make the video →</button><span class="s">The app picks the video and the three checks itself — a preview is usually ready in 2–4 minutes.</span></div>
   </section>
 
-  <section class="card hide" id="s3">
-    <svg width="0" height="0" style="position:absolute"><defs><linearGradient id="rg" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#5C63DC"/><stop offset=".55" stop-color="#8B3FE8"/><stop offset="1" stop-color="#B000CC"/></linearGradient></defs></svg>
-    <div class="prog" id="progBox">
-      <div class="ring"><svg width="132" height="132" viewBox="0 0 132 132"><circle class="bg" cx="66" cy="66" r="56"/><circle class="fg" id="ringFg" cx="66" cy="66" r="56" stroke-dasharray="351.86" stroke-dashoffset="351.86"/></svg>
-        <div class="v"><div><b id="pct">0<small>%</small></b><span id="pctLbl">WORKING</span></div></div></div>
+  <section class="card hero hide" id="s3">
+    <div class="aura"></div>
+    <div class="hrow" id="progBox">
       <div>
-        <h2 id="progTitle" style="margin:0 0 6px">Making your video</h2>
-        <div class="step" id="step">Starting…</div>
-        <div class="track"><div class="fill" id="fill"></div></div>
-        <div class="times"><span>Elapsed <b id="elapsed">0:00</b></span><span id="etaW">Time left <b id="eta">estimating…</b></span></div>
+        <div class="eyebrow"><span id="progTitle">Making your video</span><span class="chip live" id="pctLbl">LIVE</span></div>
+        <div class="big"><span id="pct">0</span><sup>%</sup></div>
       </div>
+      <div class="meta"><div><small>ELAPSED</small><b id="elapsed">0:00</b></div><div id="etaW"><small>TIME LEFT</small><b id="eta">—</b></div></div>
     </div>
-    <ol class="stages" id="stages">
-      <li><i></i>Find the video</li><li><i></i>Capture</li><li><i></i>Build</li><li><i></i>Render</li><li><i></i>Sound</li>
+    <div class="track"><div class="fill" id="fill"></div></div>
+    <div class="step" id="step">Starting…</div>
+    <ol class="timeline" id="stages">
+      <li><i><svg viewBox="0 0 10 10"><path d="M2 5.2l2 2L8 3" fill="none" stroke="#fff" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg></i>Find the video</li><li><i><svg viewBox="0 0 10 10"><path d="M2 5.2l2 2L8 3" fill="none" stroke="#fff" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg></i>Capture</li><li><i><svg viewBox="0 0 10 10"><path d="M2 5.2l2 2L8 3" fill="none" stroke="#fff" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg></i>Build</li><li><i><svg viewBox="0 0 10 10"><path d="M2 5.2l2 2L8 3" fill="none" stroke="#fff" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg></i>Render</li><li><i><svg viewBox="0 0 10 10"><path d="M2 5.2l2 2L8 3" fill="none" stroke="#fff" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg></i>Sound</li>
     </ol>
     <details><summary>Details</summary><pre class="log" id="log"></pre></details>
     <div class="note hide" id="failNote"><b>Something went wrong.</b> <span id="failMsg"></span><div class="bar"><button id="restart">Start again</button></div></div>
   </section>
 
   <section class="card hide" id="s4">
-    <div class="ch"><div class="num">✓</div><div><h2>Approve the three checks</h2><p class="s">Every check must genuinely match the product. Approve to make the video, or try the next video.</p></div></div>
+    <div class="ch"><div class="num"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.5l4.5 4.5L19 7"/></svg></div><div><h2>Approve the three checks</h2><p class="s">Every check must genuinely match the product. Approve to make the video, or try the next video.</p></div></div>
     <div class="titlebox" id="vtitle"></div>
     <div class="checks">
       <div class="chk"><div class="im" id="imV"></div><div class="strip" id="stV"></div><div class="jump"><input type="text" id="tV" placeholder="exact time e.g. 8:07"><button class="ghost" id="gV">Use this time</button></div><div class="t"><h3>VISUAL IDENTIFY</h3><p id="vV"></p><p class="s" id="wV"></p><select class="ic" id="icV"></select></div></div>
@@ -192,9 +214,9 @@ video{width:100%;display:block;background:#000}
   </section>
 
   <section class="card hide" id="s5">
-    <div class="ch"><div class="num">▶</div><div><h2>Your video <span class="tag" id="kindTag"></span></h2><p class="s" id="doneMeta"></p></div></div>
+    <div class="ch"><div class="num"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M8 5.5v13l11-6.5z" fill="currentColor"/></svg></div><div><h2>Your video <span class="tag" id="kindTag"></span></h2><p class="s" id="doneMeta"></p></div></div>
     <div class="player"><video id="vid" controls controlsList="nodownload noplaybackrate" disablePictureInPicture oncontextmenu="return false"></video></div>
-    <div class="bar"><button id="hdBtn" class="hide">Make full HD (about 1 minute)</button><a id="dl"><button>⬇ Download MP4</button></a><button class="ghost" id="openF">Show in folder</button><button class="ghost" id="again">Make another</button></div>
+    <div class="bar"><button id="hdBtn" class="hide">Make full HD (about 1 minute)</button><a id="dl"><button><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 4v12M7 11l5 5 5-5M5 20h14"/></svg>Download MP4</button></a><button class="ghost" id="openF">Show in folder</button><button class="ghost" id="again">Make another</button></div>
     <p class="s hide" id="viewOnly" style="margin-top:12px">Preview only — downloads are available on the computer running the app.</p>
   </section>
 </main>
@@ -235,17 +257,22 @@ $('start').onclick=async()=>{
     job=r.id; store.set('cadJob',job); showWorking(); poll();
   }catch(e){alert(e.message);} $('start').disabled=false;
 };
-function showWorking(){ ['s1','s2','s4','s5','settings'].forEach(s=>$(s).classList.add('hide')); $('failNote').classList.add('hide'); $('progBox').classList.remove('stop'); $('s3').classList.remove('hide'); stepTo(3); setProgress({pct:0,stage:0,elapsed:0}); window.scrollTo({top:0,behavior:'smooth'}); }
-// progress: ring + bar + stage pills + elapsed / time left (ticks every second between polls)
-let P={pct:0,stage:0,elapsed:0,at:Date.now(),running:true,hdOnly:false};
+function showWorking(){ ['s1','s2','s4','s5','settings'].forEach(s=>$(s).classList.add('hide')); $('failNote').classList.add('hide'); $('s3').classList.remove('stop'); $('s3').classList.remove('hide'); stepTo(3); setProgress({pct:0,stage:0,elapsed:0}); window.scrollTo({top:0,behavior:'smooth'}); }
+// progress: big counting number + bar + stage timeline + elapsed / time left (ticks every second between polls)
+let P={pct:0,stage:0,elapsed:0,at:Date.now(),running:true,hdOnly:false}, shown=0, counting=false;
+function countUp(){ counting=true; shown+=(P.pct-shown)*0.08; if(Math.abs(P.pct-shown)<0.4) shown=P.pct;
+  $('pct').textContent=Math.round(shown); if(shown!==P.pct) requestAnimationFrame(countUp); else counting=false; }
 function setProgress(j){
-  const pct=Math.max(0,Math.min(100,j.pct||0));
+  const pct=Math.max(0,Math.min(100,j.pct||0)); if(pct===0) shown=0;
   P={pct,stage:j.stage??0,elapsed:j.elapsed||0,at:Date.now(),running:(j.status||'running')==='running',hdOnly:!!j.hdOnly,preview:j.preview!==false};
-  $('pct').innerHTML=pct+'<small>%</small>'; $('fill').style.width=pct+'%'; $('ringFg').style.strokeDashoffset=351.86*(1-pct/100);
-  $('pctLbl').textContent=j.status==='approve'?'YOUR TURN':j.status==='failed'?'STOPPED':pct>=100?'DONE':'WORKING';
-  $('progTitle').textContent=P.hdOnly?'Making the full HD version':'Making your video';
+  $('fill').style.width=pct+'%'; if(!counting) countUp();
+  const lbl=j.status==='approve'?'YOUR TURN':j.status==='failed'?'STOPPED':pct>=100?'DONE':'LIVE';
+  $('pctLbl').textContent=lbl; $('pctLbl').classList.toggle('live',lbl==='LIVE');
+  $('progTitle').textContent=P.hdOnly?'Full HD render':'Making your video';
+  let first=true;
   document.querySelectorAll('#stages li').forEach((li,i)=>{ const hidden=P.hdOnly&&i<3; li.classList.toggle('hide',hidden);
-    li.classList.toggle('ok',i<P.stage||pct>=100); li.classList.toggle('on',i===P.stage&&pct<100&&P.running); li.querySelector('i').textContent=(i<P.stage||pct>=100)?'✓':''; });
+    li.classList.toggle('first',!hidden&&first); if(!hidden) first=false;
+    li.classList.toggle('ok',i<P.stage||pct>=100); li.classList.toggle('on',i===P.stage&&pct<100&&P.running); });
   $('stages').style.gridTemplateColumns=P.hdOnly?'repeat(2,1fr)':'';
   tick();
 }
@@ -254,7 +281,7 @@ function tick(){
   if(!P.running){ $('etaW').classList.add('hide'); return; } $('etaW').classList.remove('hide');
   // blend the typical run length with the pace so far (the pace counts for more as the job goes on)
   const typ=P.hdOnly?60:P.preview?160:200, w=P.pct/100, total=w*(el*100/Math.max(1,P.pct))+(1-w)*Math.max(typ,el+10);
-  $('eta').textContent=P.pct>=3?('about '+mmss(Math.max(5,total-el))):'estimating…';
+  $('eta').textContent=P.pct>=3?mmss(Math.max(5,total-el)):'—';
 }
 setInterval(()=>{ if(!$('s3').classList.contains('hide')) tick(); },1000);
 let pollFails=0;
@@ -273,7 +300,7 @@ async function poll(){
   if(j.status==='failed'){ store.set('cadJob',null); return fail(j.step); }
   setTimeout(poll,1500);
 }
-function fail(msg){ $('s3').classList.remove('hide'); $('progBox').classList.add('stop'); P.running=false; tick(); $('failMsg').textContent=msg||''; $('failNote').classList.remove('hide'); document.querySelectorAll('#stages li.on').forEach(li=>li.classList.remove('on')); }
+function fail(msg){ $('s3').classList.remove('hide'); $('s3').classList.add('stop'); P.running=false; tick(); $('failMsg').textContent=msg||''; $('failNote').classList.remove('hide'); document.querySelectorAll('#stages li.on').forEach(li=>li.classList.remove('on')); $('pctLbl').textContent='STOPPED'; $('pctLbl').classList.remove('live'); }
 $('restart').onclick=()=>{ store.set('cadJob',null); location.reload(); };
 // resume a job after a refresh
 (async()=>{ const id=store.get('cadJob'); if(!id) return; job=id; showWorking(); poll(); })();
