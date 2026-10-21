@@ -6,4 +6,3 @@ if not exist node_modules\@anthropic-ai\sdk (echo Installing... & call npm insta
 call npx playwright install chromium >nul 2>nul
 node server.mjs
 pause
-AIzaSyAESquNNhFPzBbTqRftFoV1momdHJfoiVM

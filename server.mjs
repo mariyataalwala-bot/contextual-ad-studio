@@ -213,10 +213,36 @@ function queued(job, fn) {
 }
 function newJob(data) {
   const id = (Date.now().toString(36) + Math.random().toString(36).slice(2, 5));
-  jobs[id] = { id, status: "running", step: "", log: [], ...data };
+  jobs[id] = { id, status: "running", step: "", log: [], t0: Date.now(), prog: { a: 0, b: 1, t: Date.now(), dur: 10, stage: 0 }, ...data };
   return jobs[id];
 }
-const say = (job, msg) => { job.step = msg; job.log.push(new Date().toLocaleTimeString() + "  " + msg); };
+// Overall progress: each milestone message moves the bar into a [from, to] band; inside a band it creeps forward
+// with time (expected seconds), and rendering uses the real frame count. The bar never goes backwards.
+// stage: 0 find video · 1 capture · 2 build · 3 render · 4 sound
+const MILESTONES = [
+  [/^Planning searches/, 1, 6, 15, 0], [/^Searching YouTube/, 6, 12, 10, 0], [/^Ranking/, 12, 18, 20, 0],
+  [/^Checking video/, 18, 22, 6, 0], [/scanning 12 frames/, 22, 30, 25, 0], [/AI is checking the frames/, 30, 40, 45, 0],
+  [/asking again/, 40, 42, 20, 0], [/placing both boxes/, 42, 48, 50, 0], [/^Picked:/, 48, 49, 3, 1],
+  [/Finishing the ad recording/, 49, 51, 20, 1], [/^Capturing the YouTube pages/, 51, 72, 30, 1], [/retrying with its title/, 70, 73, 20, 1],
+  [/^Building the template/, 73, 77, 15, 2], [/^Rendering the 720p/, 77, 95, 35, 3], [/^Rendering full HD/, 77, 95, 60, 3],
+  [/^Adding music/, 95, 99, 10, 4],
+];
+function pctOf(job) {
+  const p = job.prog; if (job.status === "done") return 100;
+  const f = p.frac != null ? p.frac : Math.min(0.92, (Date.now() - p.t) / 1000 / p.dur);
+  return Math.max(p.last || 0, Math.min(99, p.a + (p.b - p.a) * f));
+}
+function setBand(job, a, b, dur, stage) {
+  const p = job.prog, now = pctOf(job);
+  job.prog = { a: Math.max(a, now), b: Math.max(b, now), t: Date.now(), dur, stage, last: now };
+}
+const say = (job, msg) => {
+  job.step = msg; job.log.push(new Date().toLocaleTimeString() + "  " + msg);
+  const m = MILESTONES.find(([re]) => re.test(msg));
+  if (m) { let [, a, b, dur, stage] = m; if (job.hdOnly && stage >= 3) { if (stage === 3) [a, b] = [2, 92]; else [a, b] = [92, 99]; } setBand(job, a, b, dur, stage); }
+};
+const progressOf = (job) => ({ pct: Math.round(pctOf(job)), stage: job.status === "done" ? 5 : job.prog.stage, hdOnly: !!job.hdOnly, preview: !!job.input?.preview,
+  elapsed: Math.round(((job.status === "running" ? Date.now() : job.tEnd || Date.now()) - job.t0) / 1000) });
 
 const RULES = `House rules for Mediakart contextual-ad demos:
 - Content videos must be PREMIUM: produced by celebrity chefs, well-known professional creators, studios or media brands (e.g. for food in India: Chef Ranveer Brar, Kunal Kapur, Your Food Lab / Chef Sanjyot Keer, Sanjeev Kapoor Khazana, Hebbars Kitchen; globally: Tasty, Bon Appétit, America's Test Kitchen), with studio-quality cinematography, lighting and styling, HD. Prefer English or neat bilingual titles over clickbait titles.
@@ -421,7 +447,7 @@ async function renderMux(job, kind) {
   say(job, prev ? "Rendering the 720p preview (about 30 seconds)…" : "Rendering full HD (about 1 minute)…");
   const raw = path.join(W, prev ? "out_preview_noaudio.mp4" : "out_noaudio.mp4");
   await run("node", [path.join(PIPE, "scripts", "render.js"), path.join(W, "dist", "contextual-ad.html"), raw, "25", I.hq && !prev ? "4" : (process.env.RENDER_SUBFRAMES || "1"), prev ? "0.6667" : "1"],
-    { log: (l) => { const m = l.match(/frame (\d+) \/ (\d+)/); if (m) job.step = `Rendering${prev ? " preview" : ""}… ${Math.round((100 * m[1]) / m[2])}%`; } });
+    { log: (l) => { const m = l.match(/frame (\d+) \/ (\d+)/); if (m) { job.step = `Rendering${prev ? " preview" : ""}… ${Math.round((100 * m[1]) / m[2])}% of frames`; job.prog.frac = m[1] / m[2]; } } });
   say(job, "Adding music and the ad's sound…");
   const final = path.join(W, `${slug(I.brand)}-contextual-ad${prev ? "-preview" : ""}.mp4`);
   const args = [path.join(PIPE, "scripts", "mux.py"), raw, fs.existsSync(path.join(W, "ad_audio.webm")) ? path.join(W, "ad_audio.webm") : "none", final];
@@ -525,7 +551,8 @@ http.createServer(async (req, res) => {
     const jm = u.pathname.match(/^\/api\/job\/(\w+)(\/(\w+))?$/);
     if (jm && jobs[jm[1]]) {
       const job = jobs[jm[1]], act = jm[3];
-      if (!act) return send(res, 200, { kind: job.kind, hasHD: !!job.hdOutput, status: job.status, step: job.step, log: job.log.slice(-40), proposal: job.proposal && { ...job.proposal, pick: { ...job.proposal.pick, visual: { ...job.proposal.pick.visual, still: undefined }, object: { ...job.proposal.pick.object, still: undefined } } }, output: job.output });
+      if (job.status !== "running" && !job.tEnd) job.tEnd = Date.now(); else if (job.status === "running") job.tEnd = 0;
+      if (!act) return send(res, 200, { ...progressOf(job), kind: job.kind, hasHD: !!job.hdOutput, status: job.status, step: job.step, log: job.log.slice(-40), proposal: job.proposal && { ...job.proposal, pick: { ...job.proposal.pick, visual: { ...job.proposal.pick.visual, still: undefined }, object: { ...job.proposal.pick.object, still: undefined } } }, output: job.output });
       if (act === "grab" && req.method === "POST") {   // manual mode: capture an exact moment the user typed
         const t = +(await body(req)).t, P = job.proposal;
         if (!P || !(t >= 0) || t > P.video.length) return send(res, 400, { error: "Enter a time inside the video (0 – " + mmss(Math.floor(P?.video.length || 0)) + ")." });
@@ -551,7 +578,7 @@ http.createServer(async (req, res) => {
       if (act === "hd" && req.method === "POST") {   // full HD from the same captures — no AI, no re-capture
         if (job.status !== "done") return send(res, 409, { error: "Wait for the preview to finish first." });
         if (job.hdOutput) return send(res, 200, { ok: true, ready: true });
-        job.status = "running";
+        job.status = "running"; job.hdOnly = true; job.t0 = Date.now(); job.tEnd = 0; job.prog = { a: 0, b: 2, t: Date.now(), dur: 5, stage: 3 };
         queued(job, () => renderMux(job, "hd")).then(() => { job.status = "done"; say(job, "Full HD ready — " + job.output); }).catch((e) => { job.status = "failed"; say(job, "Error: " + e.message); });
         return send(res, 200, { ok: true });
       }
