@@ -41,7 +41,8 @@ const loadSettings = () => { try { return JSON.parse(fs.readFileSync(SETTINGS, "
 const geminiKey = () => loadSettings().geminiKey || process.env.GEMINI_API_KEY;
 const claudeKey = () => loadSettings().apiKey || process.env.ANTHROPIC_API_KEY;
 const provider = () => { const p = loadSettings().provider || process.env.AI_PROVIDER; if (p) return p; return geminiKey() ? "gemini" : claudeKey() ? "claude" : "none"; };
-const GEMINI_MODELS = () => [...new Set([loadSettings().geminiModel || process.env.GEMINI_MODEL, "gemini-flash-latest", "gemini-3.8-flash", "gemini-3.7-flash", "gemini-3.6-flash", "gemini-3.5-flash", "gemini-3-flash-preview", "gemini-flash-lite-latest", "gemini-3.5-flash-lite"].filter(Boolean))];
+// fastest first (measured: 3.5/3.6-flash ~6 s, 3-flash-preview ~11 s; flash-latest and 3.8-flash can take 40–60 s+)
+const GEMINI_MODELS = () => [...new Set([loadSettings().geminiModel || process.env.GEMINI_MODEL, "gemini-3.5-flash", "gemini-3.6-flash", "gemini-3-flash-preview", "gemini-3.7-flash", "gemini-flash-lite-latest", "gemini-3.5-flash-lite", "gemini-3.8-flash", "gemini-flash-latest"].filter(Boolean))];
 const geminiOut = new Map();   // model → time its quota is expected back
 function claude() {
   const key = claudeKey();
@@ -64,29 +65,40 @@ async function askGemini(system, text, schema, images, fast = false) {
     parts.push({ inlineData: { mimeType: im.file.toLowerCase().endsWith(".png") ? "image/png" : "image/jpeg", data: fs.readFileSync(im.file).toString("base64") } });
   }
   parts.push({ text });
-  let last = "";
-  const models = fast ? [...new Set(["gemini-flash-lite-latest", "gemini-3.5-flash-lite", ...GEMINI_MODELS()])] : GEMINI_MODELS();
-  for (const model of models) {
-    if ((geminiOut.get(model) || 0) > Date.now()) continue;
-    for (let attempt = 0; attempt < 3; attempt++) {
+  const all = fast ? [...new Set(["gemini-flash-lite-latest", "gemini-3.5-flash-lite", ...GEMINI_MODELS()])] : GEMINI_MODELS();
+  const models = all.filter((m) => (geminiOut.get(m) || 0) <= Date.now());
+  const vision = images.length > 0, TIMEOUT = vision ? 30000 : 15000, HEDGE = vision ? 9000 : 5000;
+  let last = "", quota = 0;
+  // one model, with one retry on broken JSON; marks slow / busy / out-of-quota models so later calls skip them
+  const one = async (model) => {
+    for (let attempt = 0; attempt < 2; attempt++) {
       try {
         const r = await ai.models.generateContent({ model, contents: [{ role: "user", parts }],
-          config: { systemInstruction: system, responseMimeType: "application/json", responseJsonSchema: schema, httpOptions: { timeout: 90000 } } });
+          config: { systemInstruction: system, responseMimeType: "application/json", responseJsonSchema: schema, httpOptions: { timeout: TIMEOUT } } });
         return JSON.parse(r.text);
       } catch (e) {
         last = String(e.message || e);
-        if (/429|RESOURCE_EXHAUSTED/i.test(last)) {   // quota: a daily limit → skip this model for hours; a per-minute limit → one short wait, then the next model
-          if (/PerDay|per.?day|daily/i.test(last) || attempt > 0) { geminiOut.set(model, Date.now() + (/PerDay|per.?day|daily/i.test(last) ? 3 * 3600e3 : 120e3)); break; }
-          await sleep(5000); continue;
-        }
-        if (/404|not found|no longer available|not supported/i.test(last)) { geminiOut.set(model, Date.now() + 24 * 3600e3); break; }
-        if (/503|UNAVAILABLE|overloaded|timed? ?out|aborted/i.test(last)) { geminiOut.set(model, Date.now() + 300e3); break; }   // busy/slow model → next one
-        if (/JSON/.test(last) && attempt < 2) continue;
-        throw new AIError("Gemini: " + last.slice(0, 200));
+        if (/JSON/.test(last) && attempt === 0) continue;
+        if (/429|RESOURCE_EXHAUSTED/i.test(last)) { quota++; geminiOut.set(model, Date.now() + (/PerDay|per.?day|daily/i.test(last) ? 3 * 3600e3 : 90e3)); }
+        else if (/404|not found|no longer available|not supported/i.test(last)) geminiOut.set(model, Date.now() + 24 * 3600e3);
+        else if (/503|UNAVAILABLE|overloaded|timed? ?out|aborted/i.test(last)) geminiOut.set(model, Date.now() + 600e3);
+        throw e;
       }
     }
-  }
-  throw new AIError("All free Gemini models are out of quota for now (it resets daily, ~12:30 pm IST). Add a Claude key in Settings, or tick 'Let me review the picks' to choose them yourself.");
+  };
+  // hedged: start the fastest model; if it hasn't answered in a few seconds, start the next one too — first good answer wins
+  return new Promise((resolve, reject) => {
+    let i = 0, running = 0, done = false, timer;
+    const finish = (fn, v) => { if (done) return; done = true; clearInterval(timer); fn(v); };
+    const launch = () => {
+      if (done) return;
+      if (i >= models.length) { if (!running) finish(reject, new AIError(quota && quota >= models.length - 1 ? "All free Gemini models are out of quota for now (it resets daily, ~12:30 pm IST). Add a Claude key in Settings for faster, unlimited picks." : "Gemini is busy right now: " + last.slice(0, 160))); return; }
+      const model = models[i++]; running++;
+      one(model).then((r) => finish(resolve, r)).catch(() => { running--; launch(); });
+    };
+    launch();
+    timer = setInterval(() => { if (running < 3) launch(); }, HEDGE);
+  });
 }
 async function askClaude(system, text, schema, images, effort) {
   const content = [];
@@ -345,7 +357,7 @@ async function proposeMoments(job) {
     let pick = null;
     if (!job.aiDown) {
       try {
-        say(job, "  AI is checking the frames (free Gemini can take ~2 min)…");
+        say(job, "  AI is checking the frames…");
         pick = await ask("You pick the moments for a contextual-ad demo, strictly.", `${RULES}\n\nBrand: ${brand}. Product category: ${job.category}. Ad: ${adTitle}\nVideo title (exact): ${meta.title}\nChannel: ${meta.channel}, ${meta.views} views, length ${L}s${meta.chapters?.length ? `\nChapters: ${JSON.stringify(meta.chapters)}` : ""}\n\nThe ${stills.length} frames above are labelled with their time in seconds.\n` +
           `Decide whether this video passes the house rules. If it does, choose: open_t (a strong 2-second opening shot), visual (time + what the Visual Identify shows), object (time + the object), keyword phrases that are EXACT substrings of the title (1–3 phrases, product-category words), a 2-line keyword card (max ~10 characters per line, use \\n), an icon for each mark (one of ${ICONS.join(", ")}; use mesh only when a face is the subject), and a YouTube search query that should return this exact video near the top (use distinctive title words).` +
           ` Times must be among the labelled frame times. Reject (accept=false) if any of the three checks would be a stretch.`,
@@ -536,7 +548,7 @@ http.createServer(async (req, res) => {
           const ok = await proposeMoments(job);
           if (!ok) { job.status = "failed"; say(job, "No video passed all three checks. Try a different product focus, or paste a content video link."); return; }
           if (job.input.review || job.proposal.manual) {
-            if (!job.input.review && job.proposal.manual) { job.status = "failed"; say(job, job.aiError || "The AI couldn't pick the moments right now. Tick 'Let me review the picks' to choose them yourself."); return; }
+            if (!job.input.review && job.proposal.manual) { job.status = "approve"; say(job, (job.aiError || "The AI is unavailable right now.") + " Pick the three moments yourself below."); return; }
             job.status = "approve"; return;
           }
           const P = job.proposal; if (!P.pick.card) P.pick.card = P.pick.keywords[0].split(/\s+/).slice(0, 2).join("\n");

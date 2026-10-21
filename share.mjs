@@ -28,10 +28,15 @@ while (pw.length < 6) pw = await ask("Choose a password for your team (6+ charac
 const s = (() => { try { return JSON.parse(fs.readFileSync(SETTINGS, "utf8")); } catch { return {}; } })();
 s.sharePassword = pw; fs.writeFileSync(SETTINGS, JSON.stringify(s));
 
-let server = null;
+// the app is kept running: if it stops (crash or update), it is started again and the share link stays the same
+let server = null, stopping = false;
+const startApp = () => {
+  server = spawn(process.execPath, [path.join(APP, "server.mjs"), "--no-open"], { cwd: APP, env: process.env, stdio: ["ignore", "inherit", "inherit"] });
+  server.on("exit", (c) => { if (stopping) return; console.log("App stopped (" + c + ") — restarting…"); setTimeout(startApp, 1500); });
+};
 if (await up()) console.log("Using the app that's already running on this PC.");
 else {
-  server = spawn(process.execPath, [path.join(APP, "server.mjs"), "--no-open"], { cwd: APP, env: process.env, stdio: ["ignore", "inherit", "inherit"] });
+  startApp();
   for (let i = 0; i < 20 && !(await up()); i++) await new Promise((r) => setTimeout(r, 500));
 }
 
@@ -55,7 +60,6 @@ const onData = async (d) => {
   if (!process.env.SHARE_NO_OPEN) spawn("cmd", ["/c", "start", "", m[0]], { detached: true, windowsHide: true });
 };
 tunnel.stdout.on("data", onData); tunnel.stderr.on("data", onData);
-const stop = () => { try { tunnel.kill(); } catch {} try { server?.kill(); } catch {} process.exit(0); };
+const stop = () => { stopping = true; try { tunnel.kill(); } catch {} try { server?.kill(); } catch {} process.exit(0); };
 process.on("SIGINT", stop); process.on("SIGTERM", stop);
 tunnel.on("exit", (c) => { console.log("Share link closed (" + c + ")."); stop(); });
-server?.on("exit", (c) => { console.log("App stopped (" + c + ")."); stop(); });
