@@ -7,6 +7,7 @@ import { spawn } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import Anthropic from "@anthropic-ai/sdk";
 import { GoogleGenAI } from "@google/genai";
+import { createOpenWeb } from "./openweb/routes.mjs";
 
 const APP = path.dirname(fileURLToPath(import.meta.url));
 const PIPE = path.join(APP, "pipeline");
@@ -14,7 +15,7 @@ const IS_WIN = process.platform === "win32";
 const OUT_ROOT = process.env.OUT_DIR || (IS_WIN ? "D:\\contextual-ads" : path.join(APP, "output"));
 const SETTINGS = path.join(APP, "settings.json");
 const PORT = +(process.env.PORT || 4777);
-const HOST = process.env.PORT ? "0.0.0.0" : "127.0.0.1";   // on Render (PORT set) listen publicly
+const HOST = process.env.HOST || (process.env.PORT ? "0.0.0.0" : "127.0.0.1");   // on Render (PORT set) listen publicly
 const sharePassword = () => process.env.APP_PASSWORD || loadSettings().sharePassword || "";   // login for anyone using the share link / hosted app
 const MODEL = "claude-opus-5-5";
 
@@ -66,24 +67,30 @@ async function askGemini(system, text, schema, images, fast = false, grace = 0) 
   }
   parts.push({ text });
   // a flash and a lite model start together (lite answers in ~3–8 s; flash can take 5–20 s on the free tier)
-  const all = fast ? [...new Set(["gemini-3.5-flash-lite", "gemini-flash-lite-latest", ...GEMINI_MODELS()])]
-    : [...new Set([GEMINI_MODELS()[0], "gemini-3.5-flash-lite", ...GEMINI_MODELS()])];
-  const models = all.filter((m) => (geminiOut.get(m) || 0) <= Date.now());
+  // Free tier: flash models allow ~20 requests/day each, lite models far more. So only the main pick (grace) races a flash
+  // and a lite model; every other call starts with one lite model and adds another only if it fails or is slow.
+  const LITE = ["gemini-3.5-flash-lite", "gemini-flash-lite-latest"];
+  const all = grace ? [...new Set([GEMINI_MODELS()[0], ...LITE, ...GEMINI_MODELS()])] : [...new Set([...LITE, ...GEMINI_MODELS()])];
+  const ready = all.filter((m) => (geminiOut.get(m) || 0) <= Date.now());
+  const models = ready.length ? ready : all;   // if every model is resting, try them anyway rather than give up
   const vision = images.length > 0, TIMEOUT = vision ? 30000 : 15000, HEDGE = vision ? 6000 : 4000;
-  let last = "", quota = 0;
-  // one model, with one retry on broken JSON; marks slow / busy / out-of-quota models so later calls skip them
+  let last = "", quota = 0, over = false; const stop = new AbortController();   // over = a winner was found
+  // one model, with one retry on broken JSON; marks busy / out-of-quota models so later calls skip them for a while.
+  // Requests still running when another model wins are cancelled, and their failures don't count against the model.
   const one = async (model) => {
     for (let attempt = 0; attempt < 2; attempt++) {
       try {
         const r = await ai.models.generateContent({ model, contents: [{ role: "user", parts }],
-          config: { systemInstruction: system, responseMimeType: "application/json", responseJsonSchema: schema, httpOptions: { timeout: TIMEOUT } } });
+          config: { systemInstruction: system, responseMimeType: "application/json", responseJsonSchema: schema, abortSignal: stop.signal, httpOptions: { timeout: TIMEOUT } } });
         return JSON.parse(r.text);
       } catch (e) {
+        if (over) throw e;
         last = String(e.message || e);
         if (/JSON/.test(last) && attempt === 0) continue;
         if (/429|RESOURCE_EXHAUSTED/i.test(last)) { quota++; geminiOut.set(model, Date.now() + (/PerDay|per.?day|daily/i.test(last) ? 3 * 3600e3 : 90e3)); }
         else if (/404|not found|no longer available|not supported/i.test(last)) geminiOut.set(model, Date.now() + 24 * 3600e3);
-        else if (/503|UNAVAILABLE|overloaded|timed? ?out|aborted/i.test(last)) geminiOut.set(model, Date.now() + 600e3);
+        else if (/503|UNAVAILABLE|overloaded/i.test(last)) geminiOut.set(model, Date.now() + 60e3);
+        else if (/timed? ?out|aborted/i.test(last)) geminiOut.set(model, Date.now() + 120e3);
         throw e;
       }
     }
@@ -92,7 +99,7 @@ async function askGemini(system, text, schema, images, fast = false, grace = 0) 
   // With grace (the main pick), a lite model's answer waits up to `grace` ms for a flash model's, which is stricter.
   return new Promise((resolve, reject) => {
     let i = 0, running = 0, done = false, timer, graceT, liteAns = null; const active = new Set();
-    const finish = (fn, v) => { if (done) return; done = true; clearInterval(timer); clearTimeout(graceT); fn(v); };
+    const finish = (fn, v) => { if (done) return; done = over = true; clearInterval(timer); clearTimeout(graceT); stop.abort(); fn(v); };
     const launch = () => {
       if (done) return;
       if (i >= models.length) { if (!running) liteAns ? finish(resolve, liteAns) : finish(reject, new AIError(quota && quota >= models.length - 1 ? "All free Gemini models are out of quota for now (it resets daily, ~12:30 pm IST). Add a Claude key in Settings for faster, unlimited picks." : "Gemini is busy right now: " + last.slice(0, 160))); return; }
@@ -103,8 +110,8 @@ async function askGemini(system, text, schema, images, fast = false, grace = 0) 
         finish(resolve, r);
       }).catch(() => { active.delete(model); running--; if (liteAns && ![...active].some((m) => !/lite/.test(m))) return finish(resolve, liteAns); launch(); });
     };
-    launch(); launch();
-    timer = setInterval(() => { if (running < 3 && !liteAns) launch(); }, HEDGE);
+    launch(); if (grace) launch();
+    timer = setInterval(() => { if (running < 2 && !liteAns) launch(); }, HEDGE);
   });
 }
 async function askClaude(system, text, schema, images, effort) {
@@ -131,13 +138,14 @@ async function askClaude(system, text, schema, images, effort) {
 }
 
 // ---------- process helpers ----------
-function run(cmd, args, { log, cwd, env } = {}) {
+function run(cmd, args, { log, cwd, env, timeout } = {}) {
   return new Promise((resolve, reject) => {
     const p = spawn(cmd, args, { env: env ? { ...ENV, ...env } : ENV, cwd: cwd || APP, windowsHide: true });
     let out = "", err = "";
+    const kill = timeout ? setTimeout(() => { err += `\ntimed out after ${timeout / 1000} s`; p.kill(); }, timeout) : null;   // a stuck helper never holds a job up
     p.stdout.on("data", (d) => { out += d; if (log) String(d).split(/\r?\n/).filter(Boolean).forEach(log); });
     p.stderr.on("data", (d) => { err += d; });
-    p.on("close", (code) => (code === 0 ? resolve(out) : reject(new Error(`${path.basename(args[0] || cmd)} failed (${code}): ${(err || out).slice(-600)}`))));
+    p.on("close", (code) => { clearTimeout(kill); code === 0 ? resolve(out) : reject(new Error(`${path.basename(args[0] || cmd)} failed (${code}): ${(err || out).slice(-600)}`)); });
   });
 }
 const yt = (args, opts) => run("node", [path.join(PIPE, "scripts", "yt.js"), ...args], opts);
@@ -178,9 +186,13 @@ async function channelSubs(ids) {
   }
   return (id) => subsCache.get(id) ?? null;
 }
+const SEARCH_CACHE = path.join(OUT_ROOT, "_cache", "search.json");
+let searchCache = (() => { try { return JSON.parse(fs.readFileSync(SEARCH_CACHE, "utf8")); } catch { return {}; } })();
 async function ytApiSearch(queries, n) {
   const all = [];
-  const found = await Promise.all(queries.map(async (q) => {   // all queries at once
+  const found = await Promise.all(queries.map(async (q) => {   // all queries at once; each one cached for a day
+    const key = `${normTxt(q)}|${n}`, hit = searchCache[key];
+    if (hit && Date.now() - hit.t < 24 * 3600e3) return hit.r;
     const all = [];
     const s = await ytApi("search", { part: "snippet", type: "video", q, maxResults: String(Math.min(+n || 10, 25)), regionCode: "IN", relevanceLanguage: "en", safeSearch: "moderate" });
     const ids = (s.items || []).map((x) => x.id.videoId).filter(Boolean);
@@ -192,8 +204,11 @@ async function ytApiSearch(queries, n) {
       all.push({ id, title: v.snippet.title, channel: v.snippet.channelTitle, meta: `${views(v.statistics.viewCount)} views · ${v.snippet.publishedAt.slice(0, 10)}${sc != null ? ` · channel ${views(sc)} subscribers` : ""}`,
         length: mmss(sec), query: q, definition: v.contentDetails.definition, aspect: aspectOf(v), subs: sc, views: +v.statistics.viewCount || 0 });
     }
+    searchCache[key] = { t: Date.now(), r: all };
     return all;
   }));
+  try { const now = Date.now(); for (const k of Object.keys(searchCache)) if (now - searchCache[k].t > 24 * 3600e3) delete searchCache[k];
+    fs.mkdirSync(path.dirname(SEARCH_CACHE), { recursive: true }); fs.writeFileSync(SEARCH_CACHE, JSON.stringify(searchCache)); } catch {}
   for (const f of found) all.push(...f);
   return all;
 }
@@ -207,12 +222,18 @@ async function ytApiMeta(id) {
     size: playerSize(v), description: desc.slice(0, 800) };
 }
 // searchjson / meta go through the official API when a key is set; everything else (and any API failure) uses the browser.
+// The free key allows ~100 searches a day: searches are cached for a day, and once the daily search limit is hit, searches go
+// through the browser until it resets (video details keep using the API — they have their own, much larger limit).
+let ytSearchOffUntil = 0;
+const nextPacificMidnight = () => { const d = new Date(); d.setUTCHours(8, 0, 0, 0); if (d <= Date.now()) d.setUTCDate(d.getUTCDate() + 1); return +d; };
 async function ytJson(args) {
-  if (youtubeKey() && Date.now() > ytApiDisabledUntil && (args[0] === "searchjson" || args[0] === "meta")) {
+  const search = args[0] === "searchjson";
+  if (youtubeKey() && Date.now() > ytApiDisabledUntil && (search || args[0] === "meta") && !(search && Date.now() < ytSearchOffUntil)) {
     try { return args[0] === "meta" ? await ytApiMeta(args[1]) : await ytApiSearch(String(args[1]).split("||"), args[2]); }
     catch (e) {
       console.error(e.message);
-      if (e.reason === "quotaExceeded" || e.reason === "dailyLimitExceeded") ytApiDisabledUntil = Date.now() + 6 * 3600e3;
+      if (search && (e.reason === "rateLimitExceeded" || /per day/i.test(e.message))) ytSearchOffUntil = nextPacificMidnight();
+      else if (e.reason === "quotaExceeded" || e.reason === "dailyLimitExceeded") ytApiDisabledUntil = nextPacificMidnight();
       if (e.reason === "keyInvalid" || e.reason === "API_KEY_INVALID" || e.reason === "accessNotConfigured" || e.reason === 403) ytApiDisabledUntil = Date.now() + 600e3;
     }
   }
@@ -267,7 +288,8 @@ const progressOf = (job) => ({ pct: Math.round(pctOf(job)), stage: job.status ==
   elapsed: Math.round(((job.status === "running" ? Date.now() : job.tEnd || Date.now()) - job.t0) / 1000) });
 
 const RULES = `House rules for Mediakart contextual-ad demos:
-- Content videos must be PREMIUM: produced by celebrity chefs, well-known professional creators, studios or media brands (e.g. for food in India: Chef Ranveer Brar, Kunal Kapur, Your Food Lab / Chef Sanjyot Keer, Sanjeev Kapoor Khazana, Hebbars Kitchen; globally: Tasty, Bon Appétit, America's Test Kitchen), with studio-quality cinematography, lighting and styling, HD. Prefer English or neat bilingual titles over clickbait titles.
+- Content videos must be PREMIUM: produced by well-known professional creators, studios, media brands or specialist publishers for the product's category, with studio-quality cinematography, lighting and styling, HD. Examples — food: Chef Ranveer Brar, Kunal Kapur, Your Food Lab / Chef Sanjyot Keer, Sanjeev Kapoor Khazana, Hebbars Kitchen, Tasty, Bon Appétit, America's Test Kitchen, Food Network; home & appliances: HGTV, This Old House, The Home Depot, Lowe's, Architectural Digest, Asian Paints Where the Heart Is; beauty & fashion: Vogue, Harper's BAZAAR, GQ, Elle; tech: MKBHD, Unbox Therapy, Mrwhosetheboss. Prefer English or neat bilingual titles over clickbait titles.
+- Independent publishers only: never the advertised brand's own channel, and never a COMPETING MANUFACTURER's own channel (e.g. for a Havells fan ad, not Hunter Fan Company, Crompton or Atomberg's channels). Retailers' and media publishers' tutorials and guides (Home Depot, HGTV…) are fine.
 - Reject: home-kitchen / amateur production even on big channels, clickbait titles ("guarantee", "you'll never…", ALL CAPS), street/roadside footage, shaky vlogs, celebrity home tours, pranks, anything unhygienic or unprofessional.
 - All three AI checks must literally match the brand's product:
   Visual Identify = the product category in action (e.g. potato chips frying, cream being applied, tea being poured).
@@ -276,7 +298,28 @@ const RULES = `House rules for Mediakart contextual-ad demos:
 - No stretches: never a bathrobe for a moisturiser, a rival's drink for chips, a breakfast plate for a snack, or "home tour" as a keyword.
 - Visual Identify must show the product category itself on screen (the food being cooked/served, the product being used). Never a presenter's face or a talking-head shot, unless the product is worn on the face (skincare, make-up, eyewear).
 - If the clearest object is a competitor's product, it may be used but must be flagged in "notes".
+- The content video must be INDEPENDENT of the advertised brand: never uploaded, made, sponsored or promoted by the brand (or its parent company), never about the brand's own products (none of the advertised brand's own tutorials, installation guides, unboxings, reviews or ads — general tutorials and guides by independent publishers are fine), and the brand's logo or products must not appear in the chosen moments.
 - Never invent claims, numbers or slogans.`;
+
+// ---------- the advertised brand: its own content is never used as the content video ----------
+// names = the brand as typed + the ad's channel (e.g. "MAGGI India" → maggi, "Nestlé India" → nestle), generic words dropped
+const normTxt = (s) => String(s || "").normalize("NFKD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/['’`]/g, "").replace(/[^a-z0-9\u0900-\u097f]+/g, " ").trim();
+const GENERIC_WORDS = /\b(india|indian|official|tv|ltd|limited|pvt|private|group|global|channel|inc|co|company|brand|brands|store|shop|world|hq|meri|mera|my|new|the|and|ad|ads|tvc|seconds|sec)\b/g;
+const near1 = (a, b) => { if (Math.abs(a.length - b.length) > 1) return false; let i = 0, j = 0, d = 0;   // edit distance ≤ 1
+  while (i < a.length && j < b.length) { if (a[i] === b[j]) { i++; j++; continue; } if (++d > 1) return false; if (a.length > b.length) i++; else if (b.length > a.length) j++; else { i++; j++; } }
+  return d + (a.length - i) + (b.length - j) <= 1; };
+function brandNames(I) {
+  const out = new Set(), clean = (x) => normTxt(x).replace(GENERIC_WORDS, " ").replace(/\s+/g, " ").trim();
+  for (const x of [I.brand, I.adChannel]) { const n = clean(x); if (n.length >= 3) out.add(n); }
+  const typed = clean(I.brand).replace(/\s/g, ""), chW = clean(I.adChannel).split(" "), tiW = new Set(clean(I.adTitle).split(" "));
+  for (const w of [...chW, ...tiW]) if (w.length >= 4 && ((chW.includes(w) && tiW.has(w)) || (typed.length >= 4 && near1(w, typed)))) out.add(w);   // "MERI MAGGI" + "…MAGGI Veg Atta" → maggi; "Maggie" → maggi
+  return [...out];
+}
+// whole-word match in text ("lays" in "Lay's chips"); the channel is also checked without spaces ("MaggiIndia")
+const mentionsBrand = (text, names) => { const t = ` ${normTxt(text)} `, sq = t.replace(/\s/g, ""); return names.some((n) => t.includes(` ${n} `) || (n.includes(" ") && sq.includes(n.replace(/\s/g, "")))); };
+const channelIsBrand = (ch, names) => { const sq = normTxt(ch).replace(/\s/g, ""); return names.some((n) => sq.includes(n.replace(/\s/g, ""))); };
+const brandOwned = (v, names) => channelIsBrand(v.channel, names) || mentionsBrand(v.title, names);
+const stripBrand = (q, names) => { let t = ` ${normTxt(q)} `; for (const n of names) t = t.split(` ${n} `).join(" "); return t.replace(/\s+/g, " ").trim(); };
 const ICONS = ["mesh", "pan", "chip", "bowl", "plate", "tube", "jar", "bottle", "cup", "shirt", "people", "hand", "phone", "shoe", "car"];
 
 // Step A: find the brand's official ads (AI ranks them; without AI: the brand's own channel first)
@@ -375,14 +418,30 @@ function phraseRects(watch, phrases) {
 }
 // AI boxes for the two marks, using Gemini's native detection format (box_2d, 0–1000) on the plain frame — tighter than
 // a grid. Lightly padded; never slivers (min 20% × 25%), never the whole picture (max 92%). Keeps the default if the AI is out.
-async function placeBoxes(job, pick, files) {
+// With verify, the same call also checks the full-resolution frame strictly: it must really show the product category, and the
+// advertised brand's own logo/product must not be in it. Failures are returned (the caller then moves to the next video).
+async function placeBoxes(job, pick, files, verify = false) {
+  const problems = [];
+  const I = job.input, faceOk = /skin|face|make.?up|cosmetic|serum|cream|lotion|sunscreen|eyewear|glasses|lipstick|beauty/i.test(`${job.category} ${I.product || ""}`);
   await Promise.all(["visual", "object"].map(async (k) => {
     pick[k].box = pick[k].box || [0.2, 0.2, 0.6, 0.6];
     if (job.aiDown || !files[k] || !fs.existsSync(files[k])) return;
+    const what = pick[k].what || "the main product";
+    const check = verify ? `\n\nAlso check this full frame strictly. Product type being advertised: ${job.ptype || job.category} (any material, flavour, colour or variant of it counts). This is the ${k === "visual" ? "Visual Identify (the product category in action)" : "Object Identify (the product itself or its direct equivalent)"} moment and should show: ${what}.\n` +
+      `matches = true only if the frame clearly shows that TYPE of product${k === "visual" ? " (being used, made, worn or shown in action)" : " (the product itself or its direct equivalent — an accessory, remote, box, manual or spare part is NOT the product)"} — judged at the product-type level: any material, flavour, colour or variant counts (gold rings count for silver jewellery, any ceiling fan counts for a ceiling fan). A different kind of product, an ingredient, a tool, or a scene where the product isn't clearly visible is NOT a match, whatever the description says (no stretches${k === "visual" && !faceOk ? "; a presenter's face or a talking head is NOT a match" : ""}).\n` +
+      `brand_visible = true if ${I.brand}'s own logo, packaging or product is visible (the content must be independent of ${I.brand}).\nreason = one short line.` : "";
+    const kwCheck = false && verify && k === "visual" && job.proposal ? `\nThe video's title is “${job.proposal.video.title}” and the keywords picked from it are: ${pick.keywords.map((x) => `“${x}”`).join(", ")}. keywords_match = true only if every keyword names that type of product (e.g. "Jewelry" or "Rings" for silver jewellery, "Ceiling Fan" for a ceiling fan, "Potato Chips" for chips) — false for words about something else in the video (a person, a place, a film, a style).` : "";
+    const props = { box_2d: { type: "array", items: { type: "number" } } }, req = ["box_2d"];
+    if (verify) { Object.assign(props, { matches: { type: "boolean" }, brand_visible: { type: "boolean" }, reason: { type: "string" } }); req.push("matches", "brand_visible", "reason"); }
+    if (kwCheck) { props.keywords_match = { type: "boolean" }; req.push("keywords_match"); }
     try {
-      const r = await ask("You detect objects in video frames.", `Detect ${pick[k].what || "the main product"}. Box only that main object, tightly — not the whole scene — and leave out on-screen captions. Return box_2d as [ymin, xmin, ymax, xmax] normalised to 0-1000.`,
-        { type: "object", additionalProperties: false, required: ["box_2d"], properties: { box_2d: { type: "array", items: { type: "number" } } } },
-        [{ label: `${k} frame`, file: files[k] }], "medium");
+      const r = await ask("You detect and check objects in video frames, strictly.", `Detect ${what}. Box only that main object, tightly — not the whole scene — and leave out on-screen captions. Return box_2d as [ymin, xmin, ymax, xmax] normalised to 0-1000.${check}${kwCheck}`,
+        { type: "object", additionalProperties: false, required: req, properties: props }, [{ label: `${k} frame`, file: files[k] }], "medium");
+      if (verify) {
+        if (r.brand_visible) problems.push(`${k}: ${I.brand}'s own product/logo is in the frame (${r.reason})`);
+        else if (!r.matches) problems.push(`${k}: the full frame doesn't clearly show ${what} (${r.reason})`);
+        if (kwCheck && r.keywords_match === false) problems.push(`keywords ${pick.keywords.join(", ")} don't name ${job.category}`);
+      }
       if (!Array.isArray(r.box_2d) || r.box_2d.length < 4) throw new AIError("no box returned");
       const [y0, x0, y1, x1] = r.box_2d.map((v) => Math.max(0, Math.min(1, v / 1000)));
       if (!(x1 > x0 && y1 > y0)) throw new AIError("empty box");
@@ -392,6 +451,7 @@ async function placeBoxes(job, pick, files) {
       pick[k].box = [x, y, w, h].map((v) => +v.toFixed(4));
     } catch (e) { say(job, "  box kept as default: " + String(e.message).slice(0, 120)); }   // a box is never worth failing the video
   }));
+  return problems;
 }
 
 // Step B: find a premium content video where all three checks match.
@@ -403,30 +463,49 @@ async function proposeMoments(job) {
   if (!job.category) job.category = product || brand;
   if (!job.candidates) {
     const seen = new Map(); let queries;
+    const names = brandNames(job.input);
     if (!job.aiDown) {
       try {
         say(job, `Planning searches for premium videos (AI: ${provider()})…`);
-        const plan = await ask("You plan YouTube searches for contextual ad placement.", `${RULES}\n\nBrand: ${brand}\nProduct: ${product || "(infer from the ad)"}\nAd being placed: ${adTitle}\n\nGive 6 YouTube search queries likely to surface premium, professional videos where this product category is clearly on screen (recipes, routines, tutorials, reviews...). At least 3 queries must name a specific top professional creator or studio in this category (e.g. "Kunal Kapur <dish>", "Your Food Lab <dish>"). Also state the product category in a few words.`,
-          { type: "object", additionalProperties: false, required: ["category", "queries"], properties: { category: { type: "string" }, queries: { type: "array", items: { type: "string" } } } }, [], "medium");
-        job.category = plan.category; queries = plan.queries.slice(0, 6);
+        const plan = await ask("You plan YouTube searches for contextual ad placement.", `${RULES}\n\nBrand: ${brand}\nProduct: ${product || "(infer it from the ad title)"}\nAd being placed: ${adTitle}\n\n` +
+          `Step 1 — category: the EXACT product the ad sells, in 1–3 plain words (e.g. "ceiling fan", "potato chips", "moisturising cream", "gold jewellery", "instant noodles"). Not a mood or a theme ("summer cooling", "home comfort").\n` +
+          `Step 2 — 6 YouTube search queries for premium, professional videos where THAT product is clearly on screen and is the subject (the product must be the SUBJECT of the video, not just somewhere in the room — for a ceiling fan: independent fan reviews, buying guides, an electrician installing a ceiling fan, how fans are made; for chips: chip recipes, taste tests, how chips are made; for a cream: skincare routines; for jewellery: styling guides, how jewellery is made). Avoid home tours and vlogs where the product only appears in the background. EVERY query must contain the category words. At least 3 queries should name a top professional creator, studio or media brand for that category. Never put the brand name "${brand}" (or its sub-brands) in a query.\n` +
+          `Step 3 — product_type: the general kind of product, ignoring material, flavour, colour or variant (e.g. "jewellery" for silver earrings, "ceiling fan", "potato chips", "face cream", "noodles"). title_terms: 6–15 lowercase words or short phrases that name this product type in video titles, including spelling variants, plurals and close synonyms (e.g. for jewellery: jewellery, jewelry, jewels, rings, necklace, earrings, bracelet, pendant; for face cream: cream, moisturiser, moisturizer, skincare, skin care, lotion). Only names of the product itself — never activities, places or themes (not \"room makeover\", \"interior design\", \"home decor\", \"recipe\").`,
+          { type: "object", additionalProperties: false, required: ["category", "product_type", "title_terms", "queries"], properties: { category: { type: "string" }, product_type: { type: "string" }, title_terms: { type: "array", items: { type: "string" } }, queries: { type: "array", items: { type: "string" } } } }, [], "medium");
+        job.category = stripBrand(plan.category, names) || plan.category;
+        job.ptype = stripBrand(plan.product_type, names) || job.category;
+        job.terms = [...new Set([...plan.title_terms, job.ptype, job.category].map(normTxt).filter((t) => t.length >= 3 && !mentionsBrand(t, names)))];
+        // every query must name the product (stems: "fans" → "fan"); add plain category searches if too few are left
+        const stems = normTxt(job.category).split(" ").filter((w) => w.length >= 3 && !/^(and|for|the|with|from)$/.test(w)).map((w) => w.replace(/(es|s)$/, ""));
+        queries = plan.queries.map((q) => stripBrand(q, names)).filter((q) => q.length > 2 && (!stems.length || stems.some((st) => normTxt(q).includes(st))));
+        for (const extra of [`${job.category} review`, `${job.category} buying guide`, `best ${job.category}`]) if (queries.length < 4) queries.push(extra);
+        queries = [...new Set(queries)].slice(0, 4);   // 4 searches × 25 results — the free key allows ~100 searches a day
+        job.log.push(`   product category: ${job.category} · type: ${job.ptype} · title words: ${job.terms.join(", ")}`);
       } catch (e) { if (!(e instanceof AIError)) throw e; job.aiDown = true; job.aiError = e.message; say(job, e.message); }
     }
-    if (!queries) { const p = product || brand; job.category = p; queries = [`${p} recipe`, `${p} review`, `how to use ${p}`, p]; }
+    if (!queries?.length) { const p = stripBrand(product || brand, names) || product || brand; job.category = p; queries = [`${p} recipe`, `${p} review`, `how to use ${p}`, p]; }
     say(job, `Searching YouTube: ${queries.map((q) => `“${q}”`).join(", ")}`);
-    try { for (const r of await ytJson(["searchjson", queries.join("||"), "10"])) if (!seen.has(r.id)) seen.set(r.id, r); }
+    try { for (const r of await ytJson(["searchjson", queries.join("||"), "25"])) if (!seen.has(r.id)) seen.set(r.id, r); }
     catch (e) { console.error("video search failed:", e.message); say(job, "YouTube search failed: " + e.message.slice(0, 160)); }
     const premiumScore = (r) => (r.subs || 0) / 1e6 * 2 + Math.log10((r.views || 1)) + (/[A-Z]{6,}|guarantee|never|shocking|गारंटी/i.test(r.title || "") ? -3 : 0);
     let pool = [...seen.values()].filter((r) => { const s = lenSec(r.length); return s >= 60 && s <= 1800 && isCTV(r) && (r.definition == null || r.definition === "hd"); });
-    const big = pool.filter((r) => r.subs == null || (r.subs >= 1e6 && r.views >= 1e5));   // premium = 1M+ subscribers, 100K+ views
-    if (big.length >= 3) pool = big;
+    const own = pool.filter((r) => brandOwned(r, names)); pool = pool.filter((r) => !brandOwned(r, names));   // never the brand's own videos
+    if (own.length) job.log.push(`   left out ${own.length} video(s) from or about ${brand} itself`);
+    // premium = 1M+ subscribers and 100K+ views; when that leaves too few, 300K+ / 50K+ (still professional channels)
+    const big = pool.filter((r) => r.subs == null || (r.subs >= 1e6 && r.views >= 1e5)), mid = pool.filter((r) => r.subs == null || (r.subs >= 3e5 && r.views >= 5e4));
+    if (big.length >= 8) pool = big; else if (mid.length >= 3) pool = mid; else if (big.length >= 3) pool = big;
     pool.sort((x, y) => premiumScore(y) - premiumScore(x));
-    job.candidates = pool.slice(0, 5);
+    job.log.push(`   ${seen.size} videos found, ${pool.length} long-form HD 16:9 videos from big channels kept`);
+    const subj = (r) => (job.terms?.length && job.terms.some((t) => ` ${normTxt(r.title)} `.includes(` ${t} `) || normTxt(r.title).includes(t.length >= 5 ? t.slice(0, -1) : `${t} `)) ? 1 : 0);
+    pool.sort((x, y) => subj(y) - subj(x));   // stable: videos whose title names the product come first
+    job.candidates = pool.slice(0, 8);
     if (!job.aiDown) {
       try {
         say(job, `Ranking ${pool.length} candidate videos…`);
-        const ranked = await ask("You choose premium YouTube videos for contextual ad placement.", `${RULES}\n\nBrand: ${brand}. Product category: ${job.category}.\nCandidates (JSON):\n${JSON.stringify(pool)}\n\nPick up to 4 candidates, best first. Rank by PRODUCTION QUALITY first (celebrity chef / professional studio / media brand; the subscriber count in "meta" helps), then by how clearly the product category is the subject, then titles containing product-category words. Skip amateur or clickbait videos even if they have many views.`,
+        const ranked = await ask("You choose premium YouTube videos for contextual ad placement.", `${RULES}\n\nBrand: ${brand}. Product category: ${job.category}.\nCandidates (JSON):\n${JSON.stringify(pool)}\n\nPick up to 5 candidates, best first. Rank by PRODUCTION QUALITY first (celebrity chef / professional studio / media brand; the subscriber count in "meta" helps), then by how clearly the product is the SUBJECT of the video (reviews, guides, recipes, how-it's-made — not home tours or vlogs where it is only in the background), then titles containing product-category words. Skip amateur or clickbait videos even if they have many views.`,
           { type: "object", additionalProperties: false, required: ["ids"], properties: { ids: { type: "array", items: { type: "string" } } } }, [], "medium");
-        const c = ranked.ids.map((id) => seen.get(id)).filter(Boolean); if (c.length) job.candidates = c;
+        const c = [...new Set(ranked.ids)].map((id) => seen.get(id)).filter((v) => v && pool.includes(v));
+        if (c.length) job.candidates = [...c, ...pool.filter((v) => !c.includes(v))].slice(0, 8);   // the AI's order first, then the rest of the pool
       } catch (e) { if (!(e instanceof AIError)) throw e; job.aiDown = true; job.aiError = e.message; say(job, e.message); }
     }
     job.tried = 0;
@@ -437,6 +516,9 @@ async function proposeMoments(job) {
     say(job, `Checking video ${job.tried}/${job.candidates.length}: “${cand.title}” (${cand.channel})`);
     let meta; try { meta = await ytJson(["meta", cand.id]); } catch { continue; }
     if (meta.size && Math.min(...meta.size) < 480) { say(job, "  skipped: low resolution"); continue; }
+    { const names = brandNames(job.input);
+      if (brandOwned({ title: meta.title, channel: meta.channel }, names) || mentionsBrand((meta.keywords || []).join(" "), names) || mentionsBrand(meta.description, names)) {
+        say(job, `  skipped: this video is from, about or sponsored by ${brand} — it must be independent of the brand`); continue; } }
     const L = +meta.length;
     let stills = null;
     if (fast) {   // storyboard frames (seconds, no browser); the YouTube pages are captured meanwhile
@@ -451,7 +533,7 @@ async function proposeMoments(job) {
       const sdir = path.join(W, "scan", cand.id); fs.mkdirSync(sdir, { recursive: true });
       say(job, "  scanning 12 frames…");
       const parts = [0, 1, 2, 3].map((k) => ts.filter((_, i) => i % 4 === k));
-      await Promise.all(parts.map((p) => yt(["scan", cand.id, sdir, ...p.map(String)]).catch(() => {})));
+      await Promise.all(parts.map((p) => yt(["scan", cand.id, sdir, ...p.map(String)], { timeout: 40000 }).catch(() => {})));   // max 40 s, then the next video
       stills = ts.map((t) => ({ t, file: stillAt(sdir, t) })).filter((s) => fs.existsSync(s.file));
       if (stills.length < 7) { say(job, "  skipped: could not capture frames"); continue; }
       await Promise.all(stills.map(async (s) => { const j = s.file.replace(".png", "_s.jpg"); await run("ffmpeg", ["-loglevel", "error", "-y", "-i", s.file, "-vf", "scale=640:-2", "-q:v", "4", j]); s.small = j; }));
@@ -462,6 +544,7 @@ async function proposeMoments(job) {
       try {
         say(job, "  AI is checking the frames…");
         pick = await ask("You pick the moments for a contextual-ad demo, strictly.", `${RULES}\n\nBrand: ${brand}. Product category: ${job.category}. Ad: ${adTitle}\nVideo title (exact): ${meta.title}\nChannel: ${meta.channel}, ${meta.views} views, length ${L}s${meta.chapters?.length ? `\nChapters: ${JSON.stringify(meta.chapters)}` : ""}\n\nThe ${stills.length} frames above are labelled with their time in seconds${thumbs ? " (small preview thumbnails of the video at those times)" : ""}.\n` +
+          `The video must be independent of ${brand}: reject (accept=false) if it is made, sponsored or promoted by ${brand}, or if ${brand}'s own products or logo are the subject. ` +
           `Decide whether this video passes the house rules. If it does, choose: open_t (a strong 2-second opening shot), visual (time + what the Visual Identify shows), object (time + the object), keyword phrases that are EXACT substrings of the title (1–3 phrases, product-category words), a 2-line keyword card (max ~10 characters per line, use \\n), an icon for each mark (one of ${ICONS.join(", ")}; use mesh only when a face is the subject), and a YouTube search query that should return this exact video near the top (use distinctive title words).` +
           ` Times must be among the labelled frame times, and open_t, visual and object must be three DIFFERENT moments at least 10 s apart. Reject (accept=false) if any of the three checks would be a stretch.`,
           { type: "object", additionalProperties: false, required: ["accept", "reason", "open_t", "visual", "object", "keywords", "card", "query", "notes"],
@@ -482,6 +565,23 @@ async function proposeMoments(job) {
             pick.visual = { ...pick.visual, t: v2.t, what: v2.what, icon: v2.icon, why: "the product category on screen" };
           } catch (e) { if (!(e instanceof AIError)) throw e; }
         }
+        // Visual and Object must show the product itself — never an accessory, remote, part, box or tool. One more ask;
+        // if that is still an accessory (or nothing shows the product), the video is rejected.
+        const ACCESSORY = /\b(remote|charger|manual|cable|wire|bracket|screws?|screwdriver|canopy|mechanism|spare|parts?|components?|accessor(y|ies)|tools?|packaging|box|carton|receipt|warranty)\b/i;
+        let accessoryOnly = false;
+        for (const k of ["visual", "object"]) {
+          if (!ACCESSORY.test(pick[k].what || "")) continue;
+          say(job, `  ${k} was an accessory, not the product — asking again…`);
+          try {
+            const other = k === "visual" ? pick.object.t : pick.visual.t, alt = stills.filter((x) => Math.abs(x.t - other) >= 5);
+            const r2 = await ask(`You pick ONE frame for a contextual-ad ${k === "visual" ? "Visual" : "Object"} Identify.`, `Product type: ${job.ptype || job.category}. From the labelled frames, pick the frame where that product ITSELF is clearly visible${k === "visual" ? " and in use / in action" : ""} and fills a good part of the picture — not an accessory, remote, spare part, component, box, manual or tool. If no frame shows the product itself, set found=false. Times must be among the labels.`,
+              { type: "object", additionalProperties: false, required: ["found", "t", "what", "icon"], properties: { found: { type: "boolean" }, t: { type: "number" }, what: { type: "string" }, icon: { type: "string", enum: ICONS.filter((x) => x !== "mesh") } } },
+              alt.map((x) => ({ label: `t=${x.t}s`, file: x.small })), "high");
+            if (!r2.found || ACCESSORY.test(r2.what || "")) { accessoryOnly = true; break; }
+            pick[k] = { ...pick[k], t: r2.t, what: r2.what, icon: r2.icon, why: "the product itself on screen" };
+          } catch (e) { if (!(e instanceof AIError)) throw e; }
+        }
+        if (accessoryOnly) { say(job, "  rejected: no frame shows the product itself (only accessories or parts)"); continue; }
       } catch (e) { if (!(e instanceof AIError)) throw e; job.aiDown = true; job.aiError = e.message; pick = null; say(job, e.message); }
     }
     const manual = !pick;
@@ -491,6 +591,9 @@ async function proposeMoments(job) {
         visual: { t: stills[Math.floor(n * 0.35)].t, what: "", why: "", icon: "hand" },
         object: { t: stills[Math.floor(n * 0.65)].t, what: "", why: "", icon: "bowl" } };
     }
+    // the face-mesh icon only for products worn on the face (skincare, make-up, eyewear)
+    if (!/skin|face|make.?up|cosmetic|serum|cream|lotion|sunscreen|eyewear|glasses|lipstick|beauty/i.test(`${job.category} ${product || ""}`))
+      for (const k of ["visual", "object"]) if (pick[k].icon === "mesh") pick[k].icon = "hand";
     pick.open_t = nearest(stills, pick.open_t).t;
     for (const k of ["visual", "object"]) { const s = nearest(stills, pick[k].t); pick[k].t = s.t; pick[k].still = s.file; }
     if (!manual && Math.abs(pick.visual.t - pick.object.t) < 5) { say(job, "  rejected: Visual and Object were the same moment"); continue; }
@@ -498,11 +601,14 @@ async function proposeMoments(job) {
     if (!far(pick.open_t)) pick.open_t = (stills.filter((x) => far(x.t) && x.t < Math.min(pick.visual.t, pick.object.t))[0] || stills.find((x) => far(x.t)) || stills[0]).t;   // opening shot: another moment
     const tl = meta.title.toLowerCase();
     const chl = String(meta.channel || "").toLowerCase();
-    pick.keywords = (pick.keywords || []).filter((k) => k && tl.includes(k.toLowerCase()) && !chl.includes(k.toLowerCase().trim())).slice(0, 3);   // exact title words, never the channel name
+    const chn = normTxt(meta.channel), names = brandNames(job.input);
+    const namesProduct = (k) => !job.terms?.length || job.terms.some((t) => ` ${normTxt(k)} `.includes(` ${t} `) || normTxt(k).includes(t.length >= 5 ? t.slice(0, -1) : `${t} `));
+    pick.keywords = (pick.keywords || []).filter((k) => k && tl.includes(k.toLowerCase()) && !chl.includes(k.toLowerCase().trim()) && !(chn && ` ${normTxt(k)} `.includes(` ${chn} `))
+      && !mentionsBrand(k, names) && namesProduct(k)).slice(0, 3);   // exact title words naming the product; never the channel or the brand
     if (!manual && !pick.keywords.length) { say(job, "  rejected: no exact title keywords"); continue; }
     for (const k of ["visual", "object"]) pick[k].box = [0.2, 0.2, 0.6, 0.6];
     let q = searchQuery(meta.title, meta.channel), boxesPending = false;
-    if (thumbs) boxesPending = !manual && !job.aiDown;   // placed on the full frames after capture
+    if (fast) boxesPending = !manual && !job.aiDown;   // automatic run: boxes + the final full-frame check after capture
     else {
       if (!manual && !job.aiDown) { say(job, "  AI is placing both boxes…"); await placeBoxes(job, pick, { visual: pick.visual.still, object: pick.object.still }); }
       // the search query must show this video on the first screen
@@ -518,13 +624,16 @@ async function proposeMoments(job) {
   return false;
 }
 
-// Step C: capture (moments, pages and the ad in parallel) → boxes → build → render → mux
+class RecheckFailed extends Error {}
+// Step C: capture (moments, pages and the ad in parallel) → boxes + final check → build → render → mux
 async function produce(job) {
   const W = job.work, P = job.proposal, I = job.input;
+  for (const d of ["open", "visual", "object"]) fs.rmSync(path.join(W, d), { recursive: true, force: true });   // no frames from an earlier candidate
+  const problems = [];   // filled by the final frame checks
   const cfg = {
     brand: I.brand, titleSuffix: "Contextual ads", logo: I.logo,
     search: { query: P.query },
-    video: { id: P.video.id, tabTitle: P.video.title.length > 46 ? P.video.title.slice(0, 44) + "…" : P.video.title },
+    video: { id: P.video.id, tabTitle: [...P.video.title].length > 46 ? [...P.video.title].slice(0, 44).join("") + "…" : P.video.title },   // by characters: never splits an emoji
     open: { t: P.pick.open_t },
     visual: { t: P.pick.visual.t, box: P.pick.visual.box, icon: P.pick.visual.icon },
     keywords: { phrases: P.pick.keywords, card: P.pick.card },
@@ -565,9 +674,10 @@ async function produce(job) {
     const last = path.join(W, k, String(n).padStart(3, "0") + ".jpg"), freeze = path.join(W, k, "036.jpg");
     while (!fs.existsSync(last) && !capDone) await sleep(200);
     if (!fs.existsSync(last)) await capTask.catch(() => {});
-    if (fs.existsSync(freeze)) { job.log.push(new Date().toLocaleTimeString() + "  AI is placing the " + k + " box…"); await placeBoxes(job, P.pick, { [k]: freeze }); }
+    if (fs.existsSync(freeze)) { job.log.push(new Date().toLocaleTimeString() + "  AI is checking the " + k + " frame and placing its box…"); problems.push(...await placeBoxes(job, P.pick, { [k]: freeze }, true)); }
   })).then(() => { P.boxesPending = false; cfg.visual.box = P.pick.visual.box; cfg.object.box = P.pick.object.box; });
   await Promise.all([pagesTask, adTask, capTask, boxTask]);
+  if (problems.length) throw new RecheckFailed(problems.join("; "));
   saveCfg();
   say(job, "Building the template…");
   await run(PY, [path.join(PIPE, "scripts", "build_ad.py"), W]);
@@ -613,6 +723,11 @@ const send = (res, code, body, type = "application/json") => { res.writeHead(cod
 const body = (req) => new Promise((r) => { let d = ""; req.on("data", (c) => (d += c)); req.on("end", () => { try { r(JSON.parse(d || "{}")); } catch { r({}); } }); });
 function saveData(dataUrl, file) { const m = /^data:[^;]+;base64,(.*)$/.exec(dataUrl || ""); if (!m) return null; fs.writeFileSync(file, Buffer.from(m[1], "base64")); return file; }
 
+// Open Web contextual placement (openweb/): its own routes and data folder; if its config is broken only that tab is off
+let openweb = null, openwebError = "";
+try { openweb = createOpenWeb({ dataDir: path.join(OUT_ROOT, "openweb"), ask, provider, ffmpeg: (args) => run("ffmpeg", args) }); }
+catch (e) { openwebError = e.message; console.error("Open Web disabled:", e.message); }
+
 http.createServer(async (req, res) => {
   const u = new URL(req.url, "http://x");
   if (u.pathname === "/healthz") return send(res, 200, { ok: true });
@@ -638,6 +753,7 @@ http.createServer(async (req, res) => {
   try {
     if (req.method === "GET" && u.pathname === "/") return send(res, 200, fs.readFileSync(path.join(APP, "ui.html")), "text/html; charset=utf-8");
     const local = !req.headers["cf-connecting-ip"] && !req.headers["x-forwarded-for"] && /^(::1|127\.0\.0\.1|::ffff:127\.0\.0\.1)$/.test(req.socket.remoteAddress || "");
+    if (u.pathname === "/openweb" || u.pathname.startsWith("/api/ow/")) return openweb ? await openweb.handle(req, res, u, { local }) : send(res, 503, { error: "Open Web is unavailable: " + openwebError });
     if (u.pathname === "/api/status") return send(res, 200, { local, queue: waiting, hasKey: provider() !== "none", provider: provider(), youtube: youtubeKey() ? (Date.now() > ytApiDisabledUntil ? "api" : "browser (API paused)") : "browser", keyFromEnv: !!(process.env.ANTHROPIC_API_KEY || process.env.GEMINI_API_KEY), ffmpeg: !!FF || !IS_WIN, hosted: !IS_WIN, outDir: OUT_ROOT });
     if (req.method === "POST" && u.pathname === "/api/settings") { if (!local) return send(res, 403, { error: "Settings can only be changed on the computer running the app." }); const b = await body(req); const s = loadSettings(); if (b.apiKey) s.apiKey = b.apiKey.trim(); if (b.geminiKey) s.geminiKey = b.geminiKey.trim(); if (b.youtubeKey) { s.youtubeKey = b.youtubeKey.trim(); ytApiDisabledUntil = 0; } if (b.provider) s.provider = b.provider; fs.writeFileSync(SETTINGS, JSON.stringify(s)); return send(res, 200, { ok: true, provider: provider() }); }
     if (req.method === "POST" && u.pathname === "/api/ads") {   // runs in the background (share links cut requests at ~100 s)
@@ -660,18 +776,20 @@ http.createServer(async (req, res) => {
       const logoExt = (/^data:image\/(\w+)/.exec(b.logo || "") || [, "png"])[1].replace("jpeg", "jpg");
       if (!saveData(b.logo, path.join(work, "assets", "logo." + logoExt))) return send(res, 400, { error: "Upload the brand logo." });
       const packs = (b.packs || []).map((p, i) => { const e = (/^data:image\/(\w+)/.exec(p) || [, "png"])[1].replace("jpeg", "jpg"); return saveData(p, path.join(work, "assets", `pack${i + 1}.${e}`)) ? `assets/pack${i + 1}.${e}` : null; }).filter(Boolean);
-      let adTitle = b.adTitle, adSeconds;
+      let adTitle = b.adTitle, adSeconds, adChannel = "";
       try {
-        const m = await ytJson(["meta", adId]); adTitle = adTitle || m.title; adSeconds = +m.length;
+        const m = await ytJson(["meta", adId]); adTitle = adTitle || m.title; adSeconds = +m.length; adChannel = m.channel || "";
         if (m.size && m.size[0] / m.size[1] < 1.5) return send(res, 400, { error: `This ad is vertical (${m.size[0]}×${m.size[1]}) — a mobile/Shorts ad. Pick a 16:9 TV / CTV commercial.` });
       } catch {}
       let ownVideo = null;
       if (b.videoUrl) {
         const vid = vidOf(b.videoUrl); if (!vid) return send(res, 400, { error: "That content video link isn't a YouTube video link." });
-        try { const m = await ytJson(["meta", vid]); ownVideo = { id: vid, title: m.title, channel: m.channel, length: mmss(+m.length) }; }
+        let m; try { m = await ytJson(["meta", vid]); ownVideo = { id: vid, title: m.title, channel: m.channel, length: mmss(+m.length) }; }
         catch (e) { return send(res, 400, { error: "Couldn't open that content video: " + e.message.slice(0, 120) }); }
+        const names = brandNames({ brand: b.brand, adChannel, adTitle });
+        if (brandOwned(m, names) || mentionsBrand((m.keywords || []).join(" "), names)) return send(res, 400, { error: `That content video is from or about ${b.brand} itself (“${m.title}” — ${m.channel}). The content video must be independent of the brand — pick another one, or leave it empty and the app finds one.` });
       }
-      const job = newJob({ work, candidates: ownVideo ? [ownVideo] : undefined, tried: 0, input: { preview: b.preview !== false, review: !!b.review, hq: !!b.hq, brand: b.brand, product: b.product, adId, adTitle: adTitle || adId, adSeconds, logo: "assets/logo." + logoExt, packs, endcard: !!b.endcard, tagline: b.tagline, music: b.music !== false } });
+      const job = newJob({ work, candidates: ownVideo ? [ownVideo] : undefined, tried: 0, input: { preview: b.preview !== false, review: !!b.review, hq: !!b.hq, brand: b.brand, product: b.product, adId, adChannel, adTitle: adTitle || adId, adSeconds, logo: "assets/logo." + logoExt, packs, endcard: !!b.endcard, tagline: b.tagline, music: b.music !== false } });
       job.adReady = prefetchAd(adId, work);   // the ad is known now → record it while the AI picks the video
       (async () => {
         try {
@@ -684,7 +802,17 @@ http.createServer(async (req, res) => {
           const P = job.proposal; if (!P.pick.card) P.pick.card = P.pick.keywords[0].split(/\s+/).slice(0, 2).join("\n");
           say(job, `Picked: “${P.video.title}” — visual ${P.pick.visual.t}s (${P.pick.visual.what}), object ${P.pick.object.t}s (${P.pick.object.what}), keywords ${P.pick.keywords.join(", ")}`);
           job.status = "running";
-          await queued(job, () => produce(job)); job.status = "done"; say(job, "Done — saved to " + job.output);
+          for (let attempt = 1; ; attempt++) {
+            try { await queued(job, () => produce(job)); break; }
+            catch (e) {
+              if (!(e instanceof RecheckFailed) || attempt >= 3) throw e;
+              say(job, "  rejected after checking the full frames — " + e.message);
+              if (!(await proposeMoments(job)) || job.proposal.manual) throw new Error("No other video passed all three checks. Try a different product focus, or paste a content video link.");
+              const Q = job.proposal; if (!Q.pick.card) Q.pick.card = Q.pick.keywords[0].split(/\s+/).slice(0, 2).join("\n");
+              say(job, `Picked: “${Q.video.title}” — visual ${Q.pick.visual.t}s (${Q.pick.visual.what}), object ${Q.pick.object.t}s (${Q.pick.object.what}), keywords ${Q.pick.keywords.join(", ")}`);
+            }
+          }
+          job.status = "done"; say(job, "Done — saved to " + job.output);
         }
         catch (e) { job.status = "failed"; say(job, "Error: " + e.message); }
       })();

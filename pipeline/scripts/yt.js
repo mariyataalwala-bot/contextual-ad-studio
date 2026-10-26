@@ -46,16 +46,17 @@ const [cmd,...A]=process.argv.slice(2);
    console.log('## '+q); r.forEach((x,i)=>console.log(`${i+1}. ${x.t} | ${x.ch} | ${x.meta} | ${x.len} | ${x.url}`));
  }
  else if(cmd==='searchjson'){
-   const [qs,n='12']=A; LIGHT_ALL=true; const c=await ctx(b); const p=await c.newPage(); const all=[];
-   for(const q of qs.split('||')){
-   await p.goto('https://www.youtube.com/results?search_query='+encodeURIComponent(q),{waitUntil:'domcontentloaded',timeout:60000}); await p.waitForTimeout(4000);
+   const [qs,n='12']=A; LIGHT_ALL=true; const c=await ctx(b); const all=[];
+   await Promise.all(qs.split('||').map(async q=>{ const p=await c.newPage();   // all queries at once
+   await p.goto('https://www.youtube.com/results?search_query='+encodeURIComponent(q),{waitUntil:'domcontentloaded',timeout:60000});
+   await p.waitForSelector('ytd-video-renderer',{timeout:15000}).catch(()=>{}); await p.waitForTimeout(700);
    const r=await p.evaluate(n=>[...document.querySelectorAll('ytd-video-renderer')].slice(0,n).map(e=>{const a=e.querySelector('a#thumbnail');const href=(a&&a.href)||'';const m=href.match(/[?&]v=([A-Za-z0-9_-]{11})/);
      const meta=e.querySelector('#metadata-line'); const len=e.querySelector('ytd-thumbnail-overlay-time-status-renderer, badge-shape');
      return {id:m?m[1]:null,title:(e.querySelector('#video-title')||{}).textContent?.trim(),channel:(e.querySelector('#channel-info #text, ytd-channel-name #text')||{}).textContent?.trim(),
        meta:meta?meta.innerText.split('\n').join(' · '):'',length:len?len.innerText.trim().split('\n')[0]:''};}).filter(x=>x.id),+n);
    r.forEach(x=>{x.query=q; all.push(x);});
    if(!r.length){ const t=await p.evaluate(()=>document.body.innerText.slice(0,300)); console.error('no results for',q,'| page says:',t.replace(/\s+/g,' ')); }
-   }
+   }));
    console.log(JSON.stringify(all));
  }
  else if(cmd==='meta'){
