@@ -178,7 +178,7 @@ video{width:100%;display:block;background:#000}
     <div class="or">OR PASTE LINKS</div>
     <div class="row"><div><label for="adUrl">Ad link (16:9 TV / CTV ad)</label><input type="text" id="adUrl" placeholder="https://www.youtube.com/watch?v=…"></div>
       <div><label for="videoUrl">Content video (optional) — your own pick</label><input type="text" id="videoUrl" placeholder="Leave empty and the app finds one"></div></div>
-    <div class="bar"><button id="start" disabled>Make the video →</button><span class="s">The app picks the video and the three checks itself — a preview is usually ready in 2–4 minutes.</span></div>
+    <div class="bar"><button id="start" disabled>Make the video →</button><span class="s">The app picks the video and the three checks itself — a preview is usually ready in about a minute.</span></div>
   </section>
 
   <section class="card hero hide" id="s3">
@@ -216,7 +216,7 @@ video{width:100%;display:block;background:#000}
   <section class="card hide" id="s5">
     <div class="ch"><div class="num"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M8 5.5v13l11-6.5z" fill="currentColor"/></svg></div><div><h2>Your video <span class="tag" id="kindTag"></span></h2><p class="s" id="doneMeta"></p></div></div>
     <div class="player"><video id="vid" controls controlsList="nodownload noplaybackrate" disablePictureInPicture oncontextmenu="return false"></video></div>
-    <div class="bar"><button id="hdBtn" class="hide">Make full HD (about 1 minute)</button><a id="dl"><button><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 4v12M7 11l5 5 5-5M5 20h14"/></svg>Download MP4</button></a><button class="ghost" id="openF">Show in folder</button><button class="ghost" id="again">Make another</button></div>
+    <div class="bar"><button id="hdBtn" class="hide">Make full HD (about 30 seconds)</button><a id="dl"><button><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 4v12M7 11l5 5 5-5M5 20h14"/></svg>Download MP4</button></a><button class="ghost" id="openF">Show in folder</button><button class="ghost" id="again">Make another</button></div>
     <p class="s hide" id="viewOnly" style="margin-top:12px">Preview only — downloads are available on the computer running the app.</p>
   </section>
 </main>
@@ -246,10 +246,14 @@ $('findAds').onclick=async()=>{
     for(;;){ await new Promise(z=>setTimeout(z,2000)); r=await api('/api/ads/'+st.id); if(r.status==='failed') throw new Error(r.error); if(r.status==='done') break; }
     adList=r.ads; adSel=null; $('start').disabled=!$('adUrl').value.trim();
     $('ads').innerHTML=adList.length?adList.map((a,i)=>`<div class="ad" data-i="${i}"><img src="https://i.ytimg.com/vi/${esc(a.id)}/mqdefault.jpg" alt="" loading="lazy">${a.length?`<span class="dur">${esc(a.length)}</span>`:''}<div class="meta"><b>${esc(a.title)}</b><span class="ch2">${esc(a.channel)}</span>${a.why?`<br><span class="why">${esc(a.why)}</span>`:''}</div></div>`).join(''):'<p class="s">No official 16:9 TV ads found — paste a link below.</p>';
-    document.querySelectorAll('.ad').forEach(el=>el.onclick=()=>{document.querySelectorAll('.ad').forEach(x=>x.classList.remove('sel'));el.classList.add('sel');adSel=adList[+el.dataset.i];$('adUrl').value='';$('start').disabled=false;});
+    document.querySelectorAll('.ad').forEach(el=>el.onclick=()=>{document.querySelectorAll('.ad').forEach(x=>x.classList.remove('sel'));el.classList.add('sel');adSel=adList[+el.dataset.i];$('adUrl').value='';$('start').disabled=false;prefetch(adSel.id);});
+    if(adList[0]) prefetch(adList[0].id);   // the top ad starts recording right away
     $('adsMsg').textContent='';
   }catch(e){alert(e.message);$('adsMsg').textContent='';$('ads').innerHTML='<p class="s">Search failed — paste an ad link below.</p>';} $('findAds').disabled=false;
 };
+// record the ad in the background as soon as it's chosen, so making the video doesn't wait for it
+const prefetch=id=>{ if(id) fetch('/api/prefetch',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({adId:id})}).catch(()=>{}); };
+$('adUrl').onchange=()=>prefetch($('adUrl').value.trim());
 $('adUrl').oninput=()=>{ if($('adUrl').value.trim()){adSel=null;document.querySelectorAll('.ad').forEach(x=>x.classList.remove('sel'));} $('start').disabled=!(adSel||$('adUrl').value.trim()); };
 $('start').onclick=async()=>{
   $('start').disabled=true;
@@ -280,7 +284,7 @@ function tick(){
   const el=P.elapsed+(P.running?(Date.now()-P.at)/1000:0); $('elapsed').textContent=mmss(el);
   if(!P.running){ $('etaW').classList.add('hide'); return; } $('etaW').classList.remove('hide');
   // blend the typical run length with the pace so far (the pace counts for more as the job goes on)
-  const typ=P.hdOnly?60:P.preview?160:200, w=P.pct/100, total=w*(el*100/Math.max(1,P.pct))+(1-w)*Math.max(typ,el+10);
+  const typ=P.hdOnly?35:P.preview?55:80, w=P.pct/100, total=w*(el*100/Math.max(1,P.pct))+(1-w)*Math.max(typ,el+10);
   $('eta').textContent=P.pct>=3?mmss(Math.max(5,total-el)):'—';
 }
 setInterval(()=>{ if(!$('s3').classList.contains('hide')) tick(); },1000);
@@ -294,7 +298,7 @@ async function poll(){
   if(j.status==='approve'){ showProposal(j.proposal); return; }
   if(j.status==='done'){ store.set('cadJob',null); $('vid').src=`/api/job/${job}/video?_=${Date.now()}`; $('dl').href=`/api/job/${job}/video?dl=1`;
     $('kindTag').textContent=j.kind==='preview'?'720p preview':'Full HD 1080p'; $('hdBtn').classList.toggle('hide',j.kind!=='preview');
-    $('doneMeta').textContent='Made in '+mmss(j.elapsed||0)+(j.kind==='preview'?' · make the full HD version from the same captures in about a minute.':'.');
+    $('doneMeta').textContent='Made in '+mmss(j.elapsed||0)+(j.kind==='preview'?' · make the full HD version from the same captures in about 30 seconds.':'.');
     $('dl').classList.toggle('hide',!LOCAL); $('viewOnly').classList.toggle('hide',LOCAL);
     $('s3').classList.add('hide'); stepTo(4); $('s5').classList.remove('hide'); window.scrollTo({top:0,behavior:'smooth'}); return; }
   if(j.status==='failed'){ store.set('cadJob',null); return fail(j.step); }

@@ -48,4 +48,12 @@ frag = frag.replace('/*__CFG__*/', 'window.CFG=' + json.dumps(C, ensure_ascii=Fa
 src = work / 'contextual-ad.frag.html'; open(src, 'w', encoding='utf-8').write(frag)
 subprocess.run([sys.executable, str(SKILL / 'engine' / 'build.py'), str(dist), str(src)], check=True)
 (dist / 'contextual-ad.frag.html').replace(dist / 'contextual-ad.html')
+# fonts from a local copy (same Poppins/Roboto files Google serves) → no network wait when each render page opens
+FONTS = SKILL / 'template' / 'fonts'
+if (FONTS / 'fonts.css').exists():
+    if (dist / 'fonts').exists(): shutil.rmtree(dist / 'fonts')
+    shutil.copytree(FONTS, dist / 'fonts')
+    page = dist / 'contextual-ad.html'; h = open(page, encoding='utf-8').read()
+    h = h.replace('https://fonts.googleapis.com/css2?family=Poppins:wght@500;600;700&family=Roboto:wght@400;500&display=block', 'fonts/fonts.css')
+    open(page, 'w', encoding='utf-8').write(h)
 print('built', dist / 'contextual-ad.html')

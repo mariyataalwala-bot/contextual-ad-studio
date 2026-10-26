@@ -54,10 +54,10 @@ class AIError extends Error {}
 async function ask(system, text, schema, images = [], effort = "high") {   // effort "medium" + no images → fast lite model first
   const p = provider();
   if (p === "none") throw new AIError("No AI key set — using manual mode.");
-  try { return p === "gemini" ? await askGemini(system, text, schema, images, !images.length && effort === "medium") : await askClaude(system, text, schema, images, effort); }
+  try { return p === "gemini" ? await askGemini(system, text, schema, images, !images.length && effort === "medium", images.length && effort === "high" ? 4000 : 0) : await askClaude(system, text, schema, images, effort); }
   catch (e) { if (e instanceof AIError) throw e; throw new AIError(e.message || String(e)); }
 }
-async function askGemini(system, text, schema, images, fast = false) {
+async function askGemini(system, text, schema, images, fast = false, grace = 0) {
   const ai = new GoogleGenAI({ apiKey: geminiKey() });
   const parts = [];
   for (const im of images) {
@@ -65,9 +65,11 @@ async function askGemini(system, text, schema, images, fast = false) {
     parts.push({ inlineData: { mimeType: im.file.toLowerCase().endsWith(".png") ? "image/png" : "image/jpeg", data: fs.readFileSync(im.file).toString("base64") } });
   }
   parts.push({ text });
-  const all = fast ? [...new Set(["gemini-flash-lite-latest", "gemini-3.5-flash-lite", ...GEMINI_MODELS()])] : GEMINI_MODELS();
+  // a flash and a lite model start together (lite answers in ~3–8 s; flash can take 5–20 s on the free tier)
+  const all = fast ? [...new Set(["gemini-3.5-flash-lite", "gemini-flash-lite-latest", ...GEMINI_MODELS()])]
+    : [...new Set([GEMINI_MODELS()[0], "gemini-3.5-flash-lite", ...GEMINI_MODELS()])];
   const models = all.filter((m) => (geminiOut.get(m) || 0) <= Date.now());
-  const vision = images.length > 0, TIMEOUT = vision ? 30000 : 15000, HEDGE = vision ? 9000 : 5000;
+  const vision = images.length > 0, TIMEOUT = vision ? 30000 : 15000, HEDGE = vision ? 6000 : 4000;
   let last = "", quota = 0;
   // one model, with one retry on broken JSON; marks slow / busy / out-of-quota models so later calls skip them
   const one = async (model) => {
@@ -86,18 +88,23 @@ async function askGemini(system, text, schema, images, fast = false) {
       }
     }
   };
-  // hedged: start the fastest model; if it hasn't answered in a few seconds, start the next one too — first good answer wins
+  // hedged: start two models; if neither has answered in a few seconds, start the next one too — first good answer wins.
+  // With grace (the main pick), a lite model's answer waits up to `grace` ms for a flash model's, which is stricter.
   return new Promise((resolve, reject) => {
-    let i = 0, running = 0, done = false, timer;
-    const finish = (fn, v) => { if (done) return; done = true; clearInterval(timer); fn(v); };
+    let i = 0, running = 0, done = false, timer, graceT, liteAns = null; const active = new Set();
+    const finish = (fn, v) => { if (done) return; done = true; clearInterval(timer); clearTimeout(graceT); fn(v); };
     const launch = () => {
       if (done) return;
-      if (i >= models.length) { if (!running) finish(reject, new AIError(quota && quota >= models.length - 1 ? "All free Gemini models are out of quota for now (it resets daily, ~12:30 pm IST). Add a Claude key in Settings for faster, unlimited picks." : "Gemini is busy right now: " + last.slice(0, 160))); return; }
-      const model = models[i++]; running++;
-      one(model).then((r) => finish(resolve, r)).catch(() => { running--; launch(); });
+      if (i >= models.length) { if (!running) liteAns ? finish(resolve, liteAns) : finish(reject, new AIError(quota && quota >= models.length - 1 ? "All free Gemini models are out of quota for now (it resets daily, ~12:30 pm IST). Add a Claude key in Settings for faster, unlimited picks." : "Gemini is busy right now: " + last.slice(0, 160))); return; }
+      const model = models[i++]; running++; active.add(model);
+      one(model).then((r) => {
+        active.delete(model); running--;
+        if (grace && /lite/.test(model) && [...active].some((m) => !/lite/.test(m))) { if (!liteAns) { liteAns = r; graceT = setTimeout(() => finish(resolve, liteAns), grace); } return; }
+        finish(resolve, r);
+      }).catch(() => { active.delete(model); running--; if (liteAns && ![...active].some((m) => !/lite/.test(m))) return finish(resolve, liteAns); launch(); });
     };
-    launch();
-    timer = setInterval(() => { if (running < 3) launch(); }, HEDGE);
+    launch(); launch();
+    timer = setInterval(() => { if (running < 3 && !liteAns) launch(); }, HEDGE);
   });
 }
 async function askClaude(system, text, schema, images, effort) {
@@ -124,9 +131,9 @@ async function askClaude(system, text, schema, images, effort) {
 }
 
 // ---------- process helpers ----------
-function run(cmd, args, { log, cwd } = {}) {
+function run(cmd, args, { log, cwd, env } = {}) {
   return new Promise((resolve, reject) => {
-    const p = spawn(cmd, args, { env: ENV, cwd: cwd || APP, windowsHide: true });
+    const p = spawn(cmd, args, { env: env ? { ...ENV, ...env } : ENV, cwd: cwd || APP, windowsHide: true });
     let out = "", err = "";
     p.stdout.on("data", (d) => { out += d; if (log) String(d).split(/\r?\n/).filter(Boolean).forEach(log); });
     p.stderr.on("data", (d) => { err += d; });
@@ -173,7 +180,8 @@ async function channelSubs(ids) {
 }
 async function ytApiSearch(queries, n) {
   const all = [];
-  for (const q of queries) {
+  const found = await Promise.all(queries.map(async (q) => {   // all queries at once
+    const all = [];
     const s = await ytApi("search", { part: "snippet", type: "video", q, maxResults: String(Math.min(+n || 10, 25)), regionCode: "IN", relevanceLanguage: "en", safeSearch: "moderate" });
     const ids = (s.items || []).map((x) => x.id.videoId).filter(Boolean);
     const det = await ytApiDetails(ids);
@@ -184,7 +192,9 @@ async function ytApiSearch(queries, n) {
       all.push({ id, title: v.snippet.title, channel: v.snippet.channelTitle, meta: `${views(v.statistics.viewCount)} views · ${v.snippet.publishedAt.slice(0, 10)}${sc != null ? ` · channel ${views(sc)} subscribers` : ""}`,
         length: mmss(sec), query: q, definition: v.contentDetails.definition, aspect: aspectOf(v), subs: sc, views: +v.statistics.viewCount || 0 });
     }
-  }
+    return all;
+  }));
+  for (const f of found) all.push(...f);
   return all;
 }
 async function ytApiMeta(id) {
@@ -232,12 +242,12 @@ function newJob(data) {
 // with time (expected seconds), and rendering uses the real frame count. The bar never goes backwards.
 // stage: 0 find video · 1 capture · 2 build · 3 render · 4 sound
 const MILESTONES = [
-  [/^Planning searches/, 1, 6, 15, 0], [/^Searching YouTube/, 6, 12, 10, 0], [/^Ranking/, 12, 18, 20, 0],
-  [/^Checking video/, 18, 22, 6, 0], [/scanning 12 frames/, 22, 30, 25, 0], [/AI is checking the frames/, 30, 40, 45, 0],
-  [/asking again/, 40, 42, 20, 0], [/placing both boxes/, 42, 48, 50, 0], [/^Picked:/, 48, 49, 3, 1],
-  [/Finishing the ad recording/, 49, 51, 20, 1], [/^Capturing the YouTube pages/, 51, 72, 30, 1], [/retrying with its title/, 70, 73, 20, 1],
-  [/^Building the template/, 73, 77, 15, 2], [/^Rendering the 720p/, 77, 95, 35, 3], [/^Rendering full HD/, 77, 95, 60, 3],
-  [/^Adding music/, 95, 99, 10, 4],
+  [/^Planning searches/, 1, 5, 3, 0], [/^Searching YouTube/, 5, 10, 3, 0], [/^Ranking/, 10, 15, 4, 0],
+  [/^Checking video/, 15, 18, 2, 0], [/reading the video's storyboard/, 18, 24, 4, 0], [/scanning 12 frames/, 18, 28, 25, 0],
+  [/AI is checking the frames/, 24, 40, 9, 0], [/asking again/, 40, 42, 6, 0], [/^  AI is placing both boxes/, 42, 46, 8, 0],
+  [/^Picked:/, 42, 44, 1, 1], [/^Capturing the three moments/, 44, 69, 16, 1], [/retrying with/, 60, 66, 10, 1],
+  [/^AI is placing the boxes/, 64, 70, 6, 1], [/^Building the template/, 70, 72, 2, 2],
+  [/^Rendering the 720p/, 72, 96, 15, 3], [/^Rendering full HD/, 72, 96, 30, 3], [/^Adding music/, 96, 99, 2, 4],
 ];
 function pctOf(job) {
   const p = job.prog; if (job.status === "done") return 100;
@@ -302,6 +312,87 @@ async function findAds({ brand, product }) {
 const stillAt = (dir, t) => path.join(dir, `f_${String(Math.round(t * 10)).padStart(5, "0")}.png`);
 const nearest = (stills, t) => stills.reduce((a, s) => (Math.abs(s.t - t) < Math.abs(a.t - t) ? s : a), stills[0]);
 const titleQuery = (title) => title.split(/[|\-–(]/)[0].trim().split(/\s+/).slice(0, 8).join(" ");
+// what a viewer would type: the title's first words + the channel (titles are often shared between channels)
+const searchQuery = (title, channel) => { const q = titleQuery(title), ch = String(channel || "").replace(/[^\p{L}\p{N} ]/gu, " ").trim().split(/\s+/).slice(0, 4).join(" ");
+  return ch && !q.toLowerCase().includes(ch.toLowerCase()) ? `${q} ${ch}` : q; };
+const UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0 Safari/537.36";
+
+// Fast frame source: YouTube's storyboard (the seek-bar preview thumbnails). One page fetch + a few image sheets
+// (~3–5 s, no browser) instead of opening the player 12 times (~25 s). Thumbnails are small (160–320 px): enough to
+// choose the moments; the boxes are placed later on the full-resolution captured frames.
+async function storyboard(id, dir, L, want = 30) {
+  const get = () => fetch(`https://www.youtube.com/watch?v=${id}&hl=en`, { headers: { "Accept-Language": "en", "User-Agent": UA, Cookie: "SOCS=CAI; PREF=hl=en" }, signal: AbortSignal.timeout(12000) }).then((r) => r.text());
+  const html = await Promise.any([get(), sleep(3000).then(get)]);   // YouTube is sometimes slow to answer: a second request after 3 s
+  const m = html.match(/"playerStoryboardSpecRenderer":\{"spec":"([^"]+)"/); if (!m) return null;
+  const spec = JSON.parse('"' + m[1] + '"').split("|"), lv = spec.length - 2;
+  if (lv < 2) return null;   // needs at least the 160×90 level
+  const [w, , n, cols, rows, iv, name, sigh] = spec[lv + 1].split("#"); if (!+iv || !+n) return null;
+  const per = cols * rows, ks = [];
+  for (let i = 0; i < want; i++) { const k = Math.min(+n - 1, Math.round(L * (0.03 + 0.89 * i / (want - 1)) * 1000 / iv)); if (!ks.includes(k)) ks.push(k); }
+  fs.mkdirSync(dir, { recursive: true });
+  await Promise.all([...new Set(ks.map((k) => Math.floor(k / per)))].map(async (sh) => {
+    const url = spec[0].replace("$L", lv).replace("$N", name.replace("$M", sh)) + "&sigh=" + sigh.replace("rs$", "rs%24");
+    const r = await fetch(url, { signal: AbortSignal.timeout(10000) }); if (!r.ok) throw new Error("storyboard sheet " + r.status);
+    const f = path.join(dir, `sheet${sh}.webp`); fs.writeFileSync(f, Buffer.from(await r.arrayBuffer()));
+    await run("ffmpeg", ["-loglevel", "error", "-y", "-i", f, "-vf", `untile=${cols}x${rows}`, "-q:v", "2", path.join(dir, `s${sh}_%02d.jpg`)]);
+  }));
+  return ks.map((k) => { const f = path.join(dir, `s${Math.floor(k / per)}_${String((k % per) + 1).padStart(2, "0")}.jpg`); return { t: +(k * iv / 1000).toFixed(1), file: f, small: f }; })
+    .filter((x) => fs.existsSync(x.file));
+}
+
+// The logged-out YouTube home page looks the same for every video → captured once, reused for a few hours.
+const HOME = path.join(OUT_ROOT, "_cache", "home");
+const homeFresh = () => ["home.png", "home.json"].every((f) => fs.existsSync(path.join(HOME, f))) && Date.now() - fs.statSync(path.join(HOME, "home.json")).mtimeMs < 6 * 3600e3;
+function useHome(dir) { if (homeFresh()) for (const f of ["home.png", "home.json"]) fs.copyFileSync(path.join(HOME, f), path.join(dir, f)); }
+function keepHome(dir, pj) { if (homeFresh() || !pj.home || !fs.existsSync(path.join(dir, "home.png"))) return; fs.mkdirSync(HOME, { recursive: true }); fs.copyFileSync(path.join(dir, "home.png"), path.join(HOME, "home.png")); fs.writeFileSync(path.join(HOME, "home.json"), JSON.stringify({ home: pj.home })); }
+// home / results / watch pages for a video; ok = the video shows on the first screen of results for this query
+async function capturePages(id, query, dir) {
+  fs.mkdirSync(dir, { recursive: true }); useHome(dir);
+  await yt(["pages", id, query, dir, ""]).catch(() => {});
+  const pj = JSON.parse(fs.readFileSync(path.join(dir, "pages.json"), "utf8")); keepHome(dir, pj);
+  const tg = pj.results.findIndex((r) => r.target);
+  return tg >= 0 && pj.results[tg].thumb[1] <= 760;
+}
+// started for each candidate while the AI is still deciding, so the pages are ready when it picks
+function startPages(job, id, query) {
+  const dir = path.join(job.work, "pages_" + id);
+  job.pagesEarly = { id, promise: capturePages(id, query, dir).then((ok) => (ok ? { dir, query } : null)).catch(() => null) };
+}
+// keyword highlight rects, worked out from the title's per-character rects (one rect per line, like getClientRects)
+function phraseRects(watch, phrases) {
+  const chars = watch.chars || [], text = chars.map((c) => c[0]).join("").toLowerCase(), out = {};
+  for (const ph of phrases) {
+    const i = text.indexOf(ph.toLowerCase()); if (i < 0) { out[ph] = watch.phrases?.[ph] || null; continue; }
+    const lines = [];
+    for (const [, x, y, w, h] of chars.slice(i, i + ph.length)) {
+      if (!w) continue;
+      const l = lines.find((q) => Math.abs(q.y - y) < 4);
+      if (l) { l.x0 = Math.min(l.x0, x); l.x1 = Math.max(l.x1, x + w); l.h = Math.max(l.h, h); } else lines.push({ x0: x, x1: x + w, y, h });
+    }
+    out[ph] = lines.map((l) => [l.x0, l.y, l.x1 - l.x0, l.h]);
+  }
+  return out;
+}
+// AI boxes for the two marks, using Gemini's native detection format (box_2d, 0–1000) on the plain frame — tighter than
+// a grid. Lightly padded; never slivers (min 20% × 25%), never the whole picture (max 92%). Keeps the default if the AI is out.
+async function placeBoxes(job, pick, files) {
+  await Promise.all(["visual", "object"].map(async (k) => {
+    pick[k].box = pick[k].box || [0.2, 0.2, 0.6, 0.6];
+    if (job.aiDown || !files[k] || !fs.existsSync(files[k])) return;
+    try {
+      const r = await ask("You detect objects in video frames.", `Detect ${pick[k].what || "the main product"}. Box only that main object, tightly — not the whole scene — and leave out on-screen captions. Return box_2d as [ymin, xmin, ymax, xmax] normalised to 0-1000.`,
+        { type: "object", additionalProperties: false, required: ["box_2d"], properties: { box_2d: { type: "array", items: { type: "number" } } } },
+        [{ label: `${k} frame`, file: files[k] }], "medium");
+      if (!Array.isArray(r.box_2d) || r.box_2d.length < 4) throw new AIError("no box returned");
+      const [y0, x0, y1, x1] = r.box_2d.map((v) => Math.max(0, Math.min(1, v / 1000)));
+      if (!(x1 > x0 && y1 > y0)) throw new AIError("empty box");
+      const cx = (x0 + x1) / 2, cy = (y0 + y1) / 2;
+      const w = Math.min(0.92, Math.max((x1 - x0) * 1.06, 0.2)), h = Math.min(0.92, Math.max((y1 - y0) * 1.06, 0.25));
+      const x = Math.min(Math.max(0, cx - w / 2), 1 - w), y = Math.min(Math.max(0, cy - h / 2), 1 - h);
+      pick[k].box = [x, y, w, h].map((v) => +v.toFixed(4));
+    } catch (e) { say(job, "  box kept as default: " + String(e.message).slice(0, 120)); }   // a box is never worth failing the video
+  }));
+}
 
 // Step B: find a premium content video where all three checks match.
 // With AI (Gemini free tier or Claude) the moments and boxes are proposed; without it — or when the free quota
@@ -334,33 +425,45 @@ async function proposeMoments(job) {
       try {
         say(job, `Ranking ${pool.length} candidate videos…`);
         const ranked = await ask("You choose premium YouTube videos for contextual ad placement.", `${RULES}\n\nBrand: ${brand}. Product category: ${job.category}.\nCandidates (JSON):\n${JSON.stringify(pool)}\n\nPick up to 4 candidates, best first. Rank by PRODUCTION QUALITY first (celebrity chef / professional studio / media brand; the subscriber count in "meta" helps), then by how clearly the product category is the subject, then titles containing product-category words. Skip amateur or clickbait videos even if they have many views.`,
-          { type: "object", additionalProperties: false, required: ["ids"], properties: { ids: { type: "array", items: { type: "string" } } } }, [], "high");
+          { type: "object", additionalProperties: false, required: ["ids"], properties: { ids: { type: "array", items: { type: "string" } } } }, [], "medium");
         const c = ranked.ids.map((id) => seen.get(id)).filter(Boolean); if (c.length) job.candidates = c;
       } catch (e) { if (!(e instanceof AIError)) throw e; job.aiDown = true; job.aiError = e.message; say(job, e.message); }
     }
     job.tried = 0;
   }
+  const fast = !job.input.review;   // automatic run: storyboard frames now, boxes later on the captured frames
   while (job.tried < job.candidates.length) {
     const cand = job.candidates[job.tried++];
     say(job, `Checking video ${job.tried}/${job.candidates.length}: “${cand.title}” (${cand.channel})`);
     let meta; try { meta = await ytJson(["meta", cand.id]); } catch { continue; }
     if (meta.size && Math.min(...meta.size) < 480) { say(job, "  skipped: low resolution"); continue; }
-    const L = +meta.length, ts = [];
-    for (let i = 0; i < 12; i++) ts.push(+(Math.max(2, L * 0.03) + (L * 0.9 - Math.max(2, L * 0.03)) * i / 11).toFixed(1));
-    const sdir = path.join(W, "scan", cand.id); fs.mkdirSync(sdir, { recursive: true });
-    say(job, "  scanning 12 frames…");
-    const parts = [0, 1, 2, 3].map((k) => ts.filter((_, i) => i % 4 === k));
-    await Promise.all(parts.map((p) => yt(["scan", cand.id, sdir, ...p.map(String)]).catch(() => {})));
-    const stills = ts.map((t) => ({ t, file: stillAt(sdir, t) })).filter((s) => fs.existsSync(s.file));
-    if (stills.length < 7) { say(job, "  skipped: could not capture frames"); continue; }
-    for (const s of stills) { const j = s.file.replace(".png", "_s.jpg"); await run("ffmpeg", ["-loglevel", "error", "-y", "-i", s.file, "-vf", "scale=640:-2", "-q:v", "4", j]); s.small = j; }
+    const L = +meta.length;
+    let stills = null;
+    if (fast) {   // storyboard frames (seconds, no browser); the YouTube pages are captured meanwhile
+      startPages(job, cand.id, searchQuery(meta.title, meta.channel));
+      say(job, "  reading the video's storyboard…");
+      try { const sb = await storyboard(cand.id, path.join(W, "sb", cand.id), L); if (sb && sb.length >= 12) stills = sb; }
+      catch (e) { console.error("storyboard failed:", e.message); }
+    }
+    if (!stills) {   // full-resolution stills from the player (review mode, or no storyboard)
+      const ts = [];
+      for (let i = 0; i < 12; i++) ts.push(+(Math.max(2, L * 0.03) + (L * 0.9 - Math.max(2, L * 0.03)) * i / 11).toFixed(1));
+      const sdir = path.join(W, "scan", cand.id); fs.mkdirSync(sdir, { recursive: true });
+      say(job, "  scanning 12 frames…");
+      const parts = [0, 1, 2, 3].map((k) => ts.filter((_, i) => i % 4 === k));
+      await Promise.all(parts.map((p) => yt(["scan", cand.id, sdir, ...p.map(String)]).catch(() => {})));
+      stills = ts.map((t) => ({ t, file: stillAt(sdir, t) })).filter((s) => fs.existsSync(s.file));
+      if (stills.length < 7) { say(job, "  skipped: could not capture frames"); continue; }
+      await Promise.all(stills.map(async (s) => { const j = s.file.replace(".png", "_s.jpg"); await run("ffmpeg", ["-loglevel", "error", "-y", "-i", s.file, "-vf", "scale=640:-2", "-q:v", "4", j]); s.small = j; }));
+    }
+    const thumbs = stills[0].file.includes(`${path.sep}sb${path.sep}`);
     let pick = null;
     if (!job.aiDown) {
       try {
         say(job, "  AI is checking the frames…");
-        pick = await ask("You pick the moments for a contextual-ad demo, strictly.", `${RULES}\n\nBrand: ${brand}. Product category: ${job.category}. Ad: ${adTitle}\nVideo title (exact): ${meta.title}\nChannel: ${meta.channel}, ${meta.views} views, length ${L}s${meta.chapters?.length ? `\nChapters: ${JSON.stringify(meta.chapters)}` : ""}\n\nThe ${stills.length} frames above are labelled with their time in seconds.\n` +
+        pick = await ask("You pick the moments for a contextual-ad demo, strictly.", `${RULES}\n\nBrand: ${brand}. Product category: ${job.category}. Ad: ${adTitle}\nVideo title (exact): ${meta.title}\nChannel: ${meta.channel}, ${meta.views} views, length ${L}s${meta.chapters?.length ? `\nChapters: ${JSON.stringify(meta.chapters)}` : ""}\n\nThe ${stills.length} frames above are labelled with their time in seconds${thumbs ? " (small preview thumbnails of the video at those times)" : ""}.\n` +
           `Decide whether this video passes the house rules. If it does, choose: open_t (a strong 2-second opening shot), visual (time + what the Visual Identify shows), object (time + the object), keyword phrases that are EXACT substrings of the title (1–3 phrases, product-category words), a 2-line keyword card (max ~10 characters per line, use \\n), an icon for each mark (one of ${ICONS.join(", ")}; use mesh only when a face is the subject), and a YouTube search query that should return this exact video near the top (use distinctive title words).` +
-          ` Times must be among the labelled frame times. Reject (accept=false) if any of the three checks would be a stretch.`,
+          ` Times must be among the labelled frame times, and open_t, visual and object must be three DIFFERENT moments at least 10 s apart. Reject (accept=false) if any of the three checks would be a stretch.`,
           { type: "object", additionalProperties: false, required: ["accept", "reason", "open_t", "visual", "object", "keywords", "card", "query", "notes"],
             properties: { accept: { type: "boolean" }, reason: { type: "string" }, open_t: { type: "number" },
               visual: { type: "object", additionalProperties: false, required: ["t", "what", "why", "icon"], properties: { t: { type: "number" }, what: { type: "string" }, why: { type: "string" }, icon: { type: "string", enum: ICONS } } },
@@ -390,41 +493,32 @@ async function proposeMoments(job) {
     }
     pick.open_t = nearest(stills, pick.open_t).t;
     for (const k of ["visual", "object"]) { const s = nearest(stills, pick[k].t); pick[k].t = s.t; pick[k].still = s.file; }
+    if (!manual && Math.abs(pick.visual.t - pick.object.t) < 5) { say(job, "  rejected: Visual and Object were the same moment"); continue; }
+    const far = (t) => Math.abs(t - pick.visual.t) >= 8 && Math.abs(t - pick.object.t) >= 8;
+    if (!far(pick.open_t)) pick.open_t = (stills.filter((x) => far(x.t) && x.t < Math.min(pick.visual.t, pick.object.t))[0] || stills.find((x) => far(x.t)) || stills[0]).t;   // opening shot: another moment
     const tl = meta.title.toLowerCase();
-    pick.keywords = (pick.keywords || []).filter((k) => k && tl.includes(k.toLowerCase())).slice(0, 3);
+    const chl = String(meta.channel || "").toLowerCase();
+    pick.keywords = (pick.keywords || []).filter((k) => k && tl.includes(k.toLowerCase()) && !chl.includes(k.toLowerCase().trim())).slice(0, 3);   // exact title words, never the channel name
     if (!manual && !pick.keywords.length) { say(job, "  rejected: no exact title keywords"); continue; }
-    const c = (v) => Math.max(0, Math.min(1, v));
-    if (!manual && !job.aiDown) say(job, "  AI is placing both boxes…");
-    await Promise.all(["visual", "object"].map(async (k) => {
-      pick[k].box = [0.2, 0.2, 0.6, 0.6];
-      if (manual || job.aiDown) return;
-      const g = pick[k].still.replace(".png", "_grid.jpg");
-      await run("ffmpeg", ["-loglevel", "error", "-y", "-i", pick[k].still, "-vf", "drawgrid=w=iw/10:h=ih/10:t=1:c=yellow@0.8", "-q:v", "3", g]);
-      try {
-        const b = await ask("You place a highlight box on a video frame.", `Draw a tight box around: ${pick[k].what}.\nThe yellow grid lines are every 10% of width and height. Return the box as fractions of the frame: x, y (top-left) and w, h, all between 0 and 1. Keep it on the subject; leave out on-screen captions where possible.`,
-          { type: "object", additionalProperties: false, required: ["x", "y", "w", "h"], properties: { x: { type: "number" }, y: { type: "number" }, w: { type: "number" }, h: { type: "number" } } },
-          [{ label: `${k} frame`, file: g }], "medium");
-        // pad AI boxes a little and never let them be slivers (min 20% × 25% of the picture)
-        let [x, y, w, h] = [c(b.x), c(b.y), c(b.w), c(b.h)]; const cx = x + w / 2, cy = y + h / 2;
-        w = Math.min(1, Math.max(w * 1.15, 0.2)); h = Math.min(1, Math.max(h * 1.15, 0.25));
-        x = Math.min(Math.max(0, cx - w / 2), 1 - w); y = Math.min(Math.max(0, cy - h / 2), 1 - h);
-        pick[k].box = [x, y, w, h].map((v) => +v.toFixed(4));
-      } catch (e) { if (!(e instanceof AIError)) throw e; job.aiDown = true; job.aiError = e.message; say(job, e.message); }
-    }));
-    // the search query must show this video on the first screen
-    let q = pick.query || titleQuery(meta.title);
-    for (const tryQ of [q, titleQuery(meta.title)]) {
-      try { const r = await ytJson(["searchjson", tryQ, "3"]); if (r.some((x) => x.id === cand.id)) { q = tryQ; break; } } catch {}
+    for (const k of ["visual", "object"]) pick[k].box = [0.2, 0.2, 0.6, 0.6];
+    let q = searchQuery(meta.title, meta.channel), boxesPending = false;
+    if (thumbs) boxesPending = !manual && !job.aiDown;   // placed on the full frames after capture
+    else {
+      if (!manual && !job.aiDown) { say(job, "  AI is placing both boxes…"); await placeBoxes(job, pick, { visual: pick.visual.still, object: pick.object.still }); }
+      // the search query must show this video on the first screen
+      for (const tryQ of [pick.query || q, q]) {
+        try { const r = await ytJson(["searchjson", tryQ, "3"]); if (r.some((x) => x.id === cand.id)) { q = tryQ; break; } } catch {}
+      }
     }
     job.scan = stills;
-    job.proposal = { video: { id: cand.id, title: meta.title, channel: meta.channel, views: meta.views, length: L }, pick, query: q,
+    job.proposal = { video: { id: cand.id, title: meta.title, channel: meta.channel, views: meta.views, length: L }, pick, query: q, boxesPending,
       manual: manual || !!job.aiDown, frames: stills.map((s) => s.t), icons: ICONS };
     return true;
   }
   return false;
 }
 
-// Step C: capture → build → render → mux
+// Step C: capture (moments, pages and the ad in parallel) → boxes → build → render → mux
 async function produce(job) {
   const W = job.work, P = job.proposal, I = job.input;
   const cfg = {
@@ -435,20 +529,46 @@ async function produce(job) {
     visual: { t: P.pick.visual.t, box: P.pick.visual.box, icon: P.pick.visual.icon },
     keywords: { phrases: P.pick.keywords, card: P.pick.card },
     object: { t: P.pick.object.t, box: P.pick.object.box, icon: P.pick.object.icon },
-    ad: { id: I.adId },
+    ad: { id: I.adId, seconds: Math.min(45, I.adSeconds || 30) },
     endcard: I.endcard && I.packs?.length ? { tagline: I.tagline || "", sub: "", color: "#111", packs: I.packs } : null,
   };
-  if (I.adSeconds) cfg.ad.seconds = Math.min(45, I.adSeconds);
-  fs.writeFileSync(path.join(W, "config.json"), JSON.stringify(cfg, null, 1));
-  if (job.adReady) { say(job, "Finishing the ad recording…"); await job.adReady; }
-  say(job, "Capturing the YouTube pages and the three moments (about 1 minute)…");
-  await run(PY, [path.join(PIPE, "scripts", "capture.py"), W], { log: (l) => job.log.push("   " + l) });
-  const pj = JSON.parse(fs.readFileSync(path.join(W, "pages", "pages.json"), "utf8"));
-  if (!pj.results.some((r) => r.target)) {
-    say(job, "Search didn't show the video on the first screen; retrying with its title…");
-    cfg.search.query = P.video.title.split(/[|]/)[0].trim(); fs.writeFileSync(path.join(W, "config.json"), JSON.stringify(cfg, null, 1));
-    await yt(["pages", P.video.id, cfg.search.query, path.join(W, "pages"), P.pick.keywords.join("|")]);
-  }
+  const saveCfg = () => fs.writeFileSync(path.join(W, "config.json"), JSON.stringify(cfg, null, 1));
+  saveCfg();
+  say(job, "Capturing the three moments…");
+  const pagesDir = path.join(W, "pages");
+  const pagesTask = (async () => {   // reuse the pages captured while the AI was picking; otherwise search the title
+    const early = job.pagesEarly?.id === P.video.id ? await job.pagesEarly.promise : undefined;   // null = tried, not on the first screen
+    if (early) { fs.rmSync(pagesDir, { recursive: true, force: true }); fs.renameSync(early.dir, pagesDir); cfg.search.query = early.query; }
+    else if (early === null || !(await capturePages(P.video.id, cfg.search.query, pagesDir))) {
+      say(job, "Search didn't show the video on the first screen; retrying with more of its title…");
+      cfg.search.query = `${P.video.title.split("|").slice(0, 2).join(" ").replace(/\s+/g, " ").trim().split(" ").slice(0, 10).join(" ")} ${P.video.channel}`;
+      await capturePages(P.video.id, cfg.search.query, pagesDir);
+    }
+    const pf = path.join(pagesDir, "pages.json"), pj = JSON.parse(fs.readFileSync(pf, "utf8"));
+    pj.query = cfg.search.query; pj.watch.phrases = phraseRects(pj.watch, P.pick.keywords);
+    fs.writeFileSync(pf, JSON.stringify(pj, null, 1));
+  })();
+  const adTask = (async () => {   // the ad was recorded while the AI picked (or earlier, when you clicked it) → 25 fps frames + its sound
+    if (job.adReady) await job.adReady;
+    const rec = path.join(W, "ad_rec.webm"), ad = path.join(W, "ad");
+    if (!fs.existsSync(rec)) await yt(["adrec", I.adId, rec]);
+    fs.rmSync(ad, { recursive: true, force: true }); fs.mkdirSync(ad);
+    await Promise.all([run("ffmpeg", ["-loglevel", "error", "-y", "-i", rec, "-vf", "fps=25,scale=1280:720:flags=lanczos", "-q:v", "3", path.join(ad, "%03d.jpg")]),
+      run("ffmpeg", ["-loglevel", "error", "-y", "-i", rec, "-vn", "-c:a", "copy", path.join(W, "ad_audio.webm")])]);
+    cfg.ad.seconds = +(fs.readdirSync(ad).filter((f) => f.endsWith(".jpg")).length / 25).toFixed(2);
+  })();
+  let capDone = false;
+  const capTask = run(PY, [path.join(PIPE, "scripts", "capture.py"), W], { log: (l) => job.log.push("   " + l), env: { CAPTURE_SKIP_PAGES: "1", CAPTURE_SKIP_AD: "1" } })
+    .finally(() => { capDone = true; });
+  // each box is placed as soon as its clip is recorded (the last frame is written → the freeze frame 036 is complete)
+  const boxTask = !P.boxesPending ? null : Promise.all([["visual", 76], ["object", 71]].map(async ([k, n]) => {
+    const last = path.join(W, k, String(n).padStart(3, "0") + ".jpg"), freeze = path.join(W, k, "036.jpg");
+    while (!fs.existsSync(last) && !capDone) await sleep(200);
+    if (!fs.existsSync(last)) await capTask.catch(() => {});
+    if (fs.existsSync(freeze)) { job.log.push(new Date().toLocaleTimeString() + "  AI is placing the " + k + " box…"); await placeBoxes(job, P.pick, { [k]: freeze }); }
+  })).then(() => { P.boxesPending = false; cfg.visual.box = P.pick.visual.box; cfg.object.box = P.pick.object.box; });
+  await Promise.all([pagesTask, adTask, capTask, boxTask]);
+  saveCfg();
   say(job, "Building the template…");
   await run(PY, [path.join(PIPE, "scripts", "build_ad.py"), W]);
   await renderMux(job, job.input.preview ? "preview" : "hd");
@@ -456,7 +576,7 @@ async function produce(job) {
 }
 async function renderMux(job, kind) {
   const W = job.work, I = job.input, prev = kind === "preview";
-  say(job, prev ? "Rendering the 720p preview (about 30 seconds)…" : "Rendering full HD (about 1 minute)…");
+  say(job, prev ? "Rendering the 720p preview (about 15 seconds)…" : "Rendering full HD (about 30 seconds)…");
   const raw = path.join(W, prev ? "out_preview_noaudio.mp4" : "out_noaudio.mp4");
   await run("node", [path.join(PIPE, "scripts", "render.js"), path.join(W, "dist", "contextual-ad.html"), raw, "25", I.hq && !prev ? "4" : (process.env.RENDER_SUBFRAMES || "1"), prev ? "0.6667" : "1"],
     { log: (l) => { const m = l.match(/frame (\d+) \/ (\d+)/); if (m) { job.step = `Rendering${prev ? " preview" : ""}… ${Math.round((100 * m[1]) / m[2])}% of frames`; job.prog.frac = m[1] / m[2]; } } });
@@ -472,14 +592,20 @@ function writeTiming(job, cfg) {
   fs.writeFileSync(path.join(W, "TIMING.md"), `# ${I.brand} contextual ad\n\n- Content video: ${P.video.title} — ${P.video.channel} — https://www.youtube.com/watch?v=${P.video.id}\n- Ad placed: ${I.adTitle} — https://www.youtube.com/watch?v=${I.adId}\n- Search typed: “${cfg.search.query}”\n\n| Check | Time | What | Why it matches |\n|---|---|---|---|\n| Visual Identify | ${P.pick.visual.t}s | ${P.pick.visual.what} | ${P.pick.visual.why} |\n| Keywords | title | ${P.pick.keywords.join(", ")} | exact title phrases |\n| Object Identify | ${P.pick.object.t}s | ${P.pick.object.what} | ${P.pick.object.why} |\n\nNotes: ${P.pick.notes || "—"}\nThe YouTube player was captured as screenshots and recorded audio; nothing was downloaded as a file.\n`);
 }
 
-// ad recordings are cached per ad id: the same ad is never recorded twice
-async function prefetchAd(adId, work) {
+// ad recordings are cached per ad id: the same ad is never recorded twice. Recording starts as soon as an ad is
+// clicked (/api/prefetch), so it is usually ready before "Make the video" is pressed.
+const adRecs = new Map();   // ad id → recording in progress
+function recordAd(adId) {
   const cache = path.join(OUT_ROOT, "_cache", "ads"); fs.mkdirSync(cache, { recursive: true });
-  const c = path.join(cache, adId + ".webm"), dst = path.join(work, "ad_rec.webm");
-  try {
-    if (!fs.existsSync(c) || fs.statSync(c).size < 100000) await yt(["adrec", adId, c]);
-    if (fs.existsSync(c)) fs.copyFileSync(c, dst);
-  } catch (e) { console.error("ad prefetch failed:", e.message); }
+  const c = path.join(cache, adId + ".webm");
+  if (fs.existsSync(c) && fs.statSync(c).size >= 100000) return Promise.resolve(c);
+  if (!adRecs.has(adId)) adRecs.set(adId, yt(["adrec", adId, c + ".part"]).then(() => { fs.renameSync(c + ".part", c); return c; })
+    .catch((e) => { console.error("ad recording failed:", e.message); return null; }).finally(() => adRecs.delete(adId)));
+  return adRecs.get(adId);
+}
+async function prefetchAd(adId, work) {
+  const c = await recordAd(adId);
+  if (c) fs.copyFileSync(c, path.join(work, "ad_rec.webm"));
 }
 
 // ---------- HTTP ----------
@@ -521,6 +647,10 @@ http.createServer(async (req, res) => {
     }
     const am = u.pathname.match(/^\/api\/ads\/(\w+)$/);
     if (am) return adJobs[am[1]] ? send(res, 200, adJobs[am[1]]) : send(res, 404, { error: "unknown search" });
+    if (req.method === "POST" && u.pathname === "/api/prefetch") {   // start recording an ad the moment it's picked
+      const id = vidOf((await body(req)).adId || ""); if (id && adRecs.size < 3) recordAd(id);
+      return send(res, 200, { ok: !!id });
+    }
     if (req.method === "POST" && u.pathname === "/api/start") {
       const b = await body(req);
       const adId = vidOf(b.adId || b.adUrl); if (!adId) return send(res, 400, { error: "Pick an ad or paste a YouTube link." });
