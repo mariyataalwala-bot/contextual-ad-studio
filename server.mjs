@@ -176,12 +176,15 @@ async function ytApiDetails(ids) {
   }
   return out;
 }
-const subsCache = new Map();
+const subsCache = new Map(), avatarCache = new Map();
 async function channelSubs(ids) {
   const need = [...new Set(ids)].filter((c) => c && !subsCache.has(c));
   for (let i = 0; i < need.length; i += 50) {
-    const j = await ytApi("channels", { part: "statistics", id: need.slice(i, i + 50).join(",") });
-    for (const c of j.items || []) subsCache.set(c.id, +c.statistics.subscriberCount || 0);
+    const j = await ytApi("channels", { part: "statistics,snippet", id: need.slice(i, i + 50).join(",") });
+    for (const c of j.items || []) {
+      subsCache.set(c.id, +c.statistics.subscriberCount || 0);
+      const th = c.snippet?.thumbnails || {}; avatarCache.set(c.id, (th.high || th.medium || th.default || {}).url || null);   // the channel's picture = usually the brand logo
+    }
   }
   return (id) => subsCache.get(id) ?? null;
 }
@@ -200,7 +203,7 @@ async function ytApiSearch(queries, n) {
     for (const id of ids) {
       const v = det.get(id); if (!v) continue;
       const sec = isoSec(v.contentDetails.duration), sc = subs(v.snippet.channelId);
-      all.push({ id, title: v.snippet.title, channel: v.snippet.channelTitle, meta: `${views(v.statistics.viewCount)} views · ${v.snippet.publishedAt.slice(0, 10)}${sc != null ? ` · channel ${views(sc)} subscribers` : ""}`,
+      all.push({ id, channelId: v.snippet.channelId, title: v.snippet.title, channel: v.snippet.channelTitle, meta: `${views(v.statistics.viewCount)} views · ${v.snippet.publishedAt.slice(0, 10)}${sc != null ? ` · channel ${views(sc)} subscribers` : ""}`,
         length: mmss(sec), query: q, definition: v.contentDetails.definition, aspect: aspectOf(v), subs: sc, views: +v.statistics.viewCount || 0 });
     }
     searchCache[key] = { t: Date.now(), r: all };
@@ -216,7 +219,7 @@ async function ytApiMeta(id) {
   if (!v) throw new Error("video not found or private: " + id);
   const desc = v.snippet.description || "", chapters = [];
   for (const line of desc.split(/\r?\n/)) { const m = /^\s*(?:(\d{1,2}):)?(\d{1,2}):(\d{2})\s*[-–—:]?\s*(.+)$/.exec(line); if (m) chapters.push([(+m[1] || 0) * 3600 + +m[2] * 60 + +m[3], m[4].trim()]); }
-  return { title: v.snippet.title, channel: v.snippet.channelTitle, views: v.statistics.viewCount, length: isoSec(v.contentDetails.duration), keywords: v.snippet.tags || [],
+  return { channelId: v.snippet.channelId, title: v.snippet.title, channel: v.snippet.channelTitle, views: v.statistics.viewCount, length: isoSec(v.contentDetails.duration), keywords: v.snippet.tags || [],
     chapters: chapters.length >= 2 && chapters[0][0] === 0 ? chapters : [], captions: v.contentDetails.caption === "true" ? ["available"] : [],
     size: playerSize(v), description: desc.slice(0, 800) };
 }
@@ -717,6 +720,50 @@ async function prefetchAd(adId, work) {
   if (c) fs.copyFileSync(c, path.join(work, "ad_rec.webm"));
 }
 
+
+// ---------- the brand's logo, found online (no upload needed) ----------
+// 1) Wikipedia: the article's infobox logo, rendered by Wikimedia as an 800 px PNG (one request, cached on disk)
+// 2) otherwise the picture of the ad's own YouTube channel — the brand's official channel, so almost always its logo
+const LOGO_CACHE = path.join(OUT_ROOT, "_cache", "logos.json");
+let logoCache = (() => { try { return JSON.parse(fs.readFileSync(LOGO_CACHE, "utf8")); } catch { return {}; } })();
+const squash = (x) => normTxt(x).replace(/\s/g, "");
+async function wikiLogo(brand) {
+  const key = squash(brand), hit = logoCache[key];
+  if (hit && (hit.url || Date.now() - hit.t < 24 * 3600e3)) return hit.url ? hit : null;
+  let found = null;
+  try {
+    const q = new URLSearchParams({ format: "json", action: "query", generator: "search", gsrsearch: `${brand} brand`, gsrlimit: "5", prop: "pageimages", piprop: "thumbnail|name", pithumbsize: "800" });
+    const r = await fetch("https://en.wikipedia.org/w/api.php?" + q, { headers: { "User-Agent": "ContextualAdStudio/1.0 (Mediakart contextual-ad demo tool)" }, signal: AbortSignal.timeout(8000) });
+    if (!r.ok) return null;   // rate-limited etc.: not cached, the channel picture is used instead
+    const pages = Object.values((await r.json()).query?.pages || {}).sort((a, b) => a.index - b.index);
+    for (const pg of pages) {
+      const t = squash(pg.title);
+      if (!(t.startsWith(key) || key.startsWith(t))) continue;   // the brand's own article only
+      if (pg.thumbnail && /logo|wordmark/i.test(pg.pageimage || "")) { found = { url: pg.thumbnail.source, source: "Wikipedia", page: pg.title }; break; }
+    }
+  } catch { return null; }
+  logoCache[key] = { t: Date.now(), ...(found || {}) };
+  try { fs.mkdirSync(path.dirname(LOGO_CACHE), { recursive: true }); fs.writeFileSync(LOGO_CACHE, JSON.stringify(logoCache)); } catch {}
+  return found;
+}
+async function channelLogo(channelId) {
+  if (!channelId) return null;
+  if (!avatarCache.has(channelId) && youtubeKey()) await channelSubs([channelId]).catch(() => {});
+  return avatarCache.get(channelId) || null;
+}
+// only from Wikimedia / YouTube image hosts (never an arbitrary address)
+const LOGO_HOSTS = /^https:\/\/(thumb\.wikimedia\.org|upload\.wikimedia\.org|yt3\.ggpht\.com|yt3\.googleusercontent\.com)\//;
+async function downloadLogo(url, dir) {
+  if (!LOGO_HOSTS.test(url || "")) return null;
+  const r = await fetch(url, { headers: { "User-Agent": "ContextualAdStudio/1.0 (Mediakart contextual-ad demo tool)" }, signal: AbortSignal.timeout(15000) });
+  const type = r.headers.get("content-type") || "", ext = { "image/png": "png", "image/jpeg": "jpg", "image/webp": "webp" }[type.split(";")[0]];
+  if (!r.ok || !ext) return null;
+  const buf = Buffer.from(await r.arrayBuffer()); if (buf.length < 200 || buf.length > 8e6) return null;
+  fs.writeFileSync(path.join(dir, "logo." + ext), buf);
+  await run(PY, [path.join(PIPE, "scripts", "trim_logo.py"), path.join(dir, "logo." + ext)]).catch(() => {});   // plain borders off (channel pictures are padded squares)
+  return "logo." + ext;
+}
+
 // ---------- HTTP ----------
 const send = (res, code, body, type = "application/json") => { res.writeHead(code, { "Content-Type": type, "Cache-Control": "no-store" }); res.end(type === "application/json" ? JSON.stringify(body) : body); };
 const body = (req) => new Promise((r) => { let d = ""; req.on("data", (c) => (d += c)); req.on("end", () => { try { r(JSON.parse(d || "{}")); } catch { r({}); } }); });
@@ -751,11 +798,16 @@ http.createServer(async (req, res) => {
     if (req.method === "POST" && u.pathname === "/api/settings") { if (!local) return send(res, 403, { error: "Settings can only be changed on the computer running the app." }); const b = await body(req); const s = loadSettings(); if (b.apiKey) s.apiKey = b.apiKey.trim(); if (b.geminiKey) s.geminiKey = b.geminiKey.trim(); if (b.youtubeKey) { s.youtubeKey = b.youtubeKey.trim(); ytApiDisabledUntil = 0; } if (b.provider) s.provider = b.provider; fs.writeFileSync(SETTINGS, JSON.stringify(s)); return send(res, 200, { ok: true, provider: provider() }); }
     if (req.method === "POST" && u.pathname === "/api/ads") {   // runs in the background (share links cut requests at ~100 s)
       const b = await body(req); const id = "a" + Date.now().toString(36); adJobs[id] = { status: "running" };
-      findAds(b).then((ads) => { adJobs[id] = { status: "done", ads }; }).catch((e) => { adJobs[id] = { status: "failed", error: e.message }; });
+      Promise.all([findAds(b), wikiLogo(b.brand).catch(() => null)]).then(([ads, logo]) => { adJobs[id] = { status: "done", logo, ads: ads.map((a) => ({ ...a, logo: avatarCache.get(a.channelId) || null })) }; }).catch((e) => { adJobs[id] = { status: "failed", error: e.message }; });
       return send(res, 200, { id });
     }
     const am = u.pathname.match(/^\/api\/ads\/(\w+)$/);
     if (am) return adJobs[am[1]] ? send(res, 200, adJobs[am[1]]) : send(res, 404, { error: "unknown search" });
+    if (u.pathname === "/api/logo") {   // the logo for an ad that came without one: its channel's picture
+      const id = vidOf(u.searchParams.get("adId") || ""); let url = null;
+      try { if (id) url = await channelLogo((await ytJson(["meta", id])).channelId); } catch {}
+      return send(res, 200, { url, source: url ? "youtube" : null });
+    }
     if (req.method === "POST" && u.pathname === "/api/prefetch") {   // start recording an ad the moment it's picked
       const id = vidOf((await body(req)).adId || ""); if (id && adRecs.size < 3) recordAd(id);
       return send(res, 200, { ok: !!id });
@@ -766,14 +818,18 @@ http.createServer(async (req, res) => {
       if (!String(b.brand || "").trim()) return send(res, 400, { error: "Type the brand name." });
       const d0 = new Date(), z = (n) => String(n).padStart(2, "0"); const stamp = `${d0.getFullYear()}${z(d0.getMonth() + 1)}${z(d0.getDate())}-${z(d0.getHours())}${z(d0.getMinutes())}`;   // local time
       const work = path.join(OUT_ROOT, slug(b.brand), stamp); fs.mkdirSync(path.join(work, "assets"), { recursive: true });
-      const logoExt = (/^data:image\/(\w+)/.exec(b.logo || "") || [, "png"])[1].replace("jpeg", "jpg");
-      if (!saveData(b.logo, path.join(work, "assets", "logo." + logoExt))) return send(res, 400, { error: "Upload the brand logo." });
+      const assets = path.join(work, "assets"), upExt = (/^data:image\/(\w+)/.exec(b.logo || "") || [, "png"])[1].replace("jpeg", "jpg");
+      let logoFile = b.logo && saveData(b.logo, path.join(assets, "logo." + upExt)) ? "logo." + upExt : null;   // uploaded by you
       const packs = (b.packs || []).map((p, i) => { const e = (/^data:image\/(\w+)/.exec(p) || [, "png"])[1].replace("jpeg", "jpg"); return saveData(p, path.join(work, "assets", `pack${i + 1}.${e}`)) ? `assets/pack${i + 1}.${e}` : null; }).filter(Boolean);
-      let adTitle = b.adTitle, adSeconds, adChannel = "";
+      let adTitle = b.adTitle, adSeconds, adChannel = "", adChannelId = null;
       try {
-        const m = await ytJson(["meta", adId]); adTitle = adTitle || m.title; adSeconds = +m.length; adChannel = m.channel || "";
+        const m = await ytJson(["meta", adId]); adTitle = adTitle || m.title; adSeconds = +m.length; adChannel = m.channel || ""; adChannelId = m.channelId || null;
         if (m.size && m.size[0] / m.size[1] < 1.5) return send(res, 400, { error: `This ad is vertical (${m.size[0]}×${m.size[1]}) — a mobile/Shorts ad. Pick a 16:9 TV / CTV commercial.` });
       } catch {}
+      if (!logoFile && b.logoUrl) logoFile = await downloadLogo(b.logoUrl, assets).catch(() => null);
+      if (!logoFile) { const w = await wikiLogo(b.brand).catch(() => null); if (w) logoFile = await downloadLogo(w.url, assets).catch(() => null); }
+      if (!logoFile) logoFile = await downloadLogo(await channelLogo(adChannelId), assets).catch(() => null);
+      if (!logoFile) return send(res, 400, { error: `Couldn't find ${b.brand}'s logo online. Use “Upload one” next to the logo to add it.` });
       let ownVideo = null;
       if (b.videoUrl) {
         const vid = vidOf(b.videoUrl); if (!vid) return send(res, 400, { error: "That content video link isn't a YouTube video link." });
@@ -782,7 +838,7 @@ http.createServer(async (req, res) => {
         const names = brandNames({ brand: b.brand, adChannel, adTitle });
         if (brandOwned(m, names) || mentionsBrand((m.keywords || []).join(" "), names)) return send(res, 400, { error: `That content video is from or about ${b.brand} itself (“${m.title}” — ${m.channel}). The content video must be independent of the brand — pick another one, or leave it empty and the app finds one.` });
       }
-      const job = newJob({ work, candidates: ownVideo ? [ownVideo] : undefined, tried: 0, input: { preview: b.preview !== false, review: !!b.review, hq: !!b.hq, brand: b.brand, product: b.product, adId, adChannel, adTitle: adTitle || adId, adSeconds, logo: "assets/logo." + logoExt, packs, endcard: !!b.endcard, tagline: b.tagline, music: b.music !== false } });
+      const job = newJob({ work, candidates: ownVideo ? [ownVideo] : undefined, tried: 0, input: { preview: b.preview !== false, review: !!b.review, hq: !!b.hq, brand: b.brand, product: b.product, adId, adChannel, adTitle: adTitle || adId, adSeconds, logo: "assets/" + logoFile, packs, endcard: !!b.endcard, tagline: b.tagline, music: b.music !== false } });
       job.adReady = prefetchAd(adId, work);   // the ad is known now → record it while the AI picks the video
       (async () => {
         try {

@@ -81,9 +81,9 @@ button:disabled{opacity:.45;cursor:default;transform:none}
 .big{font-size:96px;font-weight:200;line-height:.95;letter-spacing:-.05em;font-variant-numeric:tabular-nums;margin-top:10px;
   background:linear-gradient(180deg,#fff 30%,#C9B8FF 100%);-webkit-background-clip:text;background-clip:text;color:transparent}
 .big sup{font-size:34px;font-weight:300;letter-spacing:0;vertical-align:top;margin-left:6px;position:relative;top:14px;-webkit-text-fill-color:rgba(255,255,255,.45)}
-.meta{display:flex;gap:34px;padding-bottom:10px}
-.meta small{display:block;font-size:10.5px;font-weight:600;letter-spacing:.16em;color:rgba(255,255,255,.42);margin-bottom:4px}
-.meta b{font-size:22px;font-weight:300;font-variant-numeric:tabular-nums;letter-spacing:-.01em}
+.hero .meta{display:flex;gap:34px;padding-bottom:10px}
+.hero .meta small{display:block;font-size:10.5px;font-weight:600;letter-spacing:.16em;color:rgba(255,255,255,.42);margin-bottom:4px}
+.hero .meta b{font-size:22px;font-weight:300;font-variant-numeric:tabular-nums;letter-spacing:-.01em}
 .track{position:relative;height:4px;border-radius:99px;background:rgba(255,255,255,.08);margin:26px 0 16px}
 .fill{position:relative;height:100%;width:0;border-radius:99px;background:linear-gradient(90deg,#5C63DC,#8B3FE8 55%,#D04BFF);transition:width 1.1s cubic-bezier(.22,1,.36,1);
   box-shadow:0 0 14px rgba(176,0,204,.55),0 0 2px rgba(255,255,255,.4)}
@@ -134,11 +134,14 @@ video{width:100%;display:block;background:#000}
 .tag{display:inline-flex;align-items:center;gap:6px;padding:4px 11px;border-radius:99px;background:#F0FBEF;color:#177713;font-size:12px;font-weight:600;border:1px solid #BFE9BC;vertical-align:middle;margin-left:8px}
 .tag:empty{display:none}
 .hide{display:none!important}
+.logobar{display:flex;align-items:center;gap:14px;flex-wrap:wrap;padding:12px 14px;margin:0 0 18px;border:1px solid var(--line);border-radius:14px;background:#FBFBFE}
+.logobar .lbl{font-size:12.5px;font-weight:600;color:#3A3C52}.lbox{height:52px;min-width:52px;display:grid;place-items:center}.lbox img{max-height:52px;max-width:180px;object-fit:contain;border-radius:8px}
+.uplink{margin:0 0 0 auto;font-size:12.5px;font-weight:600;color:var(--p);cursor:pointer}.uplink:hover{text-decoration:underline}
 /* settings */
 #settings{border-color:rgba(92,99,220,.35)}
 @media (max-width:860px){.checks{grid-template-columns:1fr}}
 @media (max-width:680px){.row{grid-template-columns:1fr}.card{padding:20px 16px}.hin,.stepper,main{padding-left:16px;padding-right:16px}
-  .stepper li span{display:none}.stepper li{justify-content:center;padding:9px}.hero{padding:26px 20px 20px}.big{font-size:72px}.meta{gap:24px;padding-bottom:4px}.meta b{font-size:18px}
+  .stepper li span{display:none}.stepper li{justify-content:center;padding:9px}.hero{padding:26px 20px 20px}.big{font-size:72px}.hero .meta{gap:24px;padding-bottom:4px}.hero .meta b{font-size:18px}
   .timeline li{font-size:10.5px}header small{display:none}h1{font-size:16px}#setBtn{padding:9px 12px;white-space:nowrap}.drop{flex-wrap:wrap}.files{margin-left:0}}
 </style></head>
 <body>
@@ -153,13 +156,12 @@ video{width:100%;display:block;background:#000}
   </section>
 
   <section class="card" id="s1">
-    <div class="ch"><div class="num">1</div><div><h2>Brand</h2><p class="s">Type the brand and upload its real logo (and packshots for an optional end card). Assets are used unaltered.</p></div></div>
+    <div class="ch"><div class="num">1</div><div><h2>Brand</h2><p class="s">Type the brand — its logo is found online automatically (Wikipedia or the brand's own YouTube channel). Packshots are optional, for an end card. Assets are used unaltered.</p></div></div>
     <div class="row">
       <div><label for="brand">Brand name *</label><input type="text" id="brand" placeholder="e.g. Amul" autocomplete="off"></div>
       <div><label for="product">Product focus (optional)</label><input type="text" id="product" placeholder="e.g. Amul Comfy thermal wear" autocomplete="off"></div>
     </div>
-    <div class="row" style="margin-top:16px">
-      <label class="drop" id="logoDrop"><input type="file" id="logo" accept="image/*"><div class="ico"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 16V4M7 9l5-5 5 5"/><path d="M4 16v3a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-3"/></svg></div><div><b>Logo *</b><span>PNG or JPG — click or drop</span></div><div class="files" id="logoPrev"></div></label>
+    <div style="margin-top:16px">
       <label class="drop" id="packDrop"><input type="file" id="packs" accept="image/*" multiple><div class="ico"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="3"/><circle cx="9" cy="9" r="2"/><path d="M21 15l-5-5L5 21"/></svg></div><div><b>Packshots</b><span>Optional, up to 2 — for the end card</span></div><div class="files" id="packPrev"></div></label>
     </div>
     <div class="opts">
@@ -174,6 +176,7 @@ video{width:100%;display:block;background:#000}
 
   <section class="card hide" id="s2">
     <div class="ch"><div class="num">2</div><div><h2>Which ad should we place?</h2><p class="s">The brand's official 16:9 TV / CTV commercials found on YouTube. Pick one, or paste a link.</p></div></div>
+    <div class="logobar" id="logoBar"><span class="lbl">Logo</span><div class="lbox" id="logoBox"><span class="s">Looking it up…</span></div><span class="s" id="logoSrc"></span><label class="uplink">Wrong logo? Upload one<input type="file" id="logo" accept="image/*" hidden></label></div>
     <div class="ads" id="ads"></div>
     <div class="or">OR PASTE LINKS</div>
     <div class="row"><div><label for="adUrl">Ad link (16:9 TV / CTV ad)</label><input type="text" id="adUrl" placeholder="https://www.youtube.com/watch?v=…"></div>
@@ -221,7 +224,7 @@ video{width:100%;display:block;background:#000}
   </section>
 </main>
 <script>
-const $=id=>document.getElementById(id); let job=null, adSel=null, adList=[], logoData=null, packData=[];
+const $=id=>document.getElementById(id); let job=null, adSel=null, adList=[], logoData=null, packData=[], wikiLogo=null, pastedAd=null;
 const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const store={get:k=>{try{return localStorage.getItem(k)}catch{return null}},set:(k,v)=>{try{v==null?localStorage.removeItem(k):localStorage.setItem(k,v)}catch{}}};
 const api=async(u,b)=>{const r=await fetch(u,b?{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(b)}:{});const j=await r.json();if(!r.ok)throw new Error(j.error||r.statusText);return j;};
@@ -234,30 +237,35 @@ $('setBtn').onclick=()=>{$('settings').classList.toggle('hide'); if(!$('settings
 $('saveKey').onclick=async()=>{const r=await api('/api/settings',{apiKey:$('key').value,geminiKey:$('gkey').value,youtubeKey:$('ykey').value,provider:$('prov').value});$('key').value='';$('gkey').value='';$('ykey').value='';$('provNow').textContent='Using: '+r.provider;const s=await api('/api/status');$('ytNow').textContent='YouTube search: '+s.youtube;$('settings').classList.add('hide');};
 let LOCAL=true;
 api('/api/status').then(s=>{LOCAL=!!s.local;$('prov').value=s.provider;$('provNow').textContent='Using: '+s.provider;$('ytNow').textContent='YouTube search: '+s.youtube; if(s.keyFromEnv||!s.local){$('setBtn').classList.add('hide');$('openF').classList.add('hide');} else if(!s.hasKey)$('settings').classList.remove('hide'); if(!s.ffmpeg) alert('ffmpeg was not found. Install it once with: winget install Gyan.FFmpeg'); if(s.hosted){$('openF').classList.add('hide');}});
-$('logo').onchange=async e=>{if(!e.target.files[0])return;logoData=await read(e.target.files[0]);$('logoPrev').innerHTML=`<img src="${logoData}" alt="logo">`;};
+// the logo: yours if you uploaded one, else Wikipedia's, else the chosen ad's YouTube channel picture
+const logoNow=()=>logoData?{url:logoData,src:'uploaded by you'}:wikiLogo?{url:wikiLogo.url,src:'from Wikipedia'}:(adSel||pastedAd||adList[0])?.logo?{url:(adSel||pastedAd||adList[0]).logo,src:"from the brand's YouTube channel"}:null;
+async function findChannelLogo(ad){ if(!ad||ad.logo) return; try{ const r=await api('/api/logo?adId='+encodeURIComponent(ad.id)); if(r.url){ ad.logo=r.url; showLogo(); } }catch{} }
+function showLogo(){ const l=logoNow(); $('logoBox').innerHTML=l?`<img src="${esc(l.url)}" alt="logo" referrerpolicy="no-referrer">`:'<span class="s">Not found yet — the app looks again when you start</span>'; $('logoSrc').textContent=l?l.src:''; }
+$('logo').onchange=async e=>{if(!e.target.files[0])return;logoData=await read(e.target.files[0]);showLogo();};
 $('packs').onchange=async e=>{packData=await Promise.all([...e.target.files].slice(0,2).map(read));$('packPrev').innerHTML=packData.map(d=>`<img src="${d}" alt="pack">`).join('');};
-['logoDrop','packDrop'].forEach(id=>{const d=$(id);d.ondragover=()=>d.classList.add('over');d.ondragleave=d.ondrop=()=>d.classList.remove('over');});
+['packDrop'].forEach(id=>{const d=$(id);d.ondragover=()=>d.classList.add('over');d.ondragleave=d.ondrop=()=>d.classList.remove('over');});
 const skeleton=()=>Array(4).fill('<div class="skel"><div class="a"></div><div class="b"></div><div class="c"></div></div>').join('');
 $('findAds').onclick=async()=>{
-  if(!$('brand').value.trim()) return alert('Type the brand name.'); if(!logoData) return alert('Upload the brand logo.');
+  if(!$('brand').value.trim()) return alert('Type the brand name.');
+  wikiLogo=null; logoData=null; $('logo').value=''; $('logoBox').innerHTML='<span class="s">Looking it up…</span>'; $('logoSrc').textContent='';
   $('findAds').disabled=true; $('adsMsg').textContent='Searching YouTube for official ads…';
   $('ads').innerHTML=skeleton(); $('s2').classList.remove('hide'); stepTo(2); $('s2').scrollIntoView({behavior:'smooth',block:'start'});
   try{ const st=await api('/api/ads',{brand:$('brand').value.trim(),product:$('product').value.trim()}); let r;
     for(;;){ await new Promise(z=>setTimeout(z,2000)); r=await api('/api/ads/'+st.id); if(r.status==='failed') throw new Error(r.error); if(r.status==='done') break; }
-    adList=r.ads; adSel=null; $('start').disabled=!$('adUrl').value.trim();
+    adList=r.ads; adSel=null; wikiLogo=r.logo||null; showLogo(); if(!wikiLogo&&adList[0]) findChannelLogo(adList[0]); $('start').disabled=!$('adUrl').value.trim();
     $('ads').innerHTML=adList.length?adList.map((a,i)=>`<div class="ad" data-i="${i}"><img src="https://i.ytimg.com/vi/${esc(a.id)}/mqdefault.jpg" alt="" loading="lazy">${a.length?`<span class="dur">${esc(a.length)}</span>`:''}<div class="meta"><b>${esc(a.title)}</b><span class="ch2">${esc(a.channel)}</span>${a.why?`<br><span class="why">${esc(a.why)}</span>`:''}</div></div>`).join(''):'<p class="s">No official 16:9 TV ads found — paste a link below.</p>';
-    document.querySelectorAll('.ad').forEach(el=>el.onclick=()=>{document.querySelectorAll('.ad').forEach(x=>x.classList.remove('sel'));el.classList.add('sel');adSel=adList[+el.dataset.i];$('adUrl').value='';$('start').disabled=false;prefetch(adSel.id);});
+    document.querySelectorAll('.ad').forEach(el=>el.onclick=()=>{document.querySelectorAll('.ad').forEach(x=>x.classList.remove('sel'));el.classList.add('sel');adSel=adList[+el.dataset.i];$('adUrl').value='';$('start').disabled=false;prefetch(adSel.id);showLogo();if(!wikiLogo&&!logoData)findChannelLogo(adSel);});
     if(adList[0]) prefetch(adList[0].id);   // the top ad starts recording right away
     $('adsMsg').textContent='';
-  }catch(e){alert(e.message);$('adsMsg').textContent='';$('ads').innerHTML='<p class="s">Search failed — paste an ad link below.</p>';} $('findAds').disabled=false;
+  }catch(e){alert(e.message);$('adsMsg').textContent='';$('ads').innerHTML='<p class="s">Search failed — paste an ad link below.</p>';showLogo();} $('findAds').disabled=false;
 };
 // record the ad in the background as soon as it's chosen, so making the video doesn't wait for it
 const prefetch=id=>{ if(id) fetch('/api/prefetch',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({adId:id})}).catch(()=>{}); };
-$('adUrl').onchange=()=>prefetch($('adUrl').value.trim());
+$('adUrl').onchange=()=>{ const u=$('adUrl').value.trim(); prefetch(u); pastedAd=u?{id:u}:null; if(pastedAd&&!wikiLogo&&!logoData) findChannelLogo(pastedAd); else showLogo(); };
 $('adUrl').oninput=()=>{ if($('adUrl').value.trim()){adSel=null;document.querySelectorAll('.ad').forEach(x=>x.classList.remove('sel'));} $('start').disabled=!(adSel||$('adUrl').value.trim()); };
 $('start').onclick=async()=>{
   $('start').disabled=true;
-  try{ const r=await api('/api/start',{brand:$('brand').value.trim(),product:$('product').value.trim(),adId:adSel?.id,adTitle:adSel?.title,adUrl:$('adUrl').value.trim(),videoUrl:$('videoUrl').value.trim(),preview:$('preview').checked,review:$('review').checked,hq:$('hq').checked,logo:logoData,packs:packData,endcard:$('endcard').checked,music:$('music').checked});
+  try{ const r=await api('/api/start',{brand:$('brand').value.trim(),product:$('product').value.trim(),adId:adSel?.id,adTitle:adSel?.title,adUrl:$('adUrl').value.trim(),videoUrl:$('videoUrl').value.trim(),preview:$('preview').checked,review:$('review').checked,hq:$('hq').checked,logo:logoData||undefined,logoUrl:logoData?undefined:logoNow()?.url,packs:packData,endcard:$('endcard').checked,music:$('music').checked});
     job=r.id; store.set('cadJob',job); showWorking(); poll();
   }catch(e){alert(e.message);} $('start').disabled=false;
 };
