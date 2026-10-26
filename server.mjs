@@ -190,6 +190,19 @@ async function channelSubs(ids) {
 }
 const SEARCH_CACHE = path.join(OUT_ROOT, "_cache", "search.json");
 let searchCache = (() => { try { return JSON.parse(fs.readFileSync(SEARCH_CACHE, "utf8")); } catch { return {}; } })();
+// full records (channel size, views, length, HD, aspect) for video ids — the "videos"/"channels" calls cost 1 unit each,
+// separate from the ~100-a-day search limit
+async function videoRecords(ids, q) {
+  const det = await ytApiDetails(ids), out = [];
+  const subs = await channelSubs([...det.values()].map((v) => v.snippet.channelId)).catch(() => () => null);
+  for (const id of ids) {
+    const v = det.get(id); if (!v) continue;
+    const sec = isoSec(v.contentDetails.duration), sc = subs(v.snippet.channelId);
+    out.push({ id, channelId: v.snippet.channelId, title: v.snippet.title, channel: v.snippet.channelTitle, meta: `${views(v.statistics.viewCount)} views · ${v.snippet.publishedAt.slice(0, 10)}${sc != null ? ` · channel ${views(sc)} subscribers` : ""}`,
+      length: mmss(sec), query: q, definition: v.contentDetails.definition, aspect: aspectOf(v), subs: sc, views: +v.statistics.viewCount || 0 });
+  }
+  return out;
+}
 async function ytApiSearch(queries, n) {
   const all = [];
   const found = await Promise.all(queries.map(async (q) => {   // all queries at once; each one cached for a day
@@ -197,15 +210,7 @@ async function ytApiSearch(queries, n) {
     if (hit && Date.now() - hit.t < 24 * 3600e3) return hit.r;
     const all = [];
     const s = await ytApi("search", { part: "snippet", type: "video", q, maxResults: String(Math.min(+n || 10, 25)), regionCode: "IN", relevanceLanguage: "en", safeSearch: "moderate" });
-    const ids = (s.items || []).map((x) => x.id.videoId).filter(Boolean);
-    const det = await ytApiDetails(ids);
-    const subs = await channelSubs([...det.values()].map((v) => v.snippet.channelId)).catch(() => () => null);
-    for (const id of ids) {
-      const v = det.get(id); if (!v) continue;
-      const sec = isoSec(v.contentDetails.duration), sc = subs(v.snippet.channelId);
-      all.push({ id, channelId: v.snippet.channelId, title: v.snippet.title, channel: v.snippet.channelTitle, meta: `${views(v.statistics.viewCount)} views · ${v.snippet.publishedAt.slice(0, 10)}${sc != null ? ` · channel ${views(sc)} subscribers` : ""}`,
-        length: mmss(sec), query: q, definition: v.contentDetails.definition, aspect: aspectOf(v), subs: sc, views: +v.statistics.viewCount || 0 });
-    }
+    all.push(...await videoRecords((s.items || []).map((x) => x.id.videoId).filter(Boolean), q));
     searchCache[key] = { t: Date.now(), r: all };
     return all;
   }));
@@ -239,7 +244,14 @@ async function ytJson(args) {
       if (e.reason === "keyInvalid" || e.reason === "API_KEY_INVALID" || e.reason === "accessNotConfigured" || e.reason === 403) ytApiDisabledUntil = Date.now() + 600e3;
     }
   }
-  return ytBrowserJson(args);
+  const rows = await ytBrowserJson(args);
+  if (search && youtubeKey() && Date.now() > ytApiDisabledUntil && Array.isArray(rows) && rows.length) {
+    try {   // browser search found the ids; the API fills in channel size, views, length, HD (so "big channels only" still works)
+      const byId = new Map(rows.map((r) => [r.id, r])), recs = await videoRecords([...byId.keys()], "");
+      if (recs.length) return recs.map((r) => ({ ...r, query: byId.get(r.id)?.query || "" }));
+    } catch (e) { console.error("enrich failed:", e.message); }
+  }
+  return rows;
 }
 const slug = (s) => s.toLowerCase().normalize("NFKD").replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") || "brand";
 const vidOf = (s) => (String(s).match(/(?:v=|youtu\.be\/|shorts\/)([A-Za-z0-9_-]{11})/) || String(s).match(/^([A-Za-z0-9_-]{11})$/) || [])[1];
@@ -476,7 +488,8 @@ async function proposeMoments(job) {
           { type: "object", additionalProperties: false, required: ["category", "product_type", "title_terms", "queries"], properties: { category: { type: "string" }, product_type: { type: "string" }, title_terms: { type: "array", items: { type: "string" } }, queries: { type: "array", items: { type: "string" } } } }, [], "medium");
         job.category = stripBrand(plan.category, names) || plan.category;
         job.ptype = stripBrand(plan.product_type, names) || job.category;
-        job.terms = [...new Set([...plan.title_terms, job.ptype, job.category].map(normTxt).filter((t) => t.length >= 3 && !mentionsBrand(t, names)))];
+        const GENERIC_TERMS = /^(can|cans|tin|tins|box|boxes|pack|packs|packet|bottle|bottles|jar|jars|glass|cup|bag|bags|item|items|product|products|best|top|new|review|reviews|recipe|recipes|guide|how to)$/;
+        job.terms = [...new Set([...plan.title_terms, job.ptype, job.category].map(normTxt).filter((t) => t.length >= 4 && !GENERIC_TERMS.test(t) && !mentionsBrand(t, names)))];
         // every query must name the product (stems: "fans" → "fan"); add plain category searches if too few are left
         const stems = normTxt(job.category).split(" ").filter((w) => w.length >= 3 && !/^(and|for|the|with|from)$/.test(w)).map((w) => w.replace(/(es|s)$/, ""));
         queries = plan.queries.map((q) => stripBrand(q, names)).filter((q) => q.length > 2 && (!stems.length || stems.some((st) => normTxt(q).includes(st))));
@@ -854,9 +867,14 @@ http.createServer(async (req, res) => {
           for (let attempt = 1; ; attempt++) {
             try { await queued(job, () => produce(job)); break; }
             catch (e) {
-              if (!(e instanceof RecheckFailed) || attempt >= 3) throw e;
+              if (!(e instanceof RecheckFailed)) throw e;
+              if (attempt >= 3) { job.proposal = { ...job.proposal, manual: true, boxesPending: false }; job.status = "approve"; say(job, "No video passed every automatic check — please review the best one below. " + e.message); return; }
               say(job, "  rejected after checking the full frames — " + e.message);
-              if (!(await proposeMoments(job)) || job.proposal.manual) throw new Error("No other video passed all three checks. Try a different product focus, or paste a content video link.");
+              const last = job.proposal;
+              if (!(await proposeMoments(job)) || job.proposal.manual) {
+                job.proposal = { ...last, manual: true, boxesPending: false };
+                job.status = "approve"; say(job, "No video passed every automatic check — please review the best one below (fix the moments or keywords, or try another video)."); return;
+              }
               const Q = job.proposal; if (!Q.pick.card) Q.pick.card = Q.pick.keywords[0].split(/\s+/).slice(0, 2).join("\n");
               say(job, `Picked: “${Q.video.title}” — visual ${Q.pick.visual.t}s (${Q.pick.visual.what}), object ${Q.pick.object.t}s (${Q.pick.object.what}), keywords ${Q.pick.keywords.join(", ")}`);
             }
