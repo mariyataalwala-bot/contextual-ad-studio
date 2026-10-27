@@ -7,6 +7,7 @@
 //     real dimensions, a content hash and a perceptual hash, and marks duplicates. Nothing else on the page is fetched.
 import { sha256, norm } from "./text.mjs";
 import { decodeEntities } from "./extract.mjs";
+import { UA } from "./fetcher.mjs";   // the same browser identity as the page fetch (some image CDNs refuse "node")
 
 export const IMAGES_VERSION = "images.v1";
 const MIN_W = 300, MIN_H = 150, MAX_PER_ARTICLE = 8, MAX_BYTES = 8 * 1024 * 1024;
@@ -156,7 +157,7 @@ export async function fetchImages(images, { fetchImpl = globalThis.fetch, allowe
     im.fetchedAt = new Date().toISOString();
     try {
       if (!(await allowed(im.src))) { im.status = "blocked"; im.statusDetail = "robots.txt disallows this image"; continue; }
-      const r = await fetchImpl(im.src, { headers: { Accept: "image/jpeg,image/png,image/webp;q=0.9,image/*;q=0.5" }, redirect: "follow", signal: AbortSignal.timeout(timeoutMs) });
+      const r = await fetchImpl(im.src, { headers: { "User-Agent": UA, Accept: "image/jpeg,image/png,image/webp;q=0.9,image/*;q=0.5" }, redirect: "follow", signal: AbortSignal.timeout(timeoutMs) });
       im.finalUrl = r.url || im.src;
       if (r.status === 403 || r.status === 429) { im.status = "blocked"; im.statusDetail = `HTTP ${r.status}`; continue; }
       if (!r.ok) { im.status = "unavailable"; im.statusDetail = `HTTP ${r.status}`; continue; }

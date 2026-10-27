@@ -1,0 +1,268 @@
+{
+ "version": "inimage-studio.v1",
+ "note": "In-Image Studio: brand + product in, a mock of an in-image unit on a relevant article out. Every section cites the media-plan cell that lists its site for in-image. Mock previews only — nothing is served.",
+ "checked": "2026-10-27",
+ "sections": [
+  {
+   "id": "ie-food",
+   "name": "Indian Express › Food & Wine",
+   "domain": "indianexpress.com",
+   "category": "Food & Cooking",
+   "language": "en",
+   "feeds": [
+    "https://indianexpress.com/section/lifestyle/food-wine/feed/"
+   ],
+   "formats": {
+    "in-image": "Category Wise In-Image › Premium SiteList for Display: indianexpress.com"
+   }
+  },
+  {
+   "id": "ie-lifestyle",
+   "name": "Indian Express › Lifestyle",
+   "domain": "indianexpress.com",
+   "category": "Lifestyle",
+   "language": "en",
+   "feeds": [
+    "https://indianexpress.com/section/lifestyle/life-style/feed/"
+   ],
+   "formats": {
+    "in-image": "Category Wise In-Image › Premium SiteList for Display: indianexpress.com"
+   }
+  },
+  {
+   "id": "ie-fashion",
+   "name": "Indian Express › Fashion",
+   "domain": "indianexpress.com",
+   "category": "Fashion & Beauty",
+   "language": "en",
+   "feeds": [
+    "https://indianexpress.com/section/lifestyle/fashion/feed/"
+   ],
+   "formats": {
+    "in-image": "Category Wise In-Image › Premium SiteList for Display: indianexpress.com"
+   }
+  },
+  {
+   "id": "ie-travel",
+   "name": "Indian Express › Destination of the Week",
+   "domain": "indianexpress.com",
+   "category": "Travel",
+   "language": "en",
+   "feeds": [
+    "https://indianexpress.com/section/lifestyle/destination-of-the-week/feed/"
+   ],
+   "formats": {
+    "in-image": "Category Wise In-Image › Premium SiteList for Display: indianexpress.com"
+   }
+  },
+  {
+   "id": "ie-health",
+   "name": "Indian Express › Health",
+   "domain": "indianexpress.com",
+   "category": "Health & Wellness",
+   "language": "en",
+   "feeds": [
+    "https://indianexpress.com/section/lifestyle/health/feed/"
+   ],
+   "formats": {
+    "in-image": "Category Wise In-Image › Premium SiteList for Display: indianexpress.com"
+   }
+  },
+  {
+   "id": "ie-art",
+   "name": "Indian Express › Art & Culture",
+   "domain": "indianexpress.com",
+   "category": "Art & Culture",
+   "language": "en",
+   "feeds": [
+    "https://indianexpress.com/section/lifestyle/art-and-culture/feed/"
+   ],
+   "formats": {
+    "in-image": "Category Wise In-Image › Premium SiteList for Display: indianexpress.com"
+   }
+  },
+  {
+   "id": "ie-tech",
+   "name": "Indian Express › Mobile & Tabs",
+   "domain": "indianexpress.com",
+   "category": "Technology",
+   "language": "en",
+   "feeds": [
+    "https://indianexpress.com/section/technology/mobile-tabs/feed/"
+   ],
+   "formats": {
+    "in-image": "Category Wise In-Image › Premium SiteList for Display: indianexpress.com"
+   }
+  },
+  {
+   "id": "ie-entertainment",
+   "name": "Indian Express › Entertainment",
+   "domain": "indianexpress.com",
+   "category": "Entertainment",
+   "language": "en",
+   "feeds": [
+    "https://indianexpress.com/section/entertainment/feed/"
+   ],
+   "formats": {
+    "in-image": "Category Wise In-Image › Premium SiteList for Display: indianexpress.com"
+   }
+  },
+  {
+   "id": "ie-sports",
+   "name": "Indian Express › Sports",
+   "domain": "indianexpress.com",
+   "category": "Sports",
+   "language": "en",
+   "feeds": [
+    "https://indianexpress.com/section/sports/feed/"
+   ],
+   "formats": {
+    "in-image": "Category Wise In-Image › Premium SiteList for Display: indianexpress.com"
+   }
+  },
+  {
+   "id": "ie-business",
+   "name": "Indian Express › Business",
+   "domain": "indianexpress.com",
+   "category": "Business & Finance",
+   "language": "en",
+   "feeds": [
+    "https://indianexpress.com/section/business/feed/"
+   ],
+   "formats": {
+    "in-image": "Category Wise In-Image › Premium SiteList for Display: indianexpress.com"
+   }
+  },
+  {
+   "id": "ie-fitness",
+   "name": "Indian Express › Fitness",
+   "domain": "indianexpress.com",
+   "category": "Health & Fitness",
+   "language": "en",
+   "feeds": [
+    "https://indianexpress.com/section/lifestyle/fitness/feed/"
+   ],
+   "formats": {
+    "in-image": "Category Wise In-Image › Premium SiteList for Display: indianexpress.com"
+   }
+  },
+  {
+   "id": "ie-gadgets",
+   "name": "Indian Express › Gadgets",
+   "domain": "indianexpress.com",
+   "category": "Technology",
+   "language": "en",
+   "feeds": [
+    "https://indianexpress.com/section/technology/gadgets/feed/"
+   ],
+   "formats": {
+    "in-image": "Category Wise In-Image › Premium SiteList for Display: indianexpress.com"
+   }
+  },
+  {
+   "id": "ie-tech-reviews",
+   "name": "Indian Express › Tech Reviews",
+   "domain": "indianexpress.com",
+   "category": "Technology",
+   "language": "en",
+   "feeds": [
+    "https://indianexpress.com/section/technology/tech-reviews/feed/"
+   ],
+   "formats": {
+    "in-image": "Category Wise In-Image › Premium SiteList for Display: indianexpress.com"
+   }
+  },
+  {
+   "id": "ie-personal-finance",
+   "name": "Indian Express › Personal Finance",
+   "domain": "indianexpress.com",
+   "category": "Business & Finance",
+   "language": "en",
+   "feeds": [
+    "https://indianexpress.com/section/business/personal-finance/feed/"
+   ],
+   "formats": {
+    "in-image": "Category Wise In-Image › Premium SiteList for Display: indianexpress.com"
+   }
+  },
+  {
+   "id": "ie-workplace",
+   "name": "Indian Express › Workplace",
+   "domain": "indianexpress.com",
+   "category": "Careers",
+   "language": "en",
+   "feeds": [
+    "https://indianexpress.com/section/lifestyle/workplace/feed/"
+   ],
+   "formats": {
+    "in-image": "Category Wise In-Image › Premium SiteList for Display: indianexpress.com"
+   }
+  }
+ ],
+ "feeds": {
+  "perSection": 40,
+  "maxAgeDays": 30,
+  "cacheMinutes": 20
+ },
+ "shortlist": 8,
+ "image": {
+  "minWidth": 560,
+  "minAspect": 1.25,
+  "maxAspect": 2.4,
+  "perArticle": 4,
+  "maxCandidates": 14
+ },
+ "copy": {
+  "maxHeadlineWords": 5,
+  "maxSublineWords": 6,
+  "ctas": [
+   "Shop now",
+   "Order now",
+   "Buy now",
+   "Book now",
+   "Explore",
+   "Learn more",
+   "Try it now",
+   "Download app"
+  ],
+  "noClaims": "No prices, discounts, offers, awards or health/performance claims unless the user typed them."
+ },
+ "creative": {
+  "layout": "bottom-strip",
+  "stripHeight": "40% of the image (at least 21% of its width)",
+  "seconds": 6.5,
+  "scrollSeconds": 2
+ },
+ "unavailable": [
+  {
+   "domain": "www.newindianexpress.com",
+   "reason": "Its picture server (cf-images.assettype.com) refuses scripted requests (HTTP 403), so pictures cannot be checked. Not bypassed. Listed in the media plan (In-Image & Interstitial › In-image (Mobile)); needs publisher access to be added back. 2026-10-27"
+  }
+ ],
+ "sitemaps": [
+  {
+   "id": "ie-archive",
+   "name": "Indian Express (last 30 days)",
+   "domain": "indianexpress.com",
+   "category": "Lifestyle & features",
+   "language": "en",
+   "feeds": [],
+   "formats": {
+    "in-image": "Category Wise In-Image › Premium SiteList for Display: indianexpress.com"
+   },
+   "days": 30,
+   "today": "https://indianexpress.com/sitemap/today.xml",
+   "yesterday": "https://indianexpress.com/sitemap/yesterday.xml",
+   "daily": "https://indianexpress.com/sitemap.xml?yyyy={yyyy}&mm={mm}&dd={dd}",
+   "paths": [
+    "/article/lifestyle/",
+    "/article/technology/",
+    "/article/sports/",
+    "/article/entertainment/",
+    "/article/parenting/",
+    "/article/business/personal-finance/",
+    "/article/education/"
+   ]
+  }
+ ]
+}

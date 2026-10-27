@@ -12,6 +12,7 @@ import { normaliseCampaign, todayIST } from "./lib/campaigns.mjs";
 import { loadMediaPlan, loadShowcase, refreshShowcase, creativeFiles, checkPublisherSources } from "./lib/inventory.mjs";
 import { renderMock, MockError } from "./lib/mock.mjs";
 import { ensureVectors } from "./lib/semantic.mjs";
+import { loadStudioConfig, makeInImage, sectionItems, feedFetcher, sitemapIndex } from "./lib/studio.mjs";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const send = (res, code, body, type = "application/json") => { res.writeHead(code, { "Content-Type": type, "Cache-Control": "no-store" }); res.end(type === "application/json" ? JSON.stringify(body) : body); };
@@ -22,10 +23,13 @@ const countBy = (list, key) => { const m = {}; for (const x of list) m[key(x)] =
 const FILE_TYPES = { ".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".gif": "image/gif", ".webp": "image/webp", ".mp4": "video/mp4", ".webm": "video/webm", ".mov": "video/quicktime", ".json": "application/json" };
 
 /**
- * @param {{ dataDir: string, configDir?: string, ask?: Function|null, provider?: () => string, ffmpeg?: ((args: string[]) => Promise<any>)|null, fetchImpl?: any, chromium?: any, embed?: ((texts: string[], task: string, dims: number) => Promise<number[][]>)|null }} opts
+ * @param {{ dataDir: string, configDir?: string, ask?: Function|null, provider?: () => string, ffmpeg?: ((args: string[]) => Promise<any>)|null, fetchImpl?: any, chromium?: any, embed?: ((texts: string[], task: string, dims: number) => Promise<number[][]>)|null, py?: ((args: string[]) => Promise<string>)|null, studioDir?: string|null }} opts
  */
-export function createOpenWeb({ dataDir, ask = null, provider = () => "none", ffmpeg = null, fetchImpl = globalThis.fetch, chromium = null, configDir, embed = null }) {
+export function createOpenWeb({ dataDir, ask = null, provider = () => "none", ffmpeg = null, fetchImpl = globalThis.fetch, chromium = null, configDir, embed = null, py = null, studioDir = null }) {
   const cfg = loadConfig(configDir);
+  const studio = loadStudioConfig(configDir);
+  const studioRoot = studioDir || path.join(path.dirname(dataDir), "inimage");
+  let studioBusy = null;
   const store = makeStore(dataDir);
   const pubs = new Map(cfg.publishers.publishers.map((p) => [p.id, p]));
   const jobs = {}; let busy = null;
@@ -66,9 +70,50 @@ export function createOpenWeb({ dataDir, ask = null, provider = () => "none", ff
     log(j, `Recommendations recomputed: ${run.articles} article(s) × ${run.campaigns} campaign(s).`);
   }
 
+  // In-Image Studio: brand + product → product found online → strip creative → relevant article picture → mock video
+  function studioStart(b) {
+    const brand = String(b.brand || "").trim().slice(0, 60), product = String(b.product || "").trim().slice(0, 100), offer = String(b.offer || "").trim().slice(0, 60);
+    if (!brand || !product) return { code: 400, body: { error: "Type the brand and the product." } };
+    if (!ask || provider() === "none") return { code: 400, body: { error: "The studio needs the AI key (Settings on the computer running the app)." } };
+    if (!py || !ffmpeg) return { code: 503, body: { error: "Python and ffmpeg are needed on the computer running the app." } };
+    if (studioBusy && jobs[studioBusy]?.status === "running") return { code: 409, body: { error: "A mock is already being made — wait for it to finish.", id: studioBusy } };
+    const d = new Date(), z = (n) => String(n).padStart(2, "0"), slug = (s) => s.toLowerCase().normalize("NFKD").replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 40) || "brand";
+    const rel = path.join(slug(brand), `${d.getFullYear()}${z(d.getMonth() + 1)}${z(d.getDate())}-${z(d.getHours())}${z(d.getMinutes())}${z(d.getSeconds())}`);
+    const workDir = path.join(studioRoot, rel); fs.mkdirSync(workDir, { recursive: true });
+    const j = job("studio"); Object.assign(j, { pct: 1, stage: "start", brand, product, dir: rel.replace(/\\/g, "/") }); studioBusy = j.id;
+    const say = (pct, stage, msg) => { j.pct = Math.max(j.pct, pct); j.stage = stage; if (msg) log(j, msg); };
+    makeInImage({ brand, product, offer, workDir, indexDir: studioRoot, studio, cfg, store, ask, fetchImpl, py, ffmpeg, chromium, say })
+      .then((r) => { j.result = r; j.status = "done"; j.pct = 100; log(j, `Mock ready in ${r.seconds} s.`); })
+      .catch((e) => { j.status = "failed"; j.error = e.message; log(j, "Stopped: " + e.message); try { fs.writeFileSync(path.join(workDir, "error.txt"), e.stack || e.message); } catch { /* best effort */ } })
+      .finally(() => { j.tEnd = Date.now(); if (studioBusy === j.id) studioBusy = null; });
+    return { code: 200, body: { id: j.id } };
+  }
+
   async function handle(req, res, u, { local = false } = {}) {
     if (req.method === "GET" && u.pathname === "/openweb") return send(res, 200, fs.readFileSync(path.join(HERE, "openweb.html")), "text/html; charset=utf-8");
+    if (req.method === "GET" && u.pathname === "/inimage") {
+      sectionItems(studio, feedFetcher(fetchImpl)).catch(() => {});   // read the publisher feeds now, so the first mock starts warm
+      for (const sm of studio.sitemaps || []) sitemapIndex(sm, feedFetcher(fetchImpl), path.join(studioRoot, "_index", sm.id + ".json"), { budget: 31 }).catch(() => {});
+      return send(res, 200, fs.readFileSync(path.join(HERE, "inimage.html")), "text/html; charset=utf-8");
+    }
     const p = u.pathname.slice("/api/ow".length);
+    if (p === "/studio/start" && req.method === "POST") { const r = studioStart(await body(req)); return send(res, r.code, r.body); }
+    if (p === "/studio/list") {   // earlier mocks (newest first), read back from their result.json files
+      const out = [];
+      try { for (const b of fs.readdirSync(studioRoot).filter((x) => !x.startsWith("_"))) for (const t of fs.readdirSync(path.join(studioRoot, b))) {
+        const f = path.join(studioRoot, b, t, "result.json"); if (!fs.existsSync(f)) continue;
+        try { const r = JSON.parse(fs.readFileSync(f, "utf8")); if (r.error || !r.files) continue; out.push({ dir: `${b}/${t}`, brand: r.brand, product: typeof r.product === "string" ? r.product : r.product?.name, createdAt: r.createdAt, article: r.placement?.article?.headline, url: r.placement?.article?.url, publisher: r.placement?.article?.publisher, video: r.files?.video, still: r.files?.still }); } catch { /* skip a broken record */ }
+      } } catch { /* no mocks yet */ }
+      return send(res, 200, out.sort((a, b) => String(b.createdAt).localeCompare(String(a.createdAt))).slice(0, 40));
+    }
+    if (p === "/studio/result") { const f = inside(studioRoot, path.join(u.searchParams.get("dir") || "", "result.json")); return f && fs.existsSync(f) ? send(res, 200, JSON.parse(fs.readFileSync(f, "utf8"))) : send(res, 404, { error: "unknown mock" }); }
+    if (p === "/studio/file") {
+      const f = inside(studioRoot, u.searchParams.get("path") || "");
+      if (!f || !fs.existsSync(f) || !fs.statSync(f).isFile()) return send(res, 404, { error: "not found" });
+      const type = FILE_TYPES[path.extname(f).toLowerCase()]; if (!type) return send(res, 403, { error: "file type not served" });
+      res.writeHead(200, { "Content-Type": type, "Cache-Control": "no-store", ...(u.searchParams.get("download") ? { "Content-Disposition": `attachment; filename="${path.basename(f)}"` } : {}) });
+      return fs.createReadStream(f).pipe(res);
+    }
     if (p === "/status") return send(res, 200, { versions: cfg.versions, today: todayIST(), ai: provider(), dataDir: store.root, publishers: cfg.publishers.publishers.map((x) => ({ id: x.id, name: x.name, domain: x.domain, category: x.category, formats: x.formats, feeds: x.feeds })), unavailable: cfg.publishers.unavailable, busy: !!busy,
       note: "Recommendation and mock previews only. No ad server, SSP, DSP or brand-safety vendor is integrated; nothing is served." });
     if (p === "/feed") {   // a publisher's feed as a readable list (browsers download raw RSS files instead of showing them)
