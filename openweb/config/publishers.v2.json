@@ -1,0 +1,110 @@
+{
+ "version": "publishers.v2",
+ "note": "Pilot publishers. Every format listed here cites the Media Plan Automation sheet (media_plan_data.js) tab and column it came from. Formats with no source are not supported.",
+ "checked": "2026-10-27",
+ "publishers": [
+  {
+   "id": "news18-food",
+   "name": "News18 Food",
+   "domain": "www.news18.com",
+   "category": "Food & Cooking",
+   "language": "en",
+   "feeds": [
+    "https://www.news18.com/commonfeeds/v1/eng/rss/food.xml"
+   ],
+   "formats": {
+    "in-image": "Category Wise In-Image › FOOD & Cooking Sitelist: news18.com (Food Section)",
+    "interstitial": "Category Wise Interstitial › News: News18.com",
+    "display": "Display & Video › FOOD & Cooking Sitelist: news18.com/food"
+   }
+  },
+  {
+   "id": "indianexpress-health",
+   "name": "Indian Express Lifestyle › Health",
+   "domain": "indianexpress.com",
+   "category": "Health & Wellness",
+   "language": "en",
+   "feeds": [
+    "https://indianexpress.com/section/lifestyle/health/feed/"
+   ],
+   "formats": {
+    "in-image": "Category Wise In-Image › Premium SiteList for Display: indianexpress.com",
+    "interstitial": "Category Wise Interstitial › News: Indianexpress.com"
+   }
+  },
+  {
+   "id": "indianexpress-tech",
+   "name": "Indian Express Technology",
+   "domain": "indianexpress.com",
+   "category": "Technology",
+   "language": "en",
+   "feeds": [
+    "https://indianexpress.com/section/technology/feed/"
+   ],
+   "formats": {
+    "in-image": "Category Wise In-Image › Premium SiteList for Display: indianexpress.com",
+    "interstitial": "Category Wise Interstitial › News: Indianexpress.com"
+   }
+  },
+  {
+   "id": "indulgexpress",
+   "name": "Indulge Express",
+   "domain": "www.indulgexpress.com",
+   "category": "Lifestyle",
+   "language": "en",
+   "feeds": [
+    "https://www.indulgexpress.com/feed"
+   ],
+   "formats": {
+    "in-image": "Category Wise In-Image › LIFESTYLE SITELIST: indulgexpress.com"
+   }
+  },
+  {
+   "id": "indianexpress-food",
+   "name": "Indian Express Lifestyle › Food & Wine",
+   "domain": "indianexpress.com",
+   "category": "Food & Cooking",
+   "language": "en",
+   "feeds": [
+    "https://indianexpress.com/section/lifestyle/food-wine/feed/"
+   ],
+   "formats": {
+    "in-image": "Category Wise In-Image › Premium SiteList for Display: indianexpress.com",
+    "interstitial": "Category Wise Interstitial › News: Indianexpress.com"
+   }
+  },
+  {
+   "id": "indianexpress-lifestyle",
+   "name": "Indian Express Lifestyle",
+   "domain": "indianexpress.com",
+   "category": "Lifestyle",
+   "language": "en",
+   "feeds": [
+    "https://indianexpress.com/section/lifestyle/feed/"
+   ],
+   "formats": {
+    "in-image": "Category Wise In-Image › Premium SiteList for Display: indianexpress.com",
+    "interstitial": "Category Wise Interstitial › News: Indianexpress.com"
+   }
+  }
+ ],
+ "unavailable": [
+  {
+   "domain": "www.thehealthsite.com",
+   "reason": "Offline: no DNS record (NXDOMAIN via Google DNS), 2026-10-26"
+  },
+  {
+   "domain": "www.bollywoodlife.com",
+   "reason": "Offline: no DNS record (NXDOMAIN via Google DNS), 2026-10-26"
+  },
+  {
+   "domain": "www.techlusive.in",
+   "reason": "Returns 403 Access Denied to scripted requests (bot protection). Needs a publisher feed or allowlisting; not bypassed."
+  },
+  {
+   "domain": "zeenews.india.com, www.zeebiz.com, www.india.com",
+   "reason": "Return 403 Access Denied to scripted requests (bot protection). Not bypassed."
+  }
+ ],
+ "changes": "v2 (2026-10-27): added Indian Express Lifestyle › Food & Wine and Indian Express Lifestyle for in-image. indianexpress.com is listed site-wide in the media plan (Category Wise In-Image › Premium SiteList for Display), the same cell the other Indian Express sections cite."
+}

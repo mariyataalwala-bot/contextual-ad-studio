@@ -40,11 +40,11 @@ export function loadConfig(dir = CONFIG_DIR) {
   const taxonomy = makeTaxonomy(parseTaxonomy(tsv), tx.version);
   const cfg = {
     taxonomy,
-    publishers: readJson(dir, "publishers.v1.json"),
+    publishers: readJson(dir, "publishers.v2.json"),
     formats: readJson(dir, "formats.v1.json"),
     safety: readJson(dir, "safety-policy.v2.json"),
     scoring: readJson(dir, "scoring.v2.json"),
-    lexicon: readJson(dir, "category-lexicon.v1.json"),
+    lexicon: readJson(dir, "category-lexicon.v2.json"),
   };
   const problems = validateConfig(cfg);
   if (problems.length) throw new Error("Open Web config is invalid: " + problems.join("; "));

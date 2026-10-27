@@ -10,6 +10,7 @@ import { recommend, rankRecs, recKey } from "./rank.mjs";
 import { articleId } from "./store.mjs";
 import { sha256 } from "./text.mjs";
 import { similarity } from "./semantic.mjs";
+import { extractImages, fetchImages, IMAGES_VERSION } from "./images.mjs";
 
 export async function discover({ publisher, fetcher, limit = 10 }) {
   const found = [], errors = [];
@@ -39,7 +40,7 @@ async function leadImageFile(url, dir, fetchImpl) {
 }
 
 /** @returns {Promise<Record<string, any>>} the stored article record */
-export async function analyseUrl({ url, publisher, fetcher, cfg, store, ask, fetchImpl = globalThis.fetch, tmpDir = null }) {
+export async function analyseUrl({ url, publisher, fetcher, cfg, store, ask, fetchImpl = globalThis.fetch, tmpDir = null, gray9x8 = null }) {
   const id = articleId(url), fetchedAt = new Date().toISOString();
   let rec;
   try {
@@ -51,7 +52,13 @@ export async function analyseUrl({ url, publisher, fetcher, cfg, store, ask, fet
     if (ask && a.image?.url && tmpDir) { fs.mkdirSync(tmpDir, { recursive: true }); imageFile = await leadImageFile(a.image.url, tmpDir, fetchImpl); }
     const ai = await aiFeatures(a, cfg, ask, { imageFile });
     const features = { lexical, ai };
-    rec = { id, url, publisherId: publisher.id, fetchedAt, contentHash, ...a, features, safety: pageSafety(a, features, cfg.safety), versions: cfg.versions };
+    // in-article images (for in-image placements): extracted from the same HTML, then only those images are fetched
+    const ex = extractImages(html, finalUrl, a);
+    await fetchImages(ex.images, { fetchImpl, allowed: fetcher.allowed || (async () => true), gray9x8, tmpDir: tmpDir && path.join(tmpDir, "..", "imghash"), fs, path });
+    for (const im of ex.images) store.saveImage(im, id);
+    const images = ex.images.map((im) => ({ id: im.id, index: im.index, lead: im.lead, status: im.status, width: im.width || null, height: im.height || null, dupOf: im.dupOf || null }));
+    rec = { id, url, publisherId: publisher.id, fetchedAt, contentHash, ...a, features, safety: pageSafety(a, features, cfg.safety), images, imagesInfo: { window: ex.window, skipped: ex.skipped },
+      versions: { ...cfg.versions, images: IMAGES_VERSION } };
   } catch (e) {
     rec = { id, url, publisherId: publisher.id, fetchedAt, error: { code: e.code || "ERROR", message: String(e.message).slice(0, 300) }, versions: cfg.versions };
   }

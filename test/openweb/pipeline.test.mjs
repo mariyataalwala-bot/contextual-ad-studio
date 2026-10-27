@@ -94,7 +94,7 @@ test("routes: status, page, campaign validation, review and mock guards, file pa
   const { srv, call } = await serve(ow);
   try {
     const st = await call("/api/ow/status");
-    assert.equal(st.status, 200); assert.match(st.json.note, /No ad server/); assert.equal(st.json.publishers.length, 4);
+    assert.equal(st.status, 200); assert.match(st.json.note, /No ad server/); assert.equal(st.json.publishers.length, cfg.publishers.publishers.length);   // publishers.v2: 6 pilot feeds
     assert.match((await call("/openweb")).type, /text\/html/);
     const bad = await call("/api/ow/campaigns", "POST", { brand: "X", status: "active", start: "2026-10-01", end: "2026-12-31", creatives: [{ format: "in-image", file: "missing.mp4" }], targeting: { iab: ["210"] } });
     assert.equal(bad.status, 400); assert.match(bad.json.error, /not in the creatives folder/);

@@ -44,6 +44,9 @@ export function createOpenWeb({ dataDir, ask = null, provider = () => "none", ff
       counts: Object.fromEntries(["recommended", "approved", "needs_review", "excluded"].map((s) => [s, recs.filter((r) => r.status === s).length])) };
   };
 
+  // 9×8 grayscale thumbnail of an image file (for the perceptual hash), via the app's ffmpeg; null when ffmpeg is unavailable
+  const gray9x8 = ffmpeg ? async (file) => { const raw = file + ".raw"; await ffmpeg(["-loglevel", "error", "-y", "-i", file, "-vf", "scale=9:8:flags=area,format=gray", "-frames:v", "1", "-f", "rawvideo", raw]);
+    try { return new Uint8Array(fs.readFileSync(raw)); } finally { try { fs.unlinkSync(raw); } catch { /* temp file */ } } } : null;
   async function ingest(j, { publisherIds, limit }) {
     const fetcher = makeFetcher({ fetchImpl });
     for (const pid of publisherIds) {
@@ -53,8 +56,8 @@ export function createOpenWeb({ dataDir, ask = null, provider = () => "none", ff
       for (const e of d.errors) log(j, `  feed problem (${e.code}): ${e.message}`);
       log(j, `  ${d.articles.length} article(s) to analyse`);
       for (const it of d.articles) {
-        const a = await analyseUrl({ url: it.url, publisher: p, fetcher, cfg, store, ask, fetchImpl, tmpDir: path.join(store.root, "tmp", "img") });
-        log(j, a.error ? `  ✗ ${it.url} — ${a.error.code}: ${a.error.message}` : `  ✓ ${a.headline.slice(0, 80)} — safety ${a.safety.verdict} (${a.safety.state}), AI ${a.features.ai.status}${a.features.ai.dropped.length ? `, ${a.features.ai.dropped.length} unverified AI claim(s) dropped` : ""}`);
+        const a = await analyseUrl({ url: it.url, publisher: p, fetcher, cfg, store, ask, fetchImpl, tmpDir: path.join(store.root, "tmp", "img"), gray9x8 });
+        log(j, a.error ? `  ✗ ${it.url} — ${a.error.code}: ${a.error.message}` : `  ✓ ${a.headline.slice(0, 80)} — ${a.images.filter((x) => x.status === "ok").length}/${a.images.length} image(s) usable — safety ${a.safety.verdict} (${a.safety.state}), AI ${a.features.ai.status}${a.features.ai.dropped.length ? `, ${a.features.ai.dropped.length} unverified AI claim(s) dropped` : ""}`);
       }
     }
     const sv = await ensureVectors({ store, cfg, embed });
@@ -121,9 +124,10 @@ export function createOpenWeb({ dataDir, ask = null, provider = () => "none", ff
     const am = p.match(/^\/articles\/([0-9a-f]{16})$/);
     if (am) {
       const a = store.getArticle(am[1]); if (!a) return send(res, 404, { error: "unknown article" });
+      const images = (a.images || []).map((s) => { const im = store.getImage(s.id); return im && { ...im, ...(im.uses?.[a.id] || {}), uses: undefined, otherArticles: (im.articleIds || []).filter((x) => x !== a.id).length }; }).filter(Boolean);
       const recs = (store.getRecommendations()?.results || []).find((r) => r.articleId === a.id)?.recommendations || [];
       const named = (list) => list.map((c) => ({ ...c, name: cfg.taxonomy.path(c.iab) }));
-      return send(res, 200, { article: { ...a, features: a.features && { ...a.features, lexical: { ...a.features.lexical, categories: named(a.features.lexical.categories) }, ai: { ...a.features.ai, categories: named(a.features.ai.categories || []) } } }, recommendations: recs, publisher: pubOf(a) || null });
+      return send(res, 200, { images, article: { ...a, features: a.features && { ...a.features, lexical: { ...a.features.lexical, categories: named(a.features.lexical.categories) }, ai: { ...a.features.ai, categories: named(a.features.ai.categories || []) } } }, recommendations: recs, publisher: pubOf(a) || null });
     }
     if (p === "/review" && req.method === "POST") {
       const b = await body(req), r = findRec(b.key);

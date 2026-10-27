@@ -275,11 +275,27 @@ document.addEventListener("click", async (e) => {
   $("#closeD").onclick = () => $("#drawer").classList.add("hide");
 });
 
+// ---------- in-article images (in-image placements) ----------
+const IMG_STATUS = { ok: ["usable", "yes"], duplicate: ["duplicate", ""], too_small: ["too small", "no"], unavailable: ["unavailable", "no"], blocked: ["blocked", "no"], not_image: ["not an image", "no"], too_large: ["too large", "no"], unreadable: ["unreadable", "no"] };
+function imagesCard(a, images) {
+  if (!a.images) return `<div class="card" style="margin-top:14px;padding:16px"><b>Images</b><div class="s" style="margin-top:6px">Not extracted yet — this article was stored before image extraction. "Fetch &amp; analyse latest" re-reads it.</div></div>`;
+  const usable = images.filter((i) => i.status === "ok").length, sk = a.imagesInfo?.skipped || {};
+  const skipped = Object.entries(sk).map(([k, n]) => `${esc(k)} ×${n}`).join(" · ");
+  return `<div class="card" style="margin-top:14px;padding:16px"><b>Images in this article</b> <span class="s">${usable} usable of ${images.length} · ${esc(a.imagesInfo?.window?.how || "")}</span>
+    ${images.map((im) => { const [lbl, cls] = IMG_STATUS[im.status] || [im.status || "not checked", ""];
+      return `<div style="display:grid;grid-template-columns:150px 1fr;gap:12px;margin-top:12px;align-items:start">
+        <a href="${esc(im.finalUrl || im.src)}" target="_blank" rel="noopener"><img src="${esc(im.finalUrl || im.src)}" alt="" loading="lazy" referrerpolicy="no-referrer" style="width:150px;border-radius:8px;border:1px solid var(--line);background:#f2f2f2"></a>
+        <div class="s" style="line-height:1.5"><b>#${im.index}${im.lead ? " · lead image" : ""}</b> ${chip(lbl, cls)} ${im.width ? `${im.width}×${im.height}` : ""}${im.statusDetail ? ` · ${esc(im.statusDetail)}` : ""}${im.dupOf ? " · same picture as another image here" : ""}${im.otherArticles ? ` · also in ${im.otherArticles} other article(s)` : ""}
+          ${im.alt ? `<div><b>Alt:</b> ${esc(im.alt)}</div>` : `<div>No alt text</div>`}${im.caption ? `<div><b>Caption:</b> ${esc(im.caption)}</div>` : ""}
+          ${im.context?.before ? `<div><b>Before:</b> “${esc(im.context.before.slice(0, 160))}${im.context.before.length > 160 ? "…" : ""}”</div>` : ""}${im.context?.after ? `<div><b>After:</b> “${esc(im.context.after.slice(0, 160))}${im.context.after.length > 160 ? "…" : ""}”</div>` : ""}</div></div>`; }).join("")}
+    ${skipped ? `<div class="s" style="margin-top:10px">Left out: ${skipped}</div>` : ""}</div>`;
+}
+
 // ---------- evidence drawer ----------
 const ev = (e) => e.quote ? `<div class="quote">“${esc(e.quote)}”<small>${esc(e.about || "")}${e.term ? ` · term “${esc(e.term)}”${e.count > 1 ? ` ×${e.count}` : ""}` : ""}${e.kind === "ai_quote" ? " · AI claim, quote verified in the article" : e.kind === "term" ? " · exact match in the article" : ""}</small></div>`
   : `<div class="quote">${esc(e.value)}<small>${esc(e.about || e.kind)}${e.kind === "section" ? " · publisher section / URL" : ""}</small></div>`;
 async function openArticle(id) {
-  const { article: a, recommendations: recs } = await api("/articles/" + id);
+  const { article: a, recommendations: recs, images = [] } = await api("/articles/" + id);
   const s = a.safety, ai = a.features?.ai;
   $("#panel").innerHTML = `<div class="bar" style="margin:0 0 10px;justify-content:space-between"><button class="ghost sm" id="closeD">Close</button><a href="${esc(a.url)}" target="_blank" rel="noopener">Open article ↗</a></div>
     <h2 style="margin:0 0 4px">${esc(a.headline || a.url)}</h2><div class="s">${esc(a.url)}<br>Published ${esc(a.published || "unknown")} · fetched ${esc(a.fetchedAt)} · ${esc(a.source || "")} · ${a.paragraphs ?? "?"} paragraphs · lead image ${a.image?.url ? "yes" : "no"} · <span class="code">${esc((a.contentHash || "").slice(0, 12))}</span></div>
@@ -289,6 +305,7 @@ async function openArticle(id) {
     <div class="card" style="margin-top:14px;padding:16px"><b>Categories</b>
       ${[...(ai?.categories || []).map((c) => ({ ...c, source: "ai", evidence: [{ kind: "ai_quote", quote: c.quote }] })), ...a.features.lexical.categories].map((c) => `<div style="margin-top:8px">${chip(c.name, "cat")} <span class="s">${esc(c.source)}</span>${c.evidence.slice(0, 2).map(ev).join("")}</div>`).join("") || `<div class="s">No category evidence.</div>`}
       <div class="s" style="margin-top:10px">AI: ${esc(ai?.status)}${ai?.message ? " — " + esc(ai.message) : ""}${ai?.dropped?.length ? ` · ${ai.dropped.length} AI claim(s) dropped because the quote wasn't in the article` : ""}${ai?.objects?.length ? ` · lead image (model observation): ${esc(ai.objects.join(", "))}` : ""}</div></div>`}
+    ${a.error ? "" : imagesCard(a, images)}
     <h3 style="margin:20px 0 4px;font-size:15px">Candidates (${recs.length})</h3>${recs.length ? "" : `<div class="s">No campaign creatives to consider yet.</div>`}
     ${recs.map((r) => `<div class="rec"><h4>${esc(r.brand)} · ${esc(r.creativeLabel)} ${chip(r.format, "cat")} ${chip(LABEL[r.status], "st-" + r.status)} ${r.score != null ? `<span class="score">${r.score}</span>` : ""}</h4>
       <div class="gates">${r.gates.map((g) => chip(`${g.pass ? "✓" : "✗"} ${g.gate}: ${g.reason}`, g.pass ? "yes" : "no")).join("")}</div>

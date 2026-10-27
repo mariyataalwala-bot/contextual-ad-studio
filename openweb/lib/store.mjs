@@ -4,6 +4,7 @@
 //   reviews.jsonl         human review decisions, append-only
 //   recommendations.json  the latest recommendation run, with config versions
 //   embeddings.json       meaning vectors of articles and campaign briefs (model + text hash → unit vector)
+//   images/<id>.json      in-article images: source, context, status, size, hashes, and the articles that use them
 //   creatives/            source creative files you supply
 //   mocks/                rendered mock screenshots
 //   snapshots/            dated copies of imported inventory (showcase feed)
@@ -15,7 +16,7 @@ export const articleId = (url) => sha256(String(url).replace(/[#?].*$/, "").repl
 
 export function makeStore(root) {
   const p = (...a) => path.join(root, ...a);
-  for (const d of ["articles", "creatives", "mocks", "snapshots"]) fs.mkdirSync(p(d), { recursive: true });
+  for (const d of ["articles", "images", "creatives", "mocks", "snapshots"]) fs.mkdirSync(p(d), { recursive: true });
   const readJson = (f, dflt) => { try { return JSON.parse(fs.readFileSync(f, "utf8")); } catch (e) { if (e.code === "ENOENT") return dflt; throw new Error(`${path.basename(f)} is not valid JSON: ${e.message}`); } };
   const writeJson = (f, v) => { const tmp = f + ".tmp"; fs.writeFileSync(tmp, JSON.stringify(v, null, 1)); fs.renameSync(tmp, f); };   // atomic replace
   return {
@@ -29,6 +30,15 @@ export function makeStore(root) {
     addReview: (r) => fs.appendFileSync(p("reviews.jsonl"), JSON.stringify(r) + "\n"),
     getReviews: () => { try { return fs.readFileSync(p("reviews.jsonl"), "utf8").split("\n").filter(Boolean).map((l) => JSON.parse(l)); } catch (e) { if (e.code === "ENOENT") return []; throw e; } },
     saveRecommendations: (r) => writeJson(p("recommendations.json"), r),
+    // an image keeps its own record; the per-article context (position, alt, caption, paragraphs) is kept per article
+    saveImage: (im, articleId) => {
+      const f = p("images", im.id + ".json"), old = readJson(f, null) || {};
+      const uses = { ...(old.uses || {}), [articleId]: { index: im.index, lead: im.lead, alt: im.alt, title: im.title, caption: im.caption, context: im.context, declared: im.declared, lazy: im.lazy, seen: im.seen } };
+      const { index, lead, alt, title, caption, context, declared, lazy, seen, ...rest } = im;   // eslint-disable-line no-unused-vars
+      // the latest fetch replaces every file-level field (status, size, hashes); only per-article uses and the first sighting carry over
+      writeJson(f, { ...rest, firstSeenAt: old.firstSeenAt || rest.fetchedAt || new Date().toISOString(), uses, articleIds: Object.keys(uses) });
+    },
+    getImage: (id) => (/^[0-9a-f]{16}$/.test(id) ? readJson(p("images", id + ".json"), null) : null),
     getVectors: () => readJson(p("embeddings.json"), {}),
     saveVectors: (v) => writeJson(p("embeddings.json"), v),
     getRecommendations: () => readJson(p("recommendations.json"), null),
