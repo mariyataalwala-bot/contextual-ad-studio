@@ -18,8 +18,9 @@ export function parseBingImages(html) {
   return out;
 }
 
-export async function imageSearch(q, { transparent = false, fetchImpl = globalThis.fetch, count = 35 } = {}) {
-  const qs = new URLSearchParams({ q, form: "IRFLTR", first: "1", count: String(count) });
+// mkt: the market whose results are wanted — Indian packs and Indian shops (en-IN), not the US / EU versions
+export async function imageSearch(q, { transparent = false, fetchImpl = globalThis.fetch, count = 35, mkt = "en-IN" } = {}) {
+  const qs = new URLSearchParams({ q, form: "IRFLTR", first: "1", count: String(count), mkt, cc: mkt.split("-")[1] || "IN" });
   if (transparent) qs.set("qft", "+filterui:photo-transparent");
   const r = await fetchImpl("https://www.bing.com/images/search?" + qs, { headers: { "User-Agent": UA, "Accept-Language": "en-IN,en;q=0.9" }, signal: AbortSignal.timeout(20000) });
   const html = await r.text();

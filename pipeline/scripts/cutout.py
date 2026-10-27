@@ -1,5 +1,6 @@
 """Product cut-out for in-image creatives, and the brand colour of a logo.
-usage: python cutout.py product <in> <out.png>   → prints JSON {method, w, h}
+usage: python cutout.py product <in> <out.png> [--photo]   → prints JSON {method, w, h}   (--photo: keep the original photo)
+       python cutout.py preview <png> <out.jpg>      → the PNG on a grey checkerboard, for the AI check
        python cutout.py colour  <logo>           → prints JSON {hex, light}
 product methods: "alpha" (the picture already has a transparent background), "plain-bg" (a plain studio background was
 removed from the edges inwards), "photo" (a real photo: kept as it is and shown as a card, never cut out by guessing)."""
@@ -17,10 +18,12 @@ def trim(a, margin=0.03):
     m = int(max(xs.max() - xs.min(), ys.max() - ys.min()) * margin)
     return a[max(0, ys.min() - m):ys.max() + m + 1, max(0, xs.min() - m):xs.max() + m + 1]
 
-def product(src, dst):
+def product(src, dst, force_photo=False):
     a = load_rgba(src); h, w = a.shape[:2]
     method = 'photo'
-    if (a[..., 3] < 20).mean() > 0.05:
+    if force_photo:
+        pass   # asked for the original photo as it is (a cut-out failed its check)
+    elif (a[..., 3] < 20).mean() > 0.05:
         method = 'alpha'
     else:
         rgb = cv2.cvtColor(a[..., :3], cv2.COLOR_RGB2BGR)
@@ -42,7 +45,15 @@ def product(src, dst):
             big = stats[1:, cv2.CC_STAT_AREA].max() if n > 1 else 0
             for i in range(1, n):   # specks of dust / jpeg noise out, every real part of the product in
                 if stats[i, cv2.CC_STAT_AREA] >= max(60, big * 0.004): keep[lab == i] = 1
-            if 0.04 < keep.mean() < 0.97:
+            # a cut-out is only trusted when the product clearly differs from the background: light or metallic
+            # products on a light background (silver jewellery, clear bottles) lose parts and keep background
+            # "holes" inside them (a hoop's middle) — those are shown as their original photo instead
+            fgpx = rgb[keep == 1].astype(np.float32)
+            near = (np.abs(fgpx - med).max(axis=1) < 40).mean() if len(fgpx) else 1
+            holes = (np.abs(rgb.astype(np.float32) - med).max(axis=2) < 18) & (keep == 1)
+            risky = near > 0.30 or holes.sum() > 0.06 * max(1, keep.sum())
+            print(json.dumps({'check': {'near_background': round(float(near), 3), 'holes': round(float(holes.sum() / max(1, keep.sum())), 3), 'risky': bool(risky)}}))
+            if not risky and 0.04 < keep.mean() < 0.97:
                 alpha = cv2.GaussianBlur((keep * 255).astype(np.float32), (0, 0), 0.8)
                 a = a.copy(); a[..., 3] = np.clip(alpha, 0, 255).astype(np.uint8)
                 method = 'plain-bg'
@@ -63,6 +74,17 @@ def colour(src):
     lum = (0.2126 * c[0] + 0.7152 * c[1] + 0.0722 * c[2]) / 255
     print(json.dumps({'hex': '#%02x%02x%02x' % tuple(int(v) for v in c), 'light': bool(lum > 0.62), 'vivid': bool(len(vivid) > max(40, len(px) * 0.03))}))
 
+def preview(src, dst, size=640):
+    """The finished PNG as the checker sees it: on a grey checkerboard, so leftover background or holes show."""
+    a = Image.open(src).convert('RGBA'); a.thumbnail((size, size))
+    bg = Image.new('RGBA', a.size, (150, 150, 150, 255)); px = bg.load(); step = max(8, size // 32)
+    for y in range(a.size[1]):
+        for x in range(a.size[0]):
+            if (x // step + y // step) % 2: px[x, y] = (205, 205, 205, 255)
+    bg.alpha_composite(a); bg.convert('RGB').save(dst, quality=90)
+    print(json.dumps({'preview': dst}))
+
 if __name__ == '__main__':
-    if sys.argv[1] == 'product': product(sys.argv[2], sys.argv[3])
+    if sys.argv[1] == 'product': product(sys.argv[2], sys.argv[3], '--photo' in sys.argv[4:])
+    elif sys.argv[1] == 'preview': preview(sys.argv[2], sys.argv[3])
     else: colour(sys.argv[2])

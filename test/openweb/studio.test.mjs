@@ -215,6 +215,9 @@ test("cut-out: a product on a plain studio background comes out with a transpare
   assert.equal(corner, "0");
   draw('import random\nrandom.seed(1)\nim = Image.new("RGB", (300, 200))\nfor x in range(300):\n  for y in range(200): im.putpixel((x, y), (random.randint(0, 255), random.randint(0, 255), random.randint(0, 255)))', path.join(d, "photo.png"));
   assert.equal(pyJson([path.join(SCRIPTS, "cutout.py"), "product", path.join(d, "photo.png"), path.join(d, "out2.png")]).method, "photo");
+  // silver on white: the cut-out would eat the product and keep the background inside the hoop → the original photo
+  draw('im = Image.new("RGB", (400, 400), (252, 252, 252)); dr = ImageDraw.Draw(im); dr.ellipse((100, 60, 300, 340), outline=(205, 205, 210), width=22); dr.ellipse((150, 300, 250, 330), fill=(225, 225, 228))', path.join(d, "silver.png"));
+  assert.equal(pyJson([path.join(SCRIPTS, "cutout.py"), "product", path.join(d, "silver.png"), path.join(d, "out3.png")]).method, "photo");
 });
 
 test("logo trim: a fake transparency checkerboard is cleaned and cropped to the logo", { skip: !hasPy && "Python with cv2/PIL not installed" }, () => {

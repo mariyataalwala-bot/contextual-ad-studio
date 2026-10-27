@@ -124,13 +124,18 @@ export function rivalMatcher(names) {
   return (text) => { const t = String(text || "").toLowerCase(), hit = res.filter(([, re]) => re.test(t)).map(([n]) => n); return hit.length ? hit : null; };
 }
 
+const VERIFY_SCHEMA = { type: "object", properties: {
+  ok: { type: "boolean" }, problem: { type: "string", description: "what is wrong with the product PNG, empty if ok" },
+  logo_ok: { type: "boolean" }, logo_problem: { type: "string" },
+}, required: ["ok", "problem"] };
+
 const TOPIC_SCHEMA = { type: "object", properties: { words: { type: "array", items: { type: "string" } }, competitors: { type: "array", items: { type: "string" } } }, required: ["words"] };
 
 // ---------- AI prompts (versioned: STUDIO_PROMPTS) ----------
 const PICK_SCHEMA = { type: "object", properties: {
   packshot: { type: "integer", description: "number of the best product picture, 0 if none is acceptable" },
   packshot_ranked: { type: "array", items: { type: "integer" }, description: "every acceptable product picture, best first (up to 4)" },
-  packshot_why: { type: "string" },
+  packshot_why: { type: "string", description: "what the chosen picture shows (brand, exact variant, pack design, market) and why the others were rejected" },
   product_name: { type: "string" },
   is_service: { type: "boolean", description: "true for a service / app / place (travel, stays, delivery, banking) rather than a physical product" },
   logo: { type: "integer", description: "number of the logo candidate that is this brand's real logo, 0 if none" },
@@ -168,7 +173,7 @@ export const withRealName = (text, typed, found, brand) => !found || !typed || f
 const words = (s, n) => String(s || "").trim().split(/\s+/).slice(0, n).join(" ");
 
 /**
- * @param {{ brand: string, product: string, offer?: string, workDir: string, indexDir?: string, studio: any, cfg: any, store: any,
+ * @param {{ brand: string, product: string, offer?: string, productImage?: string, workDir: string, indexDir?: string, studio: any, cfg: any, store: any,
  *   ask: Function, fetchImpl?: any, py: (args: string[]) => Promise<string>, ffmpeg: (args: string[]) => Promise<any>, chromium?: any,
  *   say?: (pct: number, stage: string, msg?: string) => void }} o
  */
@@ -189,9 +194,10 @@ export async function makeInImage(o) {
     const topicP = ask("You help find articles for contextual ads.",
       `Brand: ${brand}. Product: ${product}.\nGive 15-25 lowercase single words (a few two-word phrases at most) that would appear in the web address of a news or lifestyle article that is a natural place for this ad — the product type, how and where it is used, occasions, activities, dishes, places (e.g. for running shoes: running, marathon, jogging, walking, workout, fitness, steps, cardio, sneakers; for instant noodles: noodles, recipe, snack, ramen, hostel, monsoon, chai, breakfast). Never the brand name or competitor names.\nAlso competitors: 8-20 rival brands of ${brand} for this product and their product line names (e.g. for a phone: Apple, iPhone, Samsung, Galaxy, Google, Pixel, OnePlus, Xiaomi, Redmi, Vivo, Oppo, Realme).`,
       TOPIC_SCHEMA, [], "medium").catch(() => ({ words: [], competitors: [] }));
-    const [web, webClear, commons, webLogos, feedItems, older] = await Promise.all([
+    const [web, webClear, webIn, commons, webLogos, feedItems, older] = await Promise.all([
       imageSearch(`${brand} ${product}`, { fetchImpl }).catch(() => []),
       imageSearch(`${brand} ${product}`, { fetchImpl, transparent: true }).catch(() => []),
+      imageSearch(`${brand} ${product} India`, { fetchImpl }).catch(() => []),
       commonsLogos(brand, fetchImpl),
       imageSearch(`${brand} logo png`, { fetchImpl }).catch(() => []),   // "png" steers the search to logo files (plain "Bata logo" finds Hindi "beta" photos)
       sectionItems(studio, feeds),
@@ -207,16 +213,21 @@ export async function makeInImage(o) {
     result.articlesTakenByOtherBrands = all.filter((x) => taken.has(urlKey(x.url))).map((x) => ({ url: x.url, title: x.title, usedBy: taken.get(urlKey(x.url)) }));
     result.topicWords = topic.words || [];
     lap("search");
-    // the brand's own sites first, then pictures with a clear background, then the rest
+    // the product as sold in India: the brand's own sites first, then Indian shops, then the rest; shops abroad never
+    // (a US 20 fl oz Sprite bottle or a German page is not the product Indian readers buy)
+    const shop = (list, h) => list.some((d) => h === d || h.endsWith("." + d));
+    const where = (h) => shop(studio.product.foreignShops, h) ? -1 : brandHost(h, brand) ? 3 : shop(studio.product.indianShops, h) || /\.in$/.test(h) ? 2 : 0;
     const seen = new Set(), products = [];
-    for (const x of [...web.filter((r) => brandHost(r.host, brand)), ...webClear.filter((r) => brandHost(r.host, brand)), ...webClear.slice(0, 6), ...web.slice(0, 8)]) if (!seen.has(x.url) && x.thumb) { seen.add(x.url); products.push(x); }
+    const ranked = [...web, ...webIn, ...webClear].map((x, i) => ({ x, i, w: where(x.host) })).filter((r) => r.w >= 0).sort((a, b) => b.w - a.w || a.i - b.i).map((r) => r.x);
+    for (const x of ranked) if (!seen.has(x.url) && x.thumb) { seen.add(x.url); products.push(x); }
+    result.productSearch = { found: web.length + webIn.length + webClear.length, kept: products.length, foreignShopsLeftOut: [...web, ...webIn, ...webClear].filter((x) => where(x.host) < 0).length };
     const logos = [...webLogos.filter((x) => x.thumb).slice(0, 5), ...commons.slice(0, 3)].slice(0, 8);
     if (!products.length) throw new Error(`No pictures of “${brand} ${product}” were found online. Check the spelling, or add a word (e.g. the product type).`);
     if (!all.length) throw new Error("None of the media-plan publisher feeds answered just now. Try again in a minute.");
     say(12, "search", `${products.length} product picture(s), ${logos.length} logo candidate(s), ${items.length} recent articles from ${new Set(items.map((i) => i.section)).size} sections (${items.length - feedItems.length} of them matched by topic: ${(topic.words || []).slice(0, 6).join(", ")}…).`);
 
-    const thumbs = async (list, pre) => (await Promise.all(list.slice(0, 8).map(async (x, i) => { const f = await downloadImage(x.thumb, path.join(cand, `${pre}${i + 1}`), { fetchImpl, fs }).catch(() => null); return f && /\.(jpg|png)$/.test(f) ? { ...x, file: f, n: i + 1 } : null; }))).filter(Boolean);
-    const [pThumbs, lThumbs] = await Promise.all([thumbs(products, "p"), thumbs(logos, "l")]);
+    const thumbs = async (list, pre, n = 8) => (await Promise.all(list.slice(0, n).map(async (x, i) => { const f = await downloadImage(x.thumb, path.join(cand, `${pre}${i + 1}`), { fetchImpl, fs }).catch(() => null); return f && /\.(jpg|png)$/.test(f) ? { ...x, file: f, n: i + 1 } : null; }))).filter(Boolean);
+    const [pThumbs, lThumbs] = await Promise.all([thumbs(products, "p", 10), thumbs(logos, "l")]);
 
     // 2) AI: the packshot + logo (vision) and the plan — copy, targeting, article shortlist (text) — in parallel
     say(16, "understand", "AI is choosing the product photo and the logo, and writing the copy…");
@@ -224,7 +235,7 @@ export async function makeInImage(o) {
     const pickP = ask(
       "You prepare assets for a display ad. You only choose among the pictures shown; you never describe a picture you were not shown.",
       `Brand: ${brand}\nProduct: ${product}\n\nP pictures are product photos found online, with the page they are on. L pictures are logo candidates.\n` +
-      `1. packshot: the number of the best P picture of exactly this product from ${brand} (or the closest ${brand} product of that type). It must show the real product whole and sharp, ideally on a plain or transparent background; no other brand's product, no collage or comparison chart, no big text/price overlay, no watermark. For a service (stays, flights, delivery, apps) pick the photo that best shows the experience. 0 if none is acceptable. packshot_ranked: all acceptable P numbers, best first.\n` +
+      `1. packshot: the number of the P picture that shows EXACTLY this product as sold in India today. Check, on the pack or item itself: the brand; the exact variant asked for (e.g. "Zero Sugar" vs regular, "Masala" vs another flavour, the model name or number, silver vs gold, size); the current design and logo (not an old pack); Indian packaging (not a US or European pack — fl oz labels, foreign-language text or foreign prices mean a foreign pack). Reject a picture that shows a different variant, a related product, an old design, a foreign pack, several different products, a person or model wearing or holding it, a promotional banner or poster with headline text, a collage or comparison chart, a big text/price overlay, a watermark, or the product cropped or blurred. Prefer the brand's own site and Indian shops, and a plain or transparent background. For a service (stays, flights, delivery, apps) pick the photo that best shows the experience. If no picture is exactly right, return 0 — never a near miss. packshot_ranked: every picture that passes all these checks, best first.\n` +
       `2. product_name: the product's name as written on its page (short).\n3. is_service.\n4. logo: the number of the L picture that is ${brand}'s real current logo on its own — the company that sells ${product}, not another organisation with a similar name. Never a picture with several logos (a logo history / evolution chart, a collage, a sheet of brands), a photo of a shop sign, or a logo inside a larger photo. If several are right, the newest version. 0 if none.\n5. brand_colour: ${brand}'s main brand colour as #rrggbb (as used in its ads and logo). accent_colour: a second colour from ${brand}'s identity that contrasts with brand_colour and with the chosen product's own colours (the product will stand on it).`,
       PICK_SCHEMA, [...pThumbs.map((x) => ({ label: `P${x.n} — "${x.title}" on ${x.host}`, file: x.file })), ...lThumbs.map((x) => ({ label: `L${x.n} — "${x.title}" (${x.host})`, file: x.file }))], "medium");
     const planP = ask(
@@ -241,21 +252,23 @@ export async function makeInImage(o) {
     // 3) product picture → cut-out (or scene photo); logo; brand colour
     say(30, "assets", "Preparing the product cut-out and the logo…");
     const assets = path.join(workDir, "assets"); fs.mkdirSync(assets, { recursive: true });
-    if (!pick.packshot) throw new Error(`None of the pictures found online is a clean photo of ${brand} ${product} (${pick.packshot_why}). Try a more specific product name.`);
-    // only pictures the AI accepted, best first; the full-size files are fetched together and the best one that arrives wins
-    const order = [...new Set([pick.packshot, ...(pick.packshot_ranked || [])])].map((n) => pThumbs.find((x) => x.n === n)).filter(Boolean).slice(0, 4);
-    const full = await Promise.all(order.map((x, i) => downloadImage(x.url, path.join(assets, `product_src${i}`), { fetchImpl, fs }).catch(() => null)));
-    let at = full.findIndex(Boolean), prodFile = full[at] || null, prodSrc = order[at] || null, via = "the picture's own site";
-    if (!prodFile && order[0]) {   // the shops refused: the search engine's enlarged copy of the same picture (source page still recorded)
-      const big = bingLarge(order[0].thumb, 900);
-    prodFile = big && await downloadImage(big, path.join(assets, "product_src"), { fetchImpl, fs }).catch(() => null);
-      prodSrc = order[0]; via = "Bing's copy (the site refused the download)";
+    const userPic = String(o.productImage || "").trim();
+    if (!pick.packshot && !userPic) throw new Error(`None of the pictures found online is exactly ${brand} ${product} as sold in India (${pick.packshot_why}). Try the exact product name, or paste a link to the product photo.`);
+    // pictures to try, best first: the user's own photo link, else only pictures the AI accepted
+    let candidates = [...new Set([pick.packshot, ...(pick.packshot_ranked || [])])].map((n) => pThumbs.find((x) => x.n === n)).filter(Boolean).slice(0, 4);
+    if (userPic) {
+      let host = ""; try { host = new URL(userPic).host.replace(/^www\./, ""); } catch { throw new Error("The product photo link is not a web address (it should start with https://)."); }
+      candidates = [{ url: userPic, page: userPic, host, title: "photo link given by the user", n: -1, user: true }];
     }
-    if (!prodFile) throw new Error("The chosen product picture could not be downloaded from its site.");
-    const cut = JSON.parse((await py(["cutout.py", "product", prodFile, path.join(assets, "product.png")])).trim().split("\n").pop());
-    const productMode = pick.is_service && cut.method === "photo" ? "scene" : cut.method;
-    result.productInfo = { name: pick.product_name, picture: { url: prodSrc.url, page: prodSrc.page, site: prodSrc.host, title: prodSrc.title, official: brandHost(prodSrc.host, brand), chosenBecause: pick.packshot_why, aiChoice: prodSrc.n === pick.packshot, downloadedFrom: via }, cutout: cut.method, layout: productMode };
+    // full-size files fetched together; a shop that refuses → Bing's enlarged copy of the same picture (source page kept)
+    const fetched = await Promise.all(candidates.map(async (x, i) => {
+      let f = await downloadImage(x.url, path.join(assets, `product_src${i}`), { fetchImpl, fs }).catch(() => null), via = x.user ? "the link you gave" : "the picture's own site";
+      if (!f && !x.user && bingLarge(x.thumb, 900)) { f = await downloadImage(bingLarge(x.thumb, 900), path.join(assets, `product_src${i}b`), { fetchImpl, fs }).catch(() => null); via = "Bing's copy (the site refused the download)"; }
+      return f && { x, f, via };
+    }));
+    if (!fetched.some(Boolean)) throw new Error(userPic ? "The product photo link could not be downloaded as a JPEG, PNG or WebP picture." : "The chosen product pictures could not be downloaded from their sites.");
 
+    // the logo file (checked together with the first product PNG)
     let logoFile = null, logoInfo = null;
     const lx = lThumbs.find((x) => x.n === pick.logo);
     if (lx) {
@@ -264,9 +277,42 @@ export async function makeInImage(o) {
       if (f) { logoFile = f; logoInfo = { url: lx.url, page: lx.page, site: lx.host, title: lx.title, chosenBecause: pick.logo_why, downloadedFrom: via };
         await py(["trim_logo.py", f]).catch(() => {}); }
     }
+
+    // every finished PNG is checked by AI before it goes into the ad: the exact product, whole and undamaged, nothing
+    // else in it (no banner text, model, other products, leftover background); the logo complete and legible.
+    // A failed product PNG → the original photo of the same picture (when the cut-out was the problem) → the next picture.
+    const checkDir = path.join(workDir, "checks"); fs.mkdirSync(checkDir, { recursive: true });
+    const checks = [];
+    let cut = null, prodSrc = null, via = "", logoChecked = !logoFile;
+    for (const [i, got] of fetched.entries()) {
+      if (!got) continue;
+      for (const mode of ["auto", "photo"]) {
+        if (mode === "photo" && checks.at(-1)?.method === "photo") break;   // the first try was already the original photo
+        const out = path.join(assets, "product.png");
+        const c = JSON.parse((await py(["cutout.py", "product", got.f, out, ...(mode === "photo" ? ["--photo"] : [])])).trim().split("\n").pop());
+        const pv = path.join(checkDir, `product_${i}_${mode}.jpg`); await py(["cutout.py", "preview", out, pv]);
+        const imgs = [{ label: "PRODUCT PNG to check (shown on a grey checkerboard: checkerboard = transparent)", file: pv }];
+        if (got.x.file) imgs.push({ label: `Reference: the search thumbnail it came from ("${got.x.title}" on ${got.x.host})`, file: got.x.file });
+        let lpv = null; if (!logoChecked) { lpv = path.join(checkDir, "logo.jpg"); await py(["cutout.py", "preview", logoFile, lpv]); imgs.push({ label: "LOGO PNG to check", file: lpv }); }
+        const v = await ask("You check the finished pictures of a display ad before it is published. Judge only what you see.",
+          `Ad for ${brand} — ${pick.product_name || product} (asked for: "${product}"), as sold in India.\n` +
+          `PRODUCT PNG: ok only if it shows exactly this product (right brand, the variant asked for, current pack) — complete, not cut off or damaged, and nothing else: no people or models, no banner or headline text, no other products, no price stickers, no leftover background blocks${c.method === "photo" ? " (it is the original photo: a plain background is fine)" : ""}.` +
+          (lpv ? `\nLOGO PNG: logo_ok only if it is ${brand}'s own logo, complete and legible, and nothing else (no other logos, no photo around it).` : ""),
+          VERIFY_SCHEMA, imgs, "medium").catch((e) => ({ ok: false, problem: "the check could not run: " + e.message, logo_ok: false }));
+        checks.push({ picture: got.x.url, method: c.method, ok: !!v.ok, problem: v.problem || "", preview: path.relative(workDir, pv).replace(/\\/g, "/") });
+        if (lpv) { logoChecked = true; if (!v.logo_ok) { result.logoRejected = { ...logoInfo, why: v.logo_problem || "the logo check failed" }; logoFile = null; logoInfo = null; } }
+        if (v.ok) { cut = c; prodSrc = got.x; via = got.via; break; }
+        if (c.method === "photo" || pick.is_service) break;   // the photo itself is wrong: next picture
+      }
+      if (cut) break;
+    }
+    result.pngChecks = checks;
+    if (!cut) throw new Error(`No product picture passed the final check (${checks.map((c) => c.problem).filter(Boolean).slice(0, 3).join("; ")}). Paste a link to the exact product photo to use it instead.`);
+    const productMode = pick.is_service && cut.method === "photo" ? "scene" : cut.method;
+    result.productInfo = { name: pick.product_name, picture: { url: prodSrc.url, page: prodSrc.page, site: prodSrc.host, title: prodSrc.title, official: brandHost(prodSrc.host, brand), chosenBecause: prodSrc.user ? "given by the user" : pick.packshot_why, aiChoice: prodSrc.n === pick.packshot, downloadedFrom: via }, cutout: cut.method, layout: productMode, checked: true };
     let colour = /^#[0-9a-f]{6}$/i.test(pick.brand_colour || "") ? pick.brand_colour : null;
     if (!colour && logoFile) colour = JSON.parse((await py(["cutout.py", "colour", logoFile])).trim()).hex;
-    result.brandLook = { logo: logoInfo || { note: "No logo was confirmed online — the brand name is shown as text." }, colour: colour || "#1d2b53", accent: /^#[0-9a-f]{6}$/i.test(pick.accent_colour || "") ? pick.accent_colour : null, colourFrom: pick.brand_colour ? "AI (brand colour)" : logoFile ? "logo pixels" : "default" };
+    result.brandLook = { logo: logoInfo || { note: result.logoRejected ? "The logo found online failed the check — the brand name is shown as text." : "No logo was confirmed online — the brand name is shown as text." }, colour: colour || "#1d2b53", accent: /^#[0-9a-f]{6}$/i.test(pick.accent_colour || "") ? pick.accent_colour : null, colourFrom: pick.brand_colour ? "AI (brand colour)" : logoFile ? "logo pixels" : "default" };
     // the product's real name (as found on its page) replaces what was typed, e.g. "V70 edge plus" → "Edge 70 Pro Plus"
     const found = String(pick.product_name || "").trim(), typed = product.trim();
     const named = (t) => withRealName(t, typed, found, brand);

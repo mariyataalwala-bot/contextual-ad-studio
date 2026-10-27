@@ -49,7 +49,7 @@ export function stripHtml(o) {
 .p.cut{height:calc(max(46cqh,26cqw) * 1.2);max-height:60cqh;width:40cqw;display:flex;justify-content:flex-end;align-items:flex-end;filter:drop-shadow(0 1.2cqw 1.6cqw rgba(0,0,0,.35))}
 .p.cut img{height:auto;max-height:100%}
 .p.card{height:calc(max(46cqh,26cqw) - 5cqw);max-height:46cqh;bottom:2.5cqw;right:3.4cqw;padding:.8cqw;background:#fff;border-radius:2.2cqw;box-shadow:0 1cqw 2.6cqw rgba(0,0,0,.3)}
-.p.card img{border-radius:1.6cqw;max-width:36cqw;object-fit:cover}
+.p.card img{border-radius:1.6cqw;max-width:36cqw;object-fit:contain;background:#fff}
 .sc{position:absolute;right:0;top:0;bottom:0;width:50%;overflow:hidden;-webkit-mask-image:linear-gradient(90deg,transparent 0,#000 34%);mask-image:linear-gradient(90deg,transparent 0,#000 34%);opacity:0;transform:scale(1.12)}
 .sc img{width:100%;height:100%;object-fit:cover;display:block}
 :host([data-go]) .sc{animation:scene 1.1s .3s cubic-bezier(.2,.8,.3,1) forwards,drift 9s 1.4s ease-in-out infinite alternate}

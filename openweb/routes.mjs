@@ -72,8 +72,9 @@ export function createOpenWeb({ dataDir, ask = null, provider = () => "none", ff
 
   // In-Image Studio: brand + product → product found online → strip creative → relevant article picture → mock video
   function studioStart(b) {
-    const brand = String(b.brand || "").trim().slice(0, 60), product = String(b.product || "").trim().slice(0, 100), offer = String(b.offer || "").trim().slice(0, 60);
+    const brand = String(b.brand || "").trim().slice(0, 60), product = String(b.product || "").trim().slice(0, 100), offer = String(b.offer || "").trim().slice(0, 60), productImage = String(b.productImage || "").trim().slice(0, 2000);
     if (!brand || !product) return { code: 400, body: { error: "Type the brand and the product." } };
+    if (productImage && !/^https:\/\//i.test(productImage)) return { code: 400, body: { error: "The product photo link must start with https://" } };
     if (!ask || provider() === "none") return { code: 400, body: { error: "The studio needs the AI key (Settings on the computer running the app)." } };
     if (!py || !ffmpeg) return { code: 503, body: { error: "Python and ffmpeg are needed on the computer running the app." } };
     if (studioBusy && jobs[studioBusy]?.status === "running") return { code: 409, body: { error: "A mock is already being made — wait for it to finish.", id: studioBusy } };
@@ -82,7 +83,7 @@ export function createOpenWeb({ dataDir, ask = null, provider = () => "none", ff
     const workDir = path.join(studioRoot, rel); fs.mkdirSync(workDir, { recursive: true });
     const j = job("studio"); Object.assign(j, { pct: 1, stage: "start", brand, product, dir: rel.replace(/\\/g, "/") }); studioBusy = j.id;
     const say = (pct, stage, msg) => { j.pct = Math.max(j.pct, pct); j.stage = stage; if (msg) log(j, msg); };
-    makeInImage({ brand, product, offer, workDir, indexDir: studioRoot, studio, cfg, store, ask, fetchImpl, py, ffmpeg, chromium, say })
+    makeInImage({ brand, product, offer, productImage, workDir, indexDir: studioRoot, studio, cfg, store, ask, fetchImpl, py, ffmpeg, chromium, say })
       .then((r) => { j.result = r; j.status = "done"; j.pct = 100; log(j, `Mock ready in ${r.seconds} s.`); })
       .catch((e) => { j.status = "failed"; j.error = e.message; log(j, "Stopped: " + e.message); try { fs.writeFileSync(path.join(workDir, "error.txt"), e.stack || e.message); } catch { /* best effort */ } })
       .finally(() => { j.tEnd = Date.now(); if (studioBusy === j.id) studioBusy = null; });

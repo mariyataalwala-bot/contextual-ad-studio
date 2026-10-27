@@ -19,7 +19,7 @@ main{max-width:1120px;margin:22px auto 60px;padding:0 20px;display:grid;gap:18px
 .ch{display:flex;align-items:flex-start;gap:14px;margin-bottom:18px}
 .num{flex:none;display:grid;place-items:center;width:34px;height:34px;border-radius:11px;background:var(--grad);color:#fff;font-size:15px;font-weight:700}
 .card h2{margin:2px 0;font-size:18px;font-weight:700}.s{color:var(--mute);font-size:13.5px}
-.row{display:grid;grid-template-columns:1fr 1.4fr 1fr;gap:14px}
+.row{display:grid;grid-template-columns:1fr 1.4fr 1fr;gap:14px}.row2{display:grid;grid-template-columns:1fr;gap:14px;margin-top:14px}
 label{display:block;font-size:12.5px;font-weight:600;margin:0 0 7px;color:#3A3C52}
 input{width:100%;font:inherit;font-size:14.5px;padding:12px 14px;border:1.5px solid var(--line);border-radius:12px;background:#FBFBFE;color:var(--ink)}
 input:focus{outline:none;border-color:var(--p);background:#fff;box-shadow:0 0 0 4px rgba(92,99,220,.13)}
@@ -63,6 +63,7 @@ button:disabled{opacity:.45;cursor:default}.ghost{background:#fff;color:var(--p)
     <div><label for="product">Product</label><input type="text" id="product" placeholder="e.g. Power running shoes" autocomplete="off"></div>
     <div><label for="offer">Offer line (optional)</label><input type="text" id="offer" placeholder="shown exactly as typed" autocomplete="off"></div>
   </div>
+  <div class="row2"><div><label for="pimg">Exact product photo link (optional)</label><input type="text" id="pimg" placeholder="https://… a photo of the exact product from the brand's site — used as it is instead of searching" autocomplete="off"></div></div>
   <div class="bar"><button id="go">Make the in-image mock</button><span class="s" id="hint">About a minute.</span></div>
   <div class="how">
     <div><b>1 · Product</b>Searched online; AI picks the official packshot and cuts it out</div>
@@ -90,10 +91,10 @@ let shown = 0, target = 0, tick;
 function setPct(p) { target = p; if (!tick) tick = setInterval(() => { if (shown < target) shown += Math.max(0.4, (target - shown) / 8); else if (shown < Math.min(99, target + 6)) shown += 0.05; /* creeps a little while a step runs */ $("pct").textContent = Math.floor(Math.min(shown, 100)) + "%"; $("fill").style.width = Math.min(shown, 100) + "%"; }, 120); }
 function setStage(st) { const i = ORDER.indexOf(st); for (const s of $("steps").children) { const k = ORDER.indexOf(s.dataset.k); s.className = k < i || st === "done" ? "ok" : k === i ? "on" : ""; } }
 async function go() {
-  const brand = $("brand").value.trim(), product = $("product").value.trim(), offer = $("offer").value.trim();
+  const brand = $("brand").value.trim(), product = $("product").value.trim(), offer = $("offer").value.trim(), productImage = $("pimg").value.trim();
   if (!brand || !product) { $("hint").innerHTML = `<span class="err">Type the brand and the product.</span>`; return; }
   $("go").disabled = true; $("out").hidden = true; $("prog").hidden = false; shown = 0; setPct(1); setStage("search"); $("log").textContent = "";
-  let id; try { id = (await api("/studio/start", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ brand, product, offer }) })).id; }
+  let id; try { id = (await api("/studio/start", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ brand, product, offer, productImage }) })).id; }
   catch (e) { $("log").innerHTML = `<span class="err">${esc(e.message)}</span>`; $("go").disabled = false; return; }
   for (;;) {
     await new Promise((r) => setTimeout(r, 1200));
