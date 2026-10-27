@@ -197,6 +197,47 @@
    "formats": {
     "in-image": "Category Wise In-Image › Premium SiteList for Display: indianexpress.com"
    }
+  },
+  {
+   "language": "en",
+   "id": "midday-lifestyle",
+   "name": "Mid-day › Lifestyle",
+   "domain": "www.mid-day.com",
+   "category": "Lifestyle",
+   "feeds": [
+    "https://www.mid-day.com/Resources/midday/rss/lifestyle.xml"
+   ],
+   "formats": {
+    "in-image": "Category Wise In-Image › Premium SiteList for Display: mid-day.com"
+   }
+  },
+  {
+   "language": "en",
+   "id": "asianet-tech",
+   "name": "Asianet Newsable › Technology",
+   "domain": "newsable.asianetnews.com",
+   "category": "Technology",
+   "feeds": [
+    "https://newsable.asianetnews.com/rss/technology"
+   ],
+   "exclude": "/gallery/",
+   "formats": {
+    "in-image": "Category Wise In-Image › Premium SiteList for Display: asianetnews.com"
+   }
+  },
+  {
+   "language": "en",
+   "id": "asianet-lifestyle",
+   "name": "Asianet Newsable › Lifestyle",
+   "domain": "newsable.asianetnews.com",
+   "category": "Lifestyle",
+   "feeds": [
+    "https://newsable.asianetnews.com/rss/lifestyle"
+   ],
+   "exclude": "/gallery/",
+   "formats": {
+    "in-image": "Category Wise In-Image › Premium SiteList for Display: asianetnews.com"
+   }
   }
  ],
  "feeds": {
@@ -264,5 +305,7 @@
     "/article/education/"
    ]
   }
- ]
+ ],
+ "minScore": 7,
+ "changes": "2026-10-27: added Mid-day Lifestyle and Asianet Newsable Technology / Lifestyle (both listed in Category Wise In-Image › Premium SiteList for Display); Asianet photo galleries (slideshows) are left out."
 }

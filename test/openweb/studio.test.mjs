@@ -10,7 +10,7 @@ import zlib from "node:zlib";
 import { execFileSync } from "node:child_process";
 import { parseBingImages, brandHost } from "../../openweb/lib/websearch.mjs";
 import { stripHtml, fitStrip, luminance } from "../../openweb/lib/strip.mjs";
-import { slugTitle, matchSlugs, sitemapIndex, loadStudioConfig } from "../../openweb/lib/studio.mjs";
+import { slugTitle, matchSlugs, sitemapIndex, loadStudioConfig, withRealName } from "../../openweb/lib/studio.mjs";
 import { renderMock, ASSET_URL } from "../../openweb/lib/mock.mjs";
 import { loadMediaPlan, checkPublisherSources } from "../../openweb/lib/inventory.mjs";
 import { FILLER } from "./helpers.mjs";
@@ -23,6 +23,12 @@ test("image search results: full picture, thumbnail, source page and title from 
   const r = parseBingImages(html);
   assert.equal(r.length, 1);
   assert.deepEqual(r[0], { url: "https://www.bata.com/img/shoe.jpg?sw=800&sh=800", thumb: "https://tse1.mm.bing.net/th?id=OIP.a&pid=Api", page: "https://www.bata.com/in/power-shoe.html", host: "bata.com", title: "Power Grey Running Shoes | Bata" });
+});
+
+test("copy names the product found online, not a misspelt or made-up name that was typed", () => {
+  assert.equal(withRealName("Discover Motorola V70 edge plus", "V70 edge plus", "Motorola Edge 70 Pro Plus", "Motorola"), "Discover Motorola Edge 70 Pro Plus");
+  assert.equal(withRealName("Run in Power shoes", "Power running shoes", "power running shoes", "Bata"), "Run in Power shoes");
+  assert.equal(withRealName("Try a.b (x)", "a.b (x)", "Real", "B"), "Try Real", "typed text with regex characters is matched literally");
 });
 
 test("the brand's own site is recognised by its host name, retailers are not", () => {
@@ -99,7 +105,11 @@ before(async () => {
     <figure style="margin:0"><img src="/walk.png" style="width:100%;display:block"></figure><p>${FILLER}</p>${wall ? "<div>This archive story requires a subscription</div>" : ""}<p>${FILLER}</p></body></html>`;
   srv = http.createServer((req, res) => {
     if (/\.png$/.test(req.url)) { res.writeHead(200, { "Content-Type": "image/png" }); return res.end(png(800, 450, req.url.includes("walk") ? [30, 160, 60] : [40, 120, 200])); }
-    const html = { "/a": page(), "/desktop": page({ viewport: false }), "/wall": page({ wall: true }) }[req.url];
+    // pages that change once the unit starts (data-go): a subscription wall drops in, or the article is blanked
+    const later = (js) => page().replace("</body>", `<script>new MutationObserver((m, o) => { const u = document.getElementById("mk-slot"); if (u && u.hasAttribute("data-go")) { o.disconnect(); setTimeout(() => { ${js} }, 50); } }).observe(document.body, { subtree: true, attributes: true, attributeFilter: ["data-go"] });</script></body>`);
+    const html = { "/a": page(), "/desktop": page({ viewport: false }), "/wall": page({ wall: true }), "/sized": page().replace("/walk.png", "/images/w-412,imgid-abc,imgname-walk.png"),
+      "/late-wall": later(`const d = document.createElement("div"); d.textContent = "This archive story requires a subscription"; document.body.append(d);`),
+      "/blanked": later(`for (const el of document.querySelectorAll("p, figure, h1, img")) el.style.display = "none";`) }[req.url];
     if (html) { res.writeHead(200, { "Content-Type": "text/html" }); return res.end(html); }
     res.writeHead(404); res.end();
   });
@@ -123,6 +133,11 @@ test("HTML creative: a size variant of the picture (WordPress -WxH suffix) still
   assert.equal(out.slot.how, "the chosen article image");
 });
 
+test("HTML creative: size and format tokens inside the picture's name (w-1280,h-720,format-jpg,…) still match the phone copy", { timeout: 90000 }, async () => {
+  const out = await renderMock(opts("/sized", "/images/w-1280,h-720,format-jpg,imgid-abc,imgname-walk.png"));
+  assert.equal(out.slot.how, "the chosen article image"); assert.ok(out.slot.y > 300);
+});
+
 test("HTML creative: the chosen picture missing from the page → SLOT_NOT_FOUND, never a different picture", { timeout: 90000 }, async () => {
   await assert.rejects(renderMock(opts("/a", "/other.png")), (/** @type {any} */ e) => e.code === "SLOT_NOT_FOUND");
 });
@@ -133,6 +148,11 @@ test("HTML creative: a page without a phone layout, or behind a subscription wal
 });
 
 /* global document */
+test("HTML creative: a wall that appears, or an article that is blanked, during the recording → no mock", { timeout: 90000 }, async () => {
+  await assert.rejects(renderMock(opts("/late-wall", "/walk.png")), (/** @type {any} */ e) => e.code === "PAYWALL");
+  await assert.rejects(renderMock(opts("/blanked", "/walk.png")), (/** @type {any} */ e) => e.code === "NOT_VISIBLE");
+});
+
 test("fitStrip: long copy shrinks until it sits above the button", { timeout: 60000 }, async () => {
   const { chromium } = await import("playwright");
   const b = await chromium.launch();

@@ -58,7 +58,8 @@ export function placeInPage({ format, src, isVideo, leadImage, html = null, stri
   if (format === "in-image") {
     const imgs = [...document.querySelectorAll("img")].filter((i) => { const r = i.getBoundingClientRect(); return r.width >= vw * 0.6 && r.height >= 120 && i.naturalWidth >= 300; });
     // the same picture in any size variant: file name without query and without a WordPress "-640x360" suffix
-    const stem = (u) => { try { return decodeURIComponent(String(u).split("?")[0].split("/").pop()).replace(/-\d{2,4}x\d{2,4}(?=\.\w+$)/, "").toLowerCase(); } catch { return ""; } };
+    // … and without size / format tokens inside the name ("w-1280,h-720,format-jpg,imgid-…" vs "w-412,imgid-…")
+    const stem = (u) => { try { return decodeURIComponent(String(u).split("?")[0].split("/").pop()).replace(/-\d{2,4}x\d{2,4}(?=\.\w+$)/, "").split(",").filter((t) => !/^(w|h|q|c|dpr|fit|crop|format)-[\w.]+$/i.test(t)).join(",").toLowerCase(); } catch { return ""; } };
     const base = stem(leadImage || "");
     const same = (i) => !!base && [i.currentSrc, i.src, i.getAttribute("data-src"), ...(i.getAttribute("srcset") || "").split(",").map((x) => x.trim().split(" ")[0])].some((u) => u && stem(u) === base);
     const exact = imgs.find(same);
@@ -180,6 +181,21 @@ export async function renderMock({ articleUrl, leadImage, creativeFile = null, c
       await page.evaluate((y) => scrollTo(0, y), target); await page.waitForTimeout(1500); await page.evaluate(tidyPage);
       if (creativeHtml) { await page.evaluate(() => document.getElementById("mk-slot").setAttribute("data-go", "")); await page.waitForTimeout(holdMs); }
       await page.waitForTimeout(300);
+    }
+    if (creativeHtml) {
+      // the page can still change while it is recorded (a late subscription wall, a script that blanks the article):
+      // the unit must be on screen, not covered, and the article text still there — otherwise there is no mock
+      const seen = await page.evaluate(() => {
+        const u = document.getElementById("mk-slot"), r = u?.getBoundingClientRect();
+        if (!u || !r.width || r.bottom < 0 || r.top > innerHeight || !u.checkVisibility({ opacityProperty: true, visibilityProperty: true })) return "the unit is not visible on the page";
+        const hit = document.elementFromPoint(r.left + r.width / 2, Math.max(1, Math.min(innerHeight - 2, r.top + r.height * 0.3)));
+        if (!hit || !u.parentElement.contains(hit)) return "something on the page covers the picture";
+        if (/requires a subscription|subscriber-only stor|subscribe to (continue|read)|to continue reading/i.test(document.body.innerText)) return "wall";
+        if ([...document.querySelectorAll("p")].filter((p) => p.checkVisibility() && p.innerText.trim().length > 60).length < 2) return "the article text is no longer shown on the page";
+        return null;
+      });
+      if (seen === "wall") throw new MockError("PAYWALL", "The article went behind a subscription wall while it was recorded");
+      if (seen) throw new MockError("NOT_VISIBLE", `The recording is not usable: ${seen}`);
     }
     await page.screenshot({ path: outBase + ".png" });
     const out = { png: outBase + ".png", slot, viewport: "412×915 @2x (Android phone)" };

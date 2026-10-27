@@ -115,7 +115,7 @@ function showResult(dir, r) {
     <h3 style="font-size:14px;margin:18px 0 4px">AI check list</h3>
     ${pl.checks.map((c) => `<div class="chk"><i>✓</i><div><b>${esc(c.name)}</b><div class="s" style="font-size:12.5px">${esc(c.detail)}</div></div></div>`).join("")}
     <h3 style="font-size:14px;margin:18px 0 4px">The creative</h3>
-    <div class="kv"><span>Copy</span><div><b>${esc(r.copy.headline)}</b> · ${esc(r.copy.subline)} · [${esc(r.copy.cta)}]</div>
+    <div class="kv"><span>Copy</span><div><b>${esc(r.copy.headline)}</b> · ${esc(r.copy.subline)} · [${esc(r.copy.cta)}]${r.nameNote ? `<div class="s" style="font-size:12px">${esc(r.nameNote)}</div>` : ""}</div>
       <span>Product photo</span><div><a href="${esc(info.picture.page)}" target="_blank" rel="noopener">${esc(info.picture.site)}</a>${info.picture.official ? " (brand's own site)" : ""} · ${esc(info.cutout === "photo" ? "photo" : "cut out")}</div>
       <span>Logo</span><div>${r.brandLook.logo.page ? `<a href="${esc(r.brandLook.logo.page)}" target="_blank" rel="noopener">${esc(r.brandLook.logo.site)}</a>` : esc(r.brandLook.logo.note)}</div>
       <span>Picture used</span><div><a href="${esc(pl.image.url)}" target="_blank" rel="noopener">${esc(pl.image.width)}×${esc(pl.image.height)}</a>${pl.image.lead ? " · lead image" : ""}</div>

@@ -50,7 +50,7 @@ export async function sectionItems(studio, fetcher, { now = Date.now() } = {}) {
     for (const f of sec.feeds) {
       try { for (const it of parseFeed((await fetcher.get(f, "application/rss+xml,application/xml,text/xml;q=0.9,*/*;q=0.5")).text)) {
         let host; try { host = new URL(it.url).host; } catch { continue; }
-        if (host !== sec.domain || notAnArticle(it.url) || (it.published && now - Date.parse(it.published) > maxAge)) continue;
+        if (host !== sec.domain || notAnArticle(it.url) || (sec.exclude && new RegExp(sec.exclude).test(it.url)) || (it.published && now - Date.parse(it.published) > maxAge)) continue;
         items.push({ url: it.url, title: norm(it.title || "").replace(/&#\d+;/g, (m) => String.fromCharCode(+m.slice(2, -1))), published: it.published, section: sec.id });
       } } catch { /* a section whose feed is down just adds nothing */ }
     }
@@ -136,6 +136,10 @@ const FINAL_SCHEMA = { type: "object", properties: {
 
 // Bing's own copy of a search result at a larger size (used when the picture's site refuses the download)
 const bingLarge = (thumb, size) => /^https:\/\/[\w.]*bing\.(net|com)\/th/.test(thumb || "") ? thumb.replace(/&(w|h|c)=\d+/g, "") + `&w=${size}&h=${size}&c=7` : null;
+// what the user typed, replaced by the product's real name found online (the brand prefix left off): copy must name the real product
+const reEsc = (t) => String(t).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+export const withRealName = (text, typed, found, brand) => !found || !typed || found.toLowerCase() === typed.toLowerCase() ? text
+  : String(text).replace(new RegExp(reEsc(typed), "ig"), found.replace(new RegExp(`^${reEsc(brand)}\\s+`, "i"), ""));
 const words = (s, n) => String(s || "").trim().split(/\s+/).slice(0, n).join(" ");
 
 /**
@@ -198,7 +202,7 @@ export async function makeInImage(o) {
       `Brand: ${brand}\nProduct: ${product}\nProduct pages found: ${[...new Set(products.slice(0, 6).map((x) => x.title))].join(" | ")}\n${offer ? `Offer typed by the user (may be used word for word): ${offer}\n` : ""}\n` +
       `1. category, audience, contexts (topics and moments where a reader naturally thinks of this product), avoid (topics this ad must never appear next to), competitors (brands that compete with ${brand} on this product).\n` +
       `2. Ad copy for a strip over an article photo: headline at most ${studio.copy.maxHeadlineWords} words; subline at most ${studio.copy.maxSublineWords} words, naming the product; cta from the list. ${studio.copy.noClaims} No superlatives like "best" or "No.1". English.\n` +
-      `3. shortlist: up to ${studio.shortlist} article numbers from the list below whose topic is a natural context for this product, best first, each with why. Never: articles about ${brand} itself or any competitor; death, crime, accidents, disasters, war, illness scares, politics, controversy or negative stories about this kind of product; hard news. The topic must fit the product first. Among fitting stories, prefer ones that do not centre on a named celebrity or politician (an ad over a recognisable face reads as an endorsement, so such pictures are rejected later). Prefer service and lifestyle stories (how-tos, guides, recipes, trips, trends) published recently.\n\nARTICLES:\n${list}`,
+      `3. shortlist: up to ${studio.shortlist} article numbers from the list below whose topic is a natural context for this product, best first, each with why. Never: articles about ${brand} itself or any competitor — a review, launch or price story about another company's product of the same kind (another phone, shoe, noodle brand…) is competitor content, even if the product type matches; prefer stories about how people use this kind of product (tips, how-tos, photography, travel, workouts, recipes, gaming, festivals, shopping guides without rival brands); death, crime, accidents, disasters, war, illness scares, politics, controversy or negative stories about this kind of product; hard news. The topic must fit the product first. Among fitting stories, prefer ones that do not centre on a named celebrity or politician (an ad over a recognisable face reads as an endorsement, so such pictures are rejected later). Prefer service and lifestyle stories (how-tos, guides, recipes, trips, trends) published recently.\n\nARTICLES:\n${list}`,
       PLAN_SCHEMA(studio.copy.ctas), [], "medium");
     const [pick, plan] = await Promise.all([pickP, planP]);
     lap("ai_assets_plan");
@@ -233,7 +237,11 @@ export async function makeInImage(o) {
     let colour = /^#[0-9a-f]{6}$/i.test(pick.brand_colour || "") ? pick.brand_colour : null;
     if (!colour && logoFile) colour = JSON.parse((await py(["cutout.py", "colour", logoFile])).trim()).hex;
     result.brandLook = { logo: logoInfo || { note: "No logo was confirmed online — the brand name is shown as text." }, colour: colour || "#1d2b53", accent: /^#[0-9a-f]{6}$/i.test(pick.accent_colour || "") ? pick.accent_colour : null, colourFrom: pick.brand_colour ? "AI (brand colour)" : logoFile ? "logo pixels" : "default" };
-    const copy = { headline: words(plan.headline, studio.copy.maxHeadlineWords), subline: words(offer || plan.subline, offer ? 12 : studio.copy.maxSublineWords), cta: plan.cta };
+    // the product's real name (as found on its page) replaces what was typed, e.g. "V70 edge plus" → "Edge 70 Pro Plus"
+    const found = String(pick.product_name || "").trim(), typed = product.trim();
+    const named = (t) => withRealName(t, typed, found, brand);
+    if (found && found.toLowerCase() !== typed.toLowerCase()) result.nameNote = `Typed “${typed}”; the product found online is “${found}”.`;
+    const copy = { headline: words(named(plan.headline), studio.copy.maxHeadlineWords), subline: words(offer || named(plan.subline), offer ? 12 : studio.copy.maxSublineWords), cta: plan.cta };
     result.copy = copy;
     lap("assets");
 
@@ -279,7 +287,7 @@ export async function makeInImage(o) {
     lap("ai_match");
     const scored = shown.map((c) => { const v = (fin.candidates || []).find((x) => x.k === c.k) || {}; return { ...c, v, score: (v.context_fit || 0) * 0.55 + (v.image_fit || 0) * 0.45 }; })
       .sort((x, y) => (Number(y.v.safe && y.v.strip_ok) - Number(x.v.safe && x.v.strip_ok)) || y.score - x.score);
-    const ok = scored.filter((c) => c.v.safe && c.v.strip_ok && c.score >= 6);
+    const ok = scored.filter((c) => c.v.safe && c.v.strip_ok && c.score >= studio.minScore && c.v.context_fit >= studio.minScore);
     result.candidates = scored.map((c) => ({ article: c.a.headline, url: c.a.url, image: c.im.finalUrl || c.im.src, ...c.v, score: +c.score.toFixed(1) }));
     result.rejectedArticles = rejected;
     if (!ok.length) throw new Error(`No article picture passed all three checks right now (best: “${scored[0]?.a.headline}” — ${scored[0]?.v.why || ""} ${scored[0]?.v.safe ? "" : scored[0]?.v.safe_why || ""}).`);
@@ -294,13 +302,15 @@ export async function makeInImage(o) {
     fs.writeFileSync(path.join(workDir, "creative.html"), `<!doctype html><meta charset="utf-8"><!-- ${STRIP_VERSION}: open inside the mock renderer (assets are served from ${ASSET_URL}) -->\n${html}`);
     const base = `${slug(brand)}_${slug(product)}_inimage`;
     let out = null, chosen = null;
-    for (const c of ok.slice(0, 3)) {
+    const refused = new Set();   // an article refused for its page (wall, no phone layout, blanked) is not tried again with another picture
+    for (const c of ok.filter((x, i, all) => all.findIndex((y) => y.a.url === x.a.url && y.im.id === x.im.id) === i).slice(0, 4)) {
+      if (refused.has(c.a.url)) continue;
       say(72, "render", `Recording the mock on “${c.a.headline.slice(0, 70)}”…`);
       try {
         out = await renderMock({ articleUrl: c.a.url, leadImage: c.im.finalUrl || c.im.src, format: "in-image", outBase: path.join(workDir, base), video: true, strict: true,
           creativeHtml: html, assets: files, fontsCss, fit: fitStrip, holdMs: studio.creative.seconds * 1000, ffmpeg, chromium: o.chromium });
         chosen = c; break;
-      } catch (e) { (result.renderProblems ||= []).push({ url: c.a.url, error: e.message }); }
+      } catch (e) { (result.renderProblems ||= []).push({ url: c.a.url, error: e.message }); if (/PAYWALL|NOT_MOBILE|NOT_VISIBLE|PAGE_LOAD/.test(e.code || "")) refused.add(c.a.url); }
     }
     lap("render");
     if (!out) throw new Error("The article page would not render the mock: " + (result.renderProblems || []).map((p) => p.error).join("; "));
