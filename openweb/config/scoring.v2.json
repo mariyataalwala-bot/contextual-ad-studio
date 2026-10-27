@@ -1,0 +1,26 @@
+{
+ "version": "scoring.v2",
+ "note": "v2 adds meaning (semantic) matching for campaigns that have a brief, and sends negative-tone articles to review. Campaigns without a brief score exactly as in v1.",
+ "weights": { "category": 45, "keywords": 30, "headline": 10, "object": 10, "freshness": 5 },
+ "semanticWeights": { "category": 20, "semantic": 40, "keywords": 20, "headline": 5, "object": 10, "freshness": 5 },
+ "semantic": {
+  "model": "gemini-embedding-001",
+  "dims": 768,
+  "floor": 0.5,
+  "full": 0.65,
+  "minAlone": 0.58,
+  "articleChars": 2000,
+  "calibration": "2026-10-26: 252 live articles vs a Swiggy Instamart brief — unrelated sport / medical Q&A 0.45–0.50, food & festive articles 0.58–0.68"
+ },
+ "negativeSentiment": "needs_review",
+ "category": {
+  "exactOrNarrower": 1.0,
+  "broader": 0.6,
+  "sourceStrength": { "ai": 1.0, "section": 0.9, "lexicon": 0.7 },
+  "required": 0.6
+ },
+ "keywords": { "fullAt": 3 },
+ "freshness": { "fullDays": 30, "halfDays": 90 },
+ "minScoreToRecommend": 50,
+ "lexiconCategoryMinTerms": 2
+}

@@ -1,0 +1,9 @@
+{
+ "version": "iab-content-3.1",
+ "file": "iab-content-taxonomy-3.1.tsv",
+ "sha256": "fbab23f6b06c4134d059c00daa61ebe1e52c70a18666b6d29198990661a03a33",
+ "sha256Note": "Hash of the file with LF line endings (git may check it out with CRLF on Windows).",
+ "source": "https://github.com/InteractiveAdvertisingBureau/Taxonomies/blob/main/Content%20Taxonomies/Content%20Taxonomy%203.1.tsv",
+ "licence": "IAB Tech Lab Content Taxonomy 3.1, Creative Commons Attribution 3.0 (per the repository README). Unmodified copy.",
+ "retrieved": "2026-10-26"
+}

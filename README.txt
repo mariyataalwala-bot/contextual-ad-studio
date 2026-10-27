@@ -40,3 +40,29 @@ Notes
 - Videos are captured from the YouTube player as screenshots and recorded audio;
   nothing is downloaded as a file.
 - Keep this window open while a video is being made.
+
+OPEN WEB TAB (existing creatives on relevant articles)
+Click "Open Web →" at the top right (or open http://localhost:4777/openweb).
+Recommendation and mock previews only: nothing is served, and no ad server, SSP,
+DSP or brand-safety vendor is connected.
+1. Inventory: the pilot publishers (config/publishers.v1.json) and the formats each
+   one sells, each checked against your media plan (D:\Media Plan Automation).
+   "Refresh showcase catalogue" imports showcase.mediakart.co.in for reference.
+2. Put source creative files (MP4, WebM, PNG, JPG, GIF) in
+   D:\contextual-ads\openweb\creatives\ (sub-folders are fine).
+3. Campaigns: enter brand, status, dates (IST, inclusive), creatives (format and
+   file), target IAB categories, keywords and exclusions. Without an active campaign
+   inside its dates, nothing is recommended.
+4. "Fetch & analyse latest" reads each publisher's RSS feed (robots.txt is
+   honoured; sites that block scripts are reported as BLOCKED, never worked around),
+   then checks safety, campaign, exclusions and format in that order, and scores
+   relevance. Click a row for the evidence: verbatim quotes, gate results and
+   reason codes.
+5. "Needs review" items can be approved or rejected with your name and a reason.
+   Excluded pages can't be approved.
+6. "Make mock" opens the real article in a phone-sized browser and places your
+   creative in the slot. It saves PNG (+ optional MP4) and a JSON record to
+   D:\contextual-ads\openweb\mocks\. Every mock is watermarked MOCK.
+Policies, taxonomy and scoring are versioned files in openweb\config\. If you change
+one, raise its version; stored articles are re-checked automatically.
+Developer checks: npm test · npm run typecheck · npm run lint

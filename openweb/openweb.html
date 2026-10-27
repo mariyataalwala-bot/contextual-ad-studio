@@ -1,0 +1,330 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Open Web Contextual</title>
+<link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+<style>
+:root{--p:#5C63DC;--m:#B000CC;--gd:#1FA81A;--ink:#14152B;--mute:#6B6F80;--line:#E6E7EF;--bg:#F5F5FB;--card:#fff;
+  --grad:linear-gradient(135deg,#5C63DC 0%,#8B3FE8 55%,#B000CC 100%);--sh:0 1px 2px rgba(20,21,43,.04),0 8px 28px rgba(20,21,43,.06);--r:20px;
+  --ok:#177713;--okb:#F0FBEF;--rev:#8A5A00;--revb:#FFF6E0;--bad:#A11;--badb:#FFF0F0}
+*{box-sizing:border-box}
+body{margin:0;font-family:Poppins,system-ui,sans-serif;color:var(--ink);background:var(--bg);min-height:100vh;
+  background-image:radial-gradient(900px 420px at 85% -120px,rgba(176,0,204,.10),transparent 70%),radial-gradient(800px 420px at 0% -160px,rgba(92,99,220,.14),transparent 70%);background-repeat:no-repeat}
+a{color:var(--p)}
+header{position:sticky;top:0;z-index:20;backdrop-filter:saturate(1.4) blur(12px);background:rgba(255,255,255,.78);border-bottom:1px solid var(--line)}
+.hin{max-width:1240px;margin:0 auto;display:flex;align-items:center;gap:14px;padding:14px 20px}
+.logo{width:42px;height:42px;border-radius:13px;background:radial-gradient(circle at 35% 30%,#E59BFF 0,#9B2BE0 40%,#4A0A8C 78%,#23004D);display:grid;place-items:center;color:#fff;font-size:20px;flex:none}
+h1{font-size:19px;margin:0;font-weight:700}header small{color:var(--mute);font-size:12.5px}.sp{flex:1}
+.navlink{font-size:13.5px;font-weight:600;text-decoration:none;padding:9px 14px;border-radius:12px;border:1.5px solid rgba(92,99,220,.35);background:#fff;white-space:nowrap}
+main{max-width:1240px;margin:18px auto 60px;padding:0 20px;display:grid;gap:18px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:var(--r);padding:24px;box-shadow:var(--sh);min-width:0}
+.ch{display:flex;align-items:flex-start;gap:14px;margin-bottom:16px}
+.num{flex:none;display:grid;place-items:center;width:34px;height:34px;border-radius:11px;background:var(--grad);color:#fff;font-size:15px;font-weight:700}
+.card h2{margin:2px 0;font-size:18px;font-weight:700}.s{color:var(--mute);font-size:13px}.card p.s{margin:0}
+.note{background:#F3F2FF;border:1px solid #DCD9FF;border-radius:14px;padding:11px 16px;font-size:13px;line-height:1.5}
+button{display:inline-flex;align-items:center;justify-content:center;gap:8px;font:inherit;font-size:14px;border:0;border-radius:12px;padding:10px 18px;font-weight:600;cursor:pointer;background:var(--grad);color:#fff;box-shadow:0 6px 18px rgba(123,77,255,.25)}
+button.ghost{background:#fff;color:var(--p);border:1.5px solid rgba(92,99,220,.45);box-shadow:none}
+button.sm{padding:6px 11px;font-size:12.5px;border-radius:9px}
+button:disabled{opacity:.45;cursor:default}
+.bar{display:flex;gap:10px;flex-wrap:wrap;margin-top:14px;align-items:center}
+label{display:block;font-size:12px;font-weight:600;margin:0 0 6px;color:#3A3C52}
+input[type=text],input[type=date],input[type=number],select,textarea{width:100%;font:inherit;font-size:14px;padding:10px 12px;border:1.5px solid var(--line);border-radius:11px;background:#FBFBFE;color:var(--ink)}
+textarea{min-height:64px;resize:vertical}
+input:focus,select:focus,textarea:focus{outline:none;border-color:var(--p);background:#fff;box-shadow:0 0 0 4px rgba(92,99,220,.13)}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:14px}
+.twocol{display:grid;grid-template-columns:1.1fr .9fr;gap:18px}
+.tbl{width:100%;border-collapse:collapse;font-size:13px}
+.tbl th{text-align:left;font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:var(--mute);padding:8px 10px;border-bottom:1px solid var(--line);white-space:nowrap}
+.tbl td{padding:10px;border-bottom:1px solid var(--line);vertical-align:top}
+.tbl tr.click{cursor:pointer}.tbl tr.click:hover td{background:#FAFAFF}
+.scroll{overflow-x:auto}
+.chip{display:inline-block;padding:2px 8px;border-radius:99px;font-size:11.5px;font-weight:600;border:1px solid transparent;margin:0 4px 4px 0;white-space:nowrap}
+.st-recommended,.st-approved,.st-safe,.yes{background:var(--okb);color:var(--ok);border-color:#BFE9BC}
+.st-needs_review,.st-review,.st-unknown,.st-conflict{background:var(--revb);color:var(--rev);border-color:#F2D58A}
+.st-excluded,.st-unsafe,.no{background:var(--badb);color:var(--bad);border-color:#F2B8B8}
+.cat{background:#F1F0FF;color:#4A45B5}
+.code{font:11.5px/1.5 ui-monospace,Consolas,monospace;background:#F4F4F8;border-radius:6px;padding:1px 6px;display:inline-block;margin:0 4px 4px 0}
+.quote{border-left:3px solid var(--m);background:#FCF7FF;padding:7px 11px;margin:6px 0;font-size:13px;border-radius:0 8px 8px 0}
+.quote small{display:block;color:var(--mute);font-size:11px;margin-top:2px}
+.log{background:#0E0F1A;color:#C9CBE0;padding:12px 14px;font:12px/1.6 ui-monospace,Consolas,monospace;max-height:220px;overflow:auto;white-space:pre-wrap;border-radius:12px;margin-top:12px}
+.hide{display:none!important}
+.howto{padding:16px 22px}.howto ol{margin:8px 0 0;padding-left:20px;font-size:13.5px;line-height:1.6}.howto li{margin:2px 0}
+.drawer{position:fixed;inset:0;z-index:50;background:rgba(14,15,26,.45);display:flex;justify-content:flex-end}
+.drawer .panel{width:min(760px,100%);height:100%;overflow:auto;background:var(--bg);padding:22px;box-shadow:-20px 0 60px rgba(0,0,0,.2)}
+.rec{background:#fff;border:1px solid var(--line);border-radius:14px;padding:14px 16px;margin-top:12px}
+.rec h4{margin:0 0 6px;font-size:14px;display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.gates{display:flex;flex-wrap:wrap;gap:4px;margin:6px 0}
+.score{font-size:22px;font-weight:300}
+.mocks{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:14px}
+.mocks figure{margin:0;background:#fff;border:1px solid var(--line);border-radius:14px;overflow:hidden}
+.mocks img{width:100%;display:block;background:#eee}.mocks figcaption{padding:9px 11px;font-size:12px}
+.crow{display:grid;grid-template-columns:1.2fr 1fr 1.4fr auto;gap:8px;margin-bottom:8px}
+.picked{margin-top:6px}
+.sugg{border:1px solid var(--line);border-radius:10px;max-height:160px;overflow:auto;margin-top:4px;background:#fff}
+.sugg div{padding:6px 10px;font-size:12.5px;cursor:pointer}.sugg div:hover{background:#F4F4FF}
+@media (max-width:900px){.twocol{grid-template-columns:1fr}.crow{grid-template-columns:1fr 1fr}}
+@media (max-width:600px){.hin,main{padding-left:16px;padding-right:16px}.card{padding:18px 16px}header small{display:none}}
+</style></head><body>
+<header><div class="hin"><div class="logo">✦</div><div><h1>Open Web Contextual</h1><small>Mediakart · existing creatives on relevant articles</small></div><div class="sp"></div><a class="navlink" href="/">← YouTube studio</a></div></header>
+<main>
+  <div class="note" id="statusNote">Loading…</div>
+  <section class="card howto"><b>How it works</b>
+    <ol><li><b>Inventory</b> — the news and lifestyle sites we read, and the ad formats each sells. Click <i>latest articles</i> to see a site's newest stories.</li>
+      <li><b>Campaign</b> — add the brand, dates, a short <b>brief</b> (what it sells and when people need it — articles are matched by meaning, not only keywords) and the creative file (put it in the creatives folder first). Without an active campaign nothing is recommended.</li>
+      <li><b>Fetch &amp; analyse</b> — reads the newest articles, checks they're safe for the brand, and matches them to your campaigns. Click an article to see why it matched.</li>
+      <li><b>Make mock</b> — shows your creative on the real article in a phone-sized screenshot, watermarked MOCK. Nothing goes live.</li></ol></section>
+
+  <section class="card">
+    <div class="ch"><div class="num">1</div><div><h2>Inventory</h2><p class="s">Pilot publishers from your media plan, the showcase catalogue, and the source creative files you supplied.</p></div></div>
+    <div class="twocol">
+      <div class="scroll"><table class="tbl" id="pubTbl"></table><div id="unavail" class="s" style="margin-top:10px"></div></div>
+      <div>
+        <div id="invSummary" class="s"></div>
+        <div class="bar"><button class="ghost sm" id="refreshShowcase">Refresh showcase catalogue</button><span class="s" id="refreshMsg"></span></div>
+        <div style="margin-top:14px"><b style="font-size:13px">Source creatives folder</b><div class="s" id="creativesDir"></div><div id="fileList" class="s" style="margin-top:6px"></div></div>
+      </div>
+    </div>
+  </section>
+
+  <section class="card">
+    <div class="ch"><div class="num">2</div><div><h2>Campaigns</h2><p class="s">Only active campaigns inside their dates can be recommended. Enter real campaign details; nothing here is generated.</p></div></div>
+    <div id="campList"></div>
+    <details id="campFormBox" style="margin-top:12px"><summary style="cursor:pointer;font-weight:600;font-size:13.5px">Add or edit a campaign</summary>
+      <form id="campForm" style="margin-top:14px">
+        <input type="hidden" name="id">
+        <div class="grid">
+          <div><label>Brand</label><input type="text" name="brand" required></div>
+          <div><label>Product</label><input type="text" name="product"></div>
+          <div><label>Status</label><select name="status"><option value="draft">Draft</option><option value="active">Active</option><option value="paused">Paused</option></select></div>
+          <div><label>Start (IST)</label><input type="date" name="start" required></div>
+          <div><label>End (IST)</label><input type="date" name="end" required></div>
+          <div><label>Entered by</label><input type="text" name="enteredBy"></div>
+        </div>
+        <label style="margin-top:14px">Creatives (format + source file from the creatives folder)</label>
+        <div id="crRows"></div><button type="button" class="ghost sm" id="addCr">+ creative</button>
+        <label style="margin-top:14px">Brief — what the brand sells and when people need it <span class="s" style="font-weight:400">(meaning match: finds related articles even when they don't use your keywords)</span></label>
+        <textarea name="brief" rows="3" maxlength="1500" placeholder="e.g. Quick-commerce app delivering groceries in minutes: fruits and vegetables, milk and dairy, staples, snacks, festive sweets and puja items. For people cooking at home, hosting guests, celebrating festivals, or who ran out of something."></textarea>
+        <div class="grid" style="margin-top:14px">
+          <div><label>Target IAB categories <span class="s" style="font-weight:400">(optional with a brief)</span></label><input type="text" id="iabSearch" placeholder="Search, e.g. skin care"><div class="sugg hide" id="iabSugg"></div><div class="picked" id="iabPicked"></div></div>
+          <div><label>Target keywords (comma separated)</label><textarea name="keywords" placeholder="face wash, acne, oily skin"></textarea></div>
+          <div><label>Objects for image match (optional)</label><textarea name="objects" placeholder="face wash, tube"></textarea></div>
+        </div>
+        <div class="grid" style="margin-top:14px">
+          <div><label>Exclude: competitor brands</label><textarea name="competitors"></textarea></div>
+          <div><label>Exclude: keywords</label><textarea name="exKeywords"></textarea></div>
+          <div><label>Exclude: IAB categories</label><input type="text" id="exSearch" placeholder="Search"><div class="sugg hide" id="exSugg"></div><div class="picked" id="exPicked"></div></div>
+        </div>
+        <div class="bar"><button type="submit">Save campaign</button><button type="button" class="ghost" id="campReset">Clear</button><span class="s" id="campMsg"></span></div>
+      </form>
+    </details>
+  </section>
+
+  <section class="card">
+    <div class="ch"><div class="num">3</div><div><h2>Articles &amp; recommended ads</h2><p class="s">Reads each publisher's feed (robots.txt honoured), analyses headline and body, applies the safety policy and campaign gates, then ranks. Click a row for the evidence.</p></div></div>
+    <div class="bar" style="margin-top:0"><span class="s" id="pubPicks"></span><label style="margin:0;display:flex;gap:6px;align-items:center">Per publisher <input type="number" id="limit" value="8" min="1" max="25" style="width:70px"></label><button id="runBtn">Fetch &amp; analyse latest</button><button class="ghost" id="recBtn">Recompute</button></div>
+    <div class="log hide" id="runLog"></div>
+    <div class="bar"><span class="s">Show:</span><select id="filter" style="width:auto"><option value="all">All articles</option><option value="rec">With a recommended ad</option><option value="review">Needs review</option><option value="none">No recommendation</option></select><span class="s" id="tblMeta"></span></div>
+    <div class="scroll" style="margin-top:8px"><table class="tbl" id="artTbl"></table></div>
+  </section>
+
+  <section class="card">
+    <div class="ch"><div class="num">4</div><div><h2>Mocks</h2><p class="s">Real article, your source creative in the matched slot, phone viewport. Every mock is watermarked MOCK and has a JSON record beside it.</p></div></div>
+    <div class="mocks" id="mocks"></div>
+  </section>
+</main>
+
+<div class="drawer hide" id="drawer"><div class="panel" id="panel"></div></div>
+
+<script>
+const $ = (s) => document.querySelector(s);
+const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
+const api = async (p, opt = {}) => { const r = await fetch("/api/ow" + p, { headers: { "Content-Type": "application/json" }, ...opt, body: opt.body ? JSON.stringify(opt.body) : undefined }); const j = await r.json().catch(() => ({})); if (!r.ok) throw new Error(j.error || r.statusText); return j; };
+const chip = (txt, cls) => `<span class="chip ${cls || ""}">${esc(txt)}</span>`;
+const LABEL = { recommended: "Recommended", approved: "Approved after review", needs_review: "Needs review", excluded: "Excluded", safe: "Safe", unsafe: "Unsafe", unknown: "Unknown", conflict: "Conflicting", review: "Review" };
+let STATUS = null, INV = null, CAMPS = [], ROWS = [];
+
+async function loadStatus() {
+  STATUS = await api("/status");
+  $("#statusNote").innerHTML = `<b>Recommendation and mock previews only.</b> ${esc(STATUS.note.replace(/^Recommendation and mock previews only\.\s*/, ""))} · Today ${esc(STATUS.today)} IST · AI: ${esc(STATUS.ai)} · ` +
+    Object.entries(STATUS.versions).map(([k, v]) => `<span class="code">${esc(v)}</span>`).join("");
+  $("#pubPicks").innerHTML = STATUS.publishers.map((p) => `<label style="display:inline-flex;gap:5px;align-items:center;margin:0 10px 0 0;font-weight:500"><input type="checkbox" class="pubPick" value="${esc(p.id)}" checked>${esc(p.name)}</label>`).join("");
+}
+async function loadInventory() {
+  INV = await api("/inventory");
+  const chk = new Map((INV.publisherSourceCheck || []).map((x) => [x.id, x.formats]));
+  $("#pubTbl").innerHTML = `<tr><th>Publisher</th><th>Category</th><th>Formats (✓ = found in media plan)</th><th>Feed</th></tr>` + STATUS.publishers.map((p) =>
+    `<tr><td><b>${esc(p.name)}</b><div class="s">${esc(p.domain)}</div></td><td>${esc(p.category)}</td><td>${Object.entries(p.formats).map(([f, src]) => `<span title="${esc(src)}">${chip((chk.get(p.id)?.[f] ? "✓ " : chk.get(p.id) ? "✗ " : "") + f, chk.get(p.id)?.[f] ? "yes" : chk.get(p.id) ? "no" : "")}</span>`).join("")}</td><td class="s"><a href="#" class="feedLink" data-pub="${esc(p.id)}">latest articles</a></td></tr>`).join("");
+  $("#unavail").innerHTML = "<b>Not in the pilot:</b> " + STATUS.unavailable.map((u) => `${esc(u.domain)} — ${esc(u.reason)}`).join("<br>");
+  const sc = INV.showcase, mp = INV.mediaPlan;
+  $("#invSummary").innerHTML = `<b>Media plan:</b> ${mp.error ? esc(mp.error) + " (" + esc(mp.file) + ")" : `${mp.sites} site entries in ${mp.tabs.length} tabs · <span class="code">${esc(mp.sha256.slice(0, 12))}</span>`}<br>` +
+    `<b>Showcase catalogue:</b> ${sc.fetchedAt ? `${sc.count} creatives (snapshot ${esc(sc.fetchedAt.slice(0, 16).replace("T", " "))} UTC) — ${Object.entries(sc.byFormat).map(([f, n]) => `${esc(f)} ${n}`).join(" · ")}` : "not imported yet"}<br>` +
+    `<span class="s">Showcase items are preview recordings — reference only. Mocks need the source files below.</span>`;
+  $("#creativesDir").textContent = INV.creativesDir;
+  $("#fileList").innerHTML = INV.creativeFiles.length ? INV.creativeFiles.map((f) => `<span class="code">${esc(f.file)}</span>`).join("") : "No source files yet — copy the creatives you send into this folder.";
+}
+$("#refreshShowcase").onclick = async () => { $("#refreshMsg").textContent = "Fetching…"; try { const r = await api("/inventory/refresh", { method: "POST" }); $("#refreshMsg").textContent = `${r.creatives} creatives imported`; loadInventory(); } catch (e) { $("#refreshMsg").textContent = e.message; } };
+
+// ---------- campaigns ----------
+const picks = { iab: new Map(), ex: new Map() };
+function drawPicks() {
+  for (const [k, el] of [["iab", "#iabPicked"], ["ex", "#exPicked"]]) $(el).innerHTML = [...picks[k]].map(([id, p]) => `<span class="chip cat">${esc(p)} <a href="#" data-k="${k}" data-id="${esc(id)}" class="unpick">×</a></span>`).join("");
+  document.querySelectorAll(".unpick").forEach((a) => (a.onclick = (e) => { e.preventDefault(); picks[a.dataset.k].delete(a.dataset.id); drawPicks(); }));
+}
+function taxSearch(input, box, k) {
+  let t; input.oninput = () => { clearTimeout(t); t = setTimeout(async () => {
+    const q = input.value.trim(); if (!q) return box.classList.add("hide");
+    const r = await api("/taxonomy?q=" + encodeURIComponent(q));
+    box.innerHTML = r.map((n) => `<div data-id="${esc(n.id)}" data-p="${esc(n.path)}">${esc(n.path)} <span class="s">${esc(n.id)}</span></div>`).join("") || `<div class="s">No match</div>`;
+    box.classList.remove("hide");
+    box.querySelectorAll("[data-id]").forEach((d) => (d.onclick = () => { picks[k].set(d.dataset.id, d.dataset.p); input.value = ""; box.classList.add("hide"); drawPicks(); }));
+  }, 200); };
+}
+taxSearch($("#iabSearch"), $("#iabSugg"), "iab"); taxSearch($("#exSearch"), $("#exSugg"), "ex");
+function crRow(c = {}) {
+  const d = document.createElement("div"); d.className = "crow";
+  const fmts = Object.entries(INV?.formats || {}).filter(([, f]) => f.openWeb).map(([k, f]) => `<option value="${k}" ${c.format === k ? "selected" : ""}>${esc(f.label)}</option>`).join("");
+  const files = `<option value="">— no file yet —</option>` + (INV?.creativeFiles || []).map((f) => `<option ${c.file === f.file ? "selected" : ""}>${esc(f.file)}</option>`).join("");
+  d.innerHTML = `<input type="text" placeholder="Label, e.g. Neem Face Wash in-image" value="${esc(c.label || "")}" data-f="label"><select data-f="format">${fmts}</select><select data-f="file">${files}</select><button type="button" class="ghost sm">Remove</button>`;
+  d.dataset.id = c.id || ""; d.querySelector("button").onclick = () => d.remove(); $("#crRows").append(d);
+}
+$("#addCr").onclick = () => crRow();
+function fillForm(c) {
+  const f = $("#campForm"); f.reset(); $("#crRows").innerHTML = ""; picks.iab.clear(); picks.ex.clear();
+  if (c) {
+    for (const k of ["id", "brand", "product", "status", "start", "end", "enteredBy", "brief"]) f.elements[k].value = c[k] || "";
+    f.elements.keywords.value = c.targeting.keywords.join(", "); f.elements.objects.value = c.targeting.objects.join(", ");
+    f.elements.competitors.value = c.exclusions.competitors.join(", "); f.elements.exKeywords.value = c.exclusions.keywords.join(", ");
+    c.targeting.iab.forEach((id) => picks.iab.set(id, id)); c.exclusions.iab.forEach((id) => picks.ex.set(id, id));
+    c.creatives.forEach(crRow);
+    Promise.all([...picks.iab.keys(), ...picks.ex.keys()].map((id) => api("/taxonomy?q=" + encodeURIComponent(id)).then((r) => { const n = r.find((x) => x.id === id); if (n) { if (picks.iab.has(id)) picks.iab.set(id, n.path); if (picks.ex.has(id)) picks.ex.set(id, n.path); } }))).then(drawPicks);
+    $("#campFormBox").open = true;
+  } else crRow();
+  drawPicks();
+}
+$("#campReset").onclick = () => fillForm(null);
+$("#campForm").onsubmit = async (e) => {
+  e.preventDefault(); const f = e.target;
+  const creatives = [...document.querySelectorAll(".crow")].map((d, i) => ({ id: d.dataset.id || "cr" + (i + 1), label: d.querySelector('[data-f="label"]').value, format: d.querySelector('[data-f="format"]').value, file: d.querySelector('[data-f="file"]').value }));
+  const b = { id: f.elements.id.value, brand: f.elements.brand.value, product: f.elements.product.value, status: f.elements.status.value, start: f.elements.start.value, end: f.elements.end.value, enteredBy: f.elements.enteredBy.value, brief: f.elements.brief.value, creatives,
+    targeting: { iab: [...picks.iab.keys()], keywords: f.elements.keywords.value, objects: f.elements.objects.value }, exclusions: { competitors: f.elements.competitors.value, keywords: f.elements.exKeywords.value, iab: [...picks.ex.keys()] } };
+  $("#campMsg").textContent = b.brief ? "Saving — reading the brief's meaning…" : "Saving…";
+  try { const r = await api("/campaigns", { method: "POST", body: b }); const m = r.meaning;
+    $("#campMsg").textContent = "Saved — recommendations recomputed." + (m?.missing ? ` Meaning match pending for ${m.missing} item(s)${m.error ? " (" + m.error + ")" : ""} — click Recompute in a minute.` : "");
+    fillForm(null); await loadCampaigns(); await loadArticles(); }
+  catch (err) { $("#campMsg").textContent = err.message; }
+};
+async function loadCampaigns() {
+  CAMPS = await api("/campaigns");
+  $("#campList").innerHTML = CAMPS.length ? `<div class="scroll"><table class="tbl"><tr><th>Brand</th><th>Status</th><th>Dates (IST)</th><th>Creatives</th><th>Targeting</th><th>Exclusions</th><th></th></tr>` + CAMPS.map((c) =>
+    `<tr><td><b>${esc(c.brand)}</b><div class="s">${esc(c.product)}</div></td><td>${chip(c.status, c.status === "active" ? "yes" : "")}</td><td class="s">${esc(c.start)} → ${esc(c.end)}</td>
+     <td>${c.creatives.map((k) => `<div>${chip(k.format)} ${esc(k.label || k.id)} ${k.file ? `<span class="code">${esc(k.file)}</span>` : `<span class="s">no file</span>`}</div>`).join("")}</td>
+     <td class="s">${c.brief ? `<div><b>Meaning:</b> ${esc(c.brief.length > 90 ? c.brief.slice(0, 90) + "…" : c.brief)}</div>` : ""}${c.targeting.iab.map((x) => `<span class="code">${esc(x)}</span>`).join("")} ${esc(c.targeting.keywords.join(", "))}</td>
+     <td class="s">${esc([...c.exclusions.competitors, ...c.exclusions.keywords].join(", "))} ${c.exclusions.iab.map((x) => `<span class="code">${esc(x)}</span>`).join("")}</td>
+     <td><button class="ghost sm" data-edit="${esc(c.id)}">Edit</button> <button class="ghost sm" data-del="${esc(c.id)}">Delete</button></td></tr>`).join("") + `</table></div>`
+    : `<div class="note">No campaigns yet. Recommendations need a campaign with real dates, a brief or a target category, and at least one creative.</div>`;
+  document.querySelectorAll("[data-edit]").forEach((b) => (b.onclick = () => fillForm(CAMPS.find((c) => c.id === b.dataset.edit))));
+  document.querySelectorAll("[data-del]").forEach((b) => (b.onclick = async () => { if (!confirm("Delete this campaign?")) return; await api("/campaigns/" + b.dataset.del, { method: "DELETE" }); loadCampaigns(); loadArticles(); }));
+}
+
+// ---------- articles ----------
+async function loadArticles() {
+  const r = await api("/articles"); ROWS = r.rows;
+  $("#tblMeta").textContent = r.ranAt ? `${ROWS.length} articles · ranked ${new Date(r.ranAt).toLocaleString()}` : `${ROWS.length} articles`;
+  drawArticles();
+}
+function drawArticles() {
+  const f = $("#filter").value;
+  const rows = ROWS.filter((a) => f === "all" || (f === "rec" && a.top && ["recommended", "approved"].includes(a.top.status)) || (f === "review" && a.top?.status === "needs_review") || (f === "none" && !a.top));
+  $("#artTbl").innerHTML = `<tr><th>Article</th><th>Categories</th><th>Safety</th><th>Recommended ad</th><th>Candidates</th></tr>` + (rows.map((a) => `<tr class="click" data-id="${a.id}">
+    <td style="min-width:260px"><b>${esc(a.headline || a.url)}</b><div class="s">${esc(a.publisher)} · ${esc((a.published || a.fetchedAt || "").slice(0, 10))}</div>${a.error ? `<div>${chip(a.error.code, "no")}</div>` : ""}</td>
+    <td>${a.categories.map((c) => chip(c.name, "cat")).join("")}</td>
+    <td>${a.safety ? chip(LABEL[a.safety.state] || a.safety.state, "st-" + a.safety.state) + `<div class="s">${esc(a.safety.reasons.slice(0, 2).join(", "))}</div>` : "—"}</td>
+    <td style="min-width:200px">${a.top ? `<b>${esc(a.top.brand)}</b> · ${esc(a.top.creative)}<div>${chip(a.top.format, "cat")}${chip(LABEL[a.top.status], "st-" + a.top.status)} <span class="score" style="font-size:15px">${a.top.score ?? ""}</span></div>${(a.top.reasons || []).filter((r) => r.startsWith("MEANING:")).map((r) => `<div class="s">meaning ${esc(r.slice(8))}</div>`).join("")}${(a.top.reasons || []).includes("NEGATIVE_TONE") ? `<div class="s">negative tone — review</div>` : ""}` : `<span class="s">—</span>`}</td>
+    <td class="s">${a.counts.recommended + a.counts.approved} rec · ${a.counts.needs_review} review · ${a.counts.excluded} excl.</td></tr>`).join("") || `<tr><td colspan="5" class="s">No articles yet — click “Fetch &amp; analyse latest”.</td></tr>`);
+  document.querySelectorAll("#artTbl tr.click").forEach((tr) => (tr.onclick = () => openArticle(tr.dataset.id)));
+}
+$("#filter").onchange = drawArticles;
+async function poll(id, logEl, done) {
+  logEl.classList.remove("hide");
+  const t = setInterval(async () => { try { const j = await api("/job/" + id); logEl.textContent = j.log.join("\n"); logEl.scrollTop = 1e9; if (j.status !== "running") { clearInterval(t); done(j); } } catch (e) { clearInterval(t); logEl.textContent += "\n" + e.message; done({ status: "failed" }); } }, 1200);
+}
+$("#runBtn").onclick = async () => {
+  const ids = [...document.querySelectorAll(".pubPick:checked")].map((x) => x.value);
+  $("#runBtn").disabled = true;
+  try { const { id } = await api("/run", { method: "POST", body: { publisherIds: ids, limit: +$("#limit").value } }); poll(id, $("#runLog"), () => { $("#runBtn").disabled = false; loadArticles(); }); }
+  catch (e) { $("#runBtn").disabled = false; $("#runLog").classList.remove("hide"); $("#runLog").textContent = e.message; }
+};
+$("#recBtn").onclick = async () => {
+  $("#recBtn").disabled = true; $("#tblMeta").textContent = "Recomputing (reading meaning of new articles)…";
+  try { const r = await api("/recommend", { method: "POST" }); if (r.meaning?.missing) alert(`Meaning match pending for ${r.meaning.missing} item(s)${r.meaning.error ? ": " + r.meaning.error : ""}. Try again in a minute.`); }
+  catch (e) { alert(e.message); }
+  $("#recBtn").disabled = false; loadArticles();
+};
+
+// ---------- a publisher's feed, readable (the raw RSS link only downloads a file in most browsers) ----------
+document.addEventListener("click", async (e) => {
+  const a = e.target.closest(".feedLink"); if (!a) return; e.preventDefault();
+  $("#panel").innerHTML = `<div class="bar" style="margin:0 0 10px"><button class="ghost sm" id="closeD">Close</button></div><p class="s">Reading the feed…</p>`;
+  $("#drawer").classList.remove("hide"); $("#closeD").onclick = () => $("#drawer").classList.add("hide");
+  try {
+    const f = await api("/feed?pub=" + encodeURIComponent(a.dataset.pub));
+    $("#panel").innerHTML = `<div class="bar" style="margin:0 0 10px;justify-content:space-between"><button class="ghost sm" id="closeD">Close</button><span class="s">${f.feeds.map((x) => `<a href="${esc(x)}" target="_blank" rel="noopener">raw RSS</a>`).join(" ")}</span></div>
+      <h2 style="margin:0 0 4px">${esc(f.publisher)} — latest articles</h2><p class="s" style="margin:0 0 12px">Straight from the publisher's feed. "Fetch &amp; analyse latest" (section 3) reads these and matches them to your campaigns.</p>
+      ${f.errors.map((x) => `<div class="note" style="margin-bottom:8px">${esc(x)}</div>`).join("")}
+      ${f.items.length ? `<table class="tbl">${f.items.map((it) => `<tr><td><a href="${esc(it.url)}" target="_blank" rel="noopener"><b>${esc(it.title || it.url)}</b></a>${it.article ? "" : ` <span class="s">(not an article page)</span>`}</td><td class="s" style="white-space:nowrap">${it.published ? esc(new Date(it.published).toLocaleString("en-IN", { dateStyle: "medium", timeStyle: "short" })) : ""}</td></tr>`).join("")}</table>` : `<p class="s">No articles in the feed right now.</p>`}`;
+  } catch (err) { $("#panel").innerHTML = `<div class="bar" style="margin:0 0 10px"><button class="ghost sm" id="closeD">Close</button></div><div class="note">Couldn't read the feed: ${esc(err.message)}</div>`; }
+  $("#closeD").onclick = () => $("#drawer").classList.add("hide");
+});
+
+// ---------- evidence drawer ----------
+const ev = (e) => e.quote ? `<div class="quote">“${esc(e.quote)}”<small>${esc(e.about || "")}${e.term ? ` · term “${esc(e.term)}”${e.count > 1 ? ` ×${e.count}` : ""}` : ""}${e.kind === "ai_quote" ? " · AI claim, quote verified in the article" : e.kind === "term" ? " · exact match in the article" : ""}</small></div>`
+  : `<div class="quote">${esc(e.value)}<small>${esc(e.about || e.kind)}${e.kind === "section" ? " · publisher section / URL" : ""}</small></div>`;
+async function openArticle(id) {
+  const { article: a, recommendations: recs } = await api("/articles/" + id);
+  const s = a.safety, ai = a.features?.ai;
+  $("#panel").innerHTML = `<div class="bar" style="margin:0 0 10px;justify-content:space-between"><button class="ghost sm" id="closeD">Close</button><a href="${esc(a.url)}" target="_blank" rel="noopener">Open article ↗</a></div>
+    <h2 style="margin:0 0 4px">${esc(a.headline || a.url)}</h2><div class="s">${esc(a.url)}<br>Published ${esc(a.published || "unknown")} · fetched ${esc(a.fetchedAt)} · ${esc(a.source || "")} · ${a.paragraphs ?? "?"} paragraphs · lead image ${a.image?.url ? "yes" : "no"} · <span class="code">${esc((a.contentHash || "").slice(0, 12))}</span></div>
+    ${a.error ? `<div class="note" style="margin-top:12px">${chip(a.error.code, "no")} ${esc(a.error.message)}</div>` : `
+    <div class="card" style="margin-top:14px;padding:16px"><b>Page safety</b> ${chip(LABEL[s.state], "st-" + s.state)} <span class="s">policy ${esc(s.policy)} · AI ${esc(s.ai || ai?.status)}</span>
+      <div style="margin-top:6px">${s.reasons.map((r) => `<span class="code">${esc(r)}</span>`).join("")}</div>${s.evidence.map(ev).join("")}</div>
+    <div class="card" style="margin-top:14px;padding:16px"><b>Categories</b>
+      ${[...(ai?.categories || []).map((c) => ({ ...c, source: "ai", evidence: [{ kind: "ai_quote", quote: c.quote }] })), ...a.features.lexical.categories].map((c) => `<div style="margin-top:8px">${chip(c.name, "cat")} <span class="s">${esc(c.source)}</span>${c.evidence.slice(0, 2).map(ev).join("")}</div>`).join("") || `<div class="s">No category evidence.</div>`}
+      <div class="s" style="margin-top:10px">AI: ${esc(ai?.status)}${ai?.message ? " — " + esc(ai.message) : ""}${ai?.dropped?.length ? ` · ${ai.dropped.length} AI claim(s) dropped because the quote wasn't in the article` : ""}${ai?.objects?.length ? ` · lead image (model observation): ${esc(ai.objects.join(", "))}` : ""}</div></div>`}
+    <h3 style="margin:20px 0 4px;font-size:15px">Candidates (${recs.length})</h3>${recs.length ? "" : `<div class="s">No campaign creatives to consider yet.</div>`}
+    ${recs.map((r) => `<div class="rec"><h4>${esc(r.brand)} · ${esc(r.creativeLabel)} ${chip(r.format, "cat")} ${chip(LABEL[r.status], "st-" + r.status)} ${r.score != null ? `<span class="score">${r.score}</span>` : ""}</h4>
+      <div class="gates">${r.gates.map((g) => chip(`${g.pass ? "✓" : "✗"} ${g.gate}: ${g.reason}`, g.pass ? "yes" : "no")).join("")}</div>
+      ${r.detail ? `<div class="s">${esc(r.detail)}</div>` : ""}
+      <div>${r.reasons.map((x) => `<span class="code">${esc(x)}</span>`).join("")}</div>
+      ${r.parts ? `<div class="s">Score parts: ${Object.entries(r.parts).map(([k, v]) => `${esc(k)} ${v}`).join(" · ")}</div>` : ""}
+      ${(r.evidence || []).slice(0, 6).map(ev).join("")}
+      ${r.review ? `<div class="s">Reviewed by ${esc(r.review.by)} (${esc(r.review.decision)}): ${esc(r.review.why)}</div>` : ""}
+      ${["needs_review", "approved"].includes(r.status) ? `<div class="bar"><input type="text" placeholder="Your name" class="rvBy" style="max-width:160px"><input type="text" placeholder="Reason" class="rvWhy" style="max-width:260px"><button class="sm" data-rv="approve" data-key="${esc(r.key)}">Approve</button><button class="ghost sm" data-rv="reject" data-key="${esc(r.key)}">Reject</button></div>` : ""}
+      ${["recommended", "approved"].includes(r.status) ? `<div class="bar"><button class="sm" data-mock="${esc(r.key)}">Make mock</button><label style="margin:0;display:flex;gap:6px;align-items:center;font-weight:500"><input type="checkbox" class="mkVid"> with scroll video</label><span class="s mkMsg"></span></div><div class="log hide mkLog"></div>` : ""}
+    </div>`).join("")}`;
+  $("#drawer").classList.remove("hide");
+  $("#closeD").onclick = () => $("#drawer").classList.add("hide");
+  document.querySelectorAll("[data-rv]").forEach((b) => (b.onclick = async () => {
+    const box = b.closest(".rec");
+    try { await api("/review", { method: "POST", body: { key: b.dataset.key, decision: b.dataset.rv, by: box.querySelector(".rvBy").value, why: box.querySelector(".rvWhy").value } }); await loadArticles(); openArticle(id); }
+    catch (e) { alert(e.message); }
+  }));
+  document.querySelectorAll("[data-mock]").forEach((b) => (b.onclick = async () => {
+    const box = b.closest(".rec"); b.disabled = true;
+    try { const { id: jid } = await api("/mock", { method: "POST", body: { key: b.dataset.mock, video: box.querySelector(".mkVid").checked } }); poll(jid, box.querySelector(".mkLog"), () => { b.disabled = false; loadMocks(); }); }
+    catch (e) { b.disabled = false; box.querySelector(".mkMsg").textContent = e.message; }
+  }));
+}
+$("#drawer").onclick = (e) => { if (e.target.id === "drawer") $("#drawer").classList.add("hide"); };
+
+async function loadMocks() {
+  const ms = await api("/mocks");
+  $("#mocks").innerHTML = ms.map((m) => { const png = m.files.find((f) => f.endsWith(".png")), vid = m.files.find((f) => /\.(mp4|webm)$/.test(f));
+    return `<figure>${png ? `<a href="/api/ow/file?kind=mock&f=${encodeURIComponent(png)}" target="_blank"><img loading="lazy" src="/api/ow/file?kind=mock&f=${encodeURIComponent(png)}" alt="Mock"></a>` : ""}
+      <figcaption><b>${esc(m.brand)}</b> · ${esc(m.creative.format)} · ${m.score}<br><span class="s">${esc(m.article.headline)}</span><br>${vid ? `<a href="/api/ow/file?kind=mock&f=${encodeURIComponent(vid)}" target="_blank">video</a> · ` : ""}<a href="${esc(m.article.url)}" target="_blank" rel="noopener">article</a></figcaption></figure>`; }).join("") || `<div class="s">No mocks yet. Open a recommended placement and click “Make mock”.</div>`;
+}
+
+(async () => {
+  try { await loadStatus(); await loadInventory(); fillForm(null); await loadCampaigns(); await loadArticles(); await loadMocks(); }
+  catch (e) { $("#statusNote").textContent = "Couldn't load: " + e.message; }
+})();
+</script>
+</body></html>

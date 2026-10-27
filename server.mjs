@@ -7,6 +7,7 @@ import { spawn } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import Anthropic from "@anthropic-ai/sdk";
 import { GoogleGenAI } from "@google/genai";
+import { createOpenWeb } from "./openweb/routes.mjs";
 
 const APP = path.dirname(fileURLToPath(import.meta.url));
 const PIPE = path.join(APP, "pipeline");
@@ -112,6 +113,24 @@ async function askGemini(system, text, schema, images, fast = false, grace = 0) 
     launch(); if (grace) launch();
     timer = setInterval(() => { if (running < 2 && !liteAns) launch(); }, HEDGE);
   });
+}
+// Meaning vectors (embeddings) for semantic matching — Gemini's embedding model, which has its own free allowance
+// (~100 texts a minute): batches of up to 45, and a wait (at most ~1.5 min in total) whenever the minute limit is hit.
+async function embedTexts(texts, task = "RETRIEVAL_DOCUMENT", dims = 768) {
+  const key = geminiKey(); if (!key) throw new AIError("Meaning match needs the Gemini key (Settings on the computer running the app).");
+  const out = []; let waited = 0;
+  for (let i = 0; i < texts.length; i += 45) {
+    for (;;) {
+      const r = await fetch("https://generativelanguage.googleapis.com/v1beta/models/gemini-embedding-001:batchEmbedContents", { method: "POST",
+        headers: { "Content-Type": "application/json", "x-goog-api-key": key }, signal: AbortSignal.timeout(60000),
+        body: JSON.stringify({ requests: texts.slice(i, i + 45).map((text) => ({ model: "models/gemini-embedding-001", content: { parts: [{ text: String(text).slice(0, 8000) }] }, taskType: task, outputDimensionality: dims })) }) });
+      const j = await r.json().catch(() => ({}));
+      if (r.status === 429 && !/per.?day/i.test(JSON.stringify(j)) && waited < 90000) { await sleep(20000); waited += 20000; continue; }
+      if (!r.ok || !j.embeddings) throw new AIError("Gemini embeddings: " + (j.error?.message || "HTTP " + r.status).slice(0, 160));
+      out.push(...j.embeddings.map((e) => e.values)); break;
+    }
+  }
+  return out;
 }
 async function askClaude(system, text, schema, images, effort) {
   const content = [];
@@ -782,6 +801,11 @@ const send = (res, code, body, type = "application/json") => { res.writeHead(cod
 const body = (req) => new Promise((r) => { let d = ""; req.on("data", (c) => (d += c)); req.on("end", () => { try { r(JSON.parse(d || "{}")); } catch { r({}); } }); });
 function saveData(dataUrl, file) { const m = /^data:[^;]+;base64,(.*)$/.exec(dataUrl || ""); if (!m) return null; fs.writeFileSync(file, Buffer.from(m[1], "base64")); return file; }
 
+// Open Web contextual placement (openweb/): its own routes and data folder; if its config is broken only that tab is off
+let openweb = null, openwebError = "";
+try { openweb = createOpenWeb({ dataDir: path.join(OUT_ROOT, "openweb"), ask, provider, ffmpeg: (args) => run("ffmpeg", args), embed: embedTexts }); }
+catch (e) { openwebError = e.message; console.error("Open Web disabled:", e.message); }
+
 http.createServer(async (req, res) => {
   const u = new URL(req.url, "http://x");
   if (u.pathname === "/healthz") return send(res, 200, { ok: true });
@@ -807,6 +831,7 @@ http.createServer(async (req, res) => {
   try {
     if (req.method === "GET" && u.pathname === "/") return send(res, 200, fs.readFileSync(path.join(APP, "ui.html")), "text/html; charset=utf-8");
     const local = !req.headers["cf-connecting-ip"] && !req.headers["x-forwarded-for"] && /^(::1|127\.0\.0\.1|::ffff:127\.0\.0\.1)$/.test(req.socket.remoteAddress || "");
+    if (u.pathname === "/openweb" || u.pathname.startsWith("/api/ow/")) return openweb ? await openweb.handle(req, res, u, { local }) : send(res, 503, { error: "Open Web is unavailable: " + openwebError });
     if (u.pathname === "/api/status") return send(res, 200, { local, queue: waiting, hasKey: provider() !== "none", provider: provider(), youtube: youtubeKey() ? (Date.now() > ytApiDisabledUntil ? "api" : "browser (API paused)") : "browser", keyFromEnv: !!(process.env.ANTHROPIC_API_KEY || process.env.GEMINI_API_KEY), ffmpeg: !!FF || !IS_WIN, hosted: !IS_WIN, outDir: OUT_ROOT });
     if (req.method === "POST" && u.pathname === "/api/settings") { if (!local) return send(res, 403, { error: "Settings can only be changed on the computer running the app." }); const b = await body(req); const s = loadSettings(); if (b.apiKey) s.apiKey = b.apiKey.trim(); if (b.geminiKey) s.geminiKey = b.geminiKey.trim(); if (b.youtubeKey) { s.youtubeKey = b.youtubeKey.trim(); ytApiDisabledUntil = 0; } if (b.provider) s.provider = b.provider; fs.writeFileSync(SETTINGS, JSON.stringify(s)); return send(res, 200, { ok: true, provider: provider() }); }
     if (req.method === "POST" && u.pathname === "/api/ads") {   // runs in the background (share links cut requests at ~100 s)

@@ -1,0 +1,24 @@
+{
+ "version": "formats.v1",
+ "formats": {
+  "in-image": { "label": "In-image", "openWeb": true, "needs": { "leadImage": true } },
+  "in-scroll": { "label": "In-scroll", "openWeb": true, "needs": { "minParagraphs": 4 } },
+  "interstitial": { "label": "Interstitial", "openWeb": true, "needs": {} },
+  "display": { "label": "Display banner", "openWeb": true, "needs": {} },
+  "ctv": { "label": "CTV", "openWeb": false, "needs": {} },
+  "rich-media": { "label": "Rich media (3D, CGI, interactive, 2-in-1, carousel)", "openWeb": true, "needs": { "slotSpec": true } }
+ },
+ "showcasePlatforms": {
+  "platform-in-image": "in-image",
+  "platform-in-scroll": "in-scroll",
+  "platform-2d-interstitial": "interstitial",
+  "platform-ctv": "ctv",
+  "platform-video": "display",
+  "platform-3d": "rich-media",
+  "platform-cgi": "rich-media",
+  "platform-interactive": "rich-media",
+  "platform-2-in-1": "rich-media",
+  "platform-carousel-catalogue": "rich-media",
+  "platform-i-innovation": "rich-media"
+ }
+}

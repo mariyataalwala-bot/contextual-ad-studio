@@ -1,0 +1,34 @@
+{
+ "version": "safety.v2",
+ "changes": "v2 (2026-10-26): when only the AI flags an exclude category and the term checks find nothing, treat it as conflicting (aiOnlyUnsafe) instead of excluding outright. Reason: in the first live run the AI labelled a prostate-cancer explainer as 'Death, Injury, or Military Conflict'.",
+ "aiOnlyUnsafe": "conflict",
+ "basis": "IAB Content Taxonomy 3.1 'Sensitive Topics' plus the tier-1 Crime, Disasters, War and Conflicts and Politics categories. Terms are whole-word, case-insensitive matches against the article headline and body only (not navigation or footers).",
+ "onUnknown": "needs_review",
+ "onConflict": "needs_review",
+ "aiRequiredForSafe": true,
+ "minBodyChars": 400,
+ "thresholds": {
+  "headlineHitsExclude": 1,
+  "bodyDistinctTermsExclude": 2,
+  "bodyDistinctTermsFlag": 1
+ },
+ "categories": [
+  { "iab": "Rm3SiT", "action": "exclude", "terms": ["porn", "pornography", "pornographic", "sex video", "nude photos", "explicit video", "escort service"] },
+  { "iab": "avbNf2", "action": "exclude", "terms": ["firearms", "ammunition", "assault rifle", "illegal weapons", "arms haul", "gun smuggling"] },
+  { "iab": "XtODT3", "action": "exclude", "terms": ["murder", "murdered", "rape", "raped", "sexual assault", "molested", "molestation", "kidnapped", "kidnapping", "abducted", "stabbed", "shot dead", "robbery", "extortion", "acid attack", "dowry death", "हत्या", "बलात्कार", "अपहरण"] },
+  { "iab": "I4GWl6", "action": "exclude", "terms": ["killed", "found dead", "dead body", "death toll", "died", "dies at", "fatal accident", "road accident", "injured", "suicide", "airstrike", "missile strike", "shelling", "मौत", "हादसा", "घायल"] },
+  { "iab": "8FD8nI", "action": "exclude", "terms": ["terror attack", "terrorist", "terrorists", "militants", "bomb blast", "suicide bomber", "आतंकी", "आतंकवादी"] },
+  { "iab": "HxqYV1", "action": "exclude", "terms": ["communal violence", "communal clash", "lynching", "lynched", "hate speech", "riot", "riots", "mob attack", "दंगा"] },
+  { "iab": "pg0WhF", "action": "exclude", "note": "Drugs, tobacco and vaping terms only. Alcohol is not in the term list; the AI check can still flag it.", "terms": ["cocaine", "heroin", "drug peddler", "drug racket", "narcotics", "drug overdose", "ganja", "vaping", "e-cigarette"] },
+  { "iab": "j9PaO9", "action": "review", "terms": [] },
+  { "iab": "mm3UXx", "action": "review", "terms": ["piracy", "pirated", "torrent download"] },
+  { "iab": "6i4dB6", "action": "review", "terms": [] },
+  { "iab": "Z7rJBM", "action": "review", "terms": ["abortion", "caste discrimination"] },
+  { "iab": "380", "action": "exclude", "terms": [] },
+  { "iab": "381", "action": "exclude", "terms": ["earthquake", "floods", "flood-hit", "cyclone", "landslide", "tsunami", "stampede", "building collapse", "wildfire", "भूकंप", "बाढ़"] },
+  { "iab": "389", "action": "exclude", "terms": ["ceasefire", "war-torn", "invasion", "military strike", "troops killed"] },
+  { "iab": "386", "action": "exclude", "terms": ["assembly polls", "poll results", "election rally", "election campaign", "lok sabha", "rajya sabha", "bjp", "congress party", "chunav", "चुनाव"] },
+  { "iab": "387", "action": "exclude", "terms": ["elections", "election commission", "voter turnout", "midterm elections"] },
+  { "iab": "187", "action": "review", "terms": ["obituary", "passed away", "funeral", "condolences"] }
+ ]
+}
