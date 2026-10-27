@@ -13,6 +13,22 @@ import { loadMediaPlan, loadShowcase, refreshShowcase, creativeFiles, checkPubli
 import { renderMock, MockError } from "./lib/mock.mjs";
 import { ensureVectors } from "./lib/semantic.mjs";
 import { loadStudioConfig, makeInImage, sectionItems, feedFetcher, sitemapIndex } from "./lib/studio.mjs";
+import { STYLES } from "./lib/strip.mjs";
+import { loadBrands } from "./lib/brands.mjs";
+
+// A creative file the client supplies, sent from the page as a data: URL. Its type is read from the file's own bytes
+// (not from the name): PNG, JPEG, GIF, WebP pictures; MP4, WebM videos. At most 40 MB.
+export function clientCreative(dataUrl) {
+  const m = /^data:[^;,]*;base64,(.*)$/s.exec(String(dataUrl || ""));
+  if (!m) return { error: "The client's ad file could not be read." };
+  const buf = Buffer.from(m[1], "base64");
+  if (buf.length > 40e6) return { error: "The client's ad file is larger than 40 MB." };
+  const at = (i, s) => buf.subarray(i, i + s.length).toString("latin1") === s;
+  const kind = at(0, "\x89PNG") ? ["png", "image"] : buf[0] === 0xff && buf[1] === 0xd8 ? ["jpg", "image"] : at(0, "GIF8") ? ["gif", "image"] : at(0, "RIFF") && at(8, "WEBP") ? ["webp", "image"]
+    : at(4, "ftyp") ? ["mp4", "video"] : buf[0] === 0x1a && buf[1] === 0x45 && buf[2] === 0xdf && buf[3] === 0xa3 ? ["webm", "video"] : null;
+  if (!kind) return { error: "The client's ad must be a PNG, JPEG, GIF or WebP picture, or an MP4 or WebM video." };
+  return { buf, ext: kind[0], type: /** @type {"image"|"video"} */ (kind[1]) };
+}
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const send = (res, code, body, type = "application/json") => { res.writeHead(code, { "Content-Type": type, "Cache-Control": "no-store" }); res.end(type === "application/json" ? JSON.stringify(body) : body); };
@@ -28,6 +44,7 @@ const FILE_TYPES = { ".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/
 export function createOpenWeb({ dataDir, ask = null, provider = () => "none", ffmpeg = null, fetchImpl = globalThis.fetch, chromium = null, configDir, embed = null, py = null, studioDir = null }) {
   const cfg = loadConfig(configDir);
   const studio = loadStudioConfig(configDir);
+  const brands = loadBrands(configDir);
   const studioRoot = studioDir || path.join(path.dirname(dataDir), "inimage");
   let studioBusy = null;
   const store = makeStore(dataDir);
@@ -75,15 +92,20 @@ export function createOpenWeb({ dataDir, ask = null, provider = () => "none", ff
     const brand = String(b.brand || "").trim().slice(0, 60), product = String(b.product || "").trim().slice(0, 100), offer = String(b.offer || "").trim().slice(0, 60), productImage = String(b.productImage || "").trim().slice(0, 2000);
     if (!brand || !product) return { code: 400, body: { error: "Type the brand and the product." } };
     if (productImage && !/^https:\/\//i.test(productImage)) return { code: 400, body: { error: "The product photo link must start with https://" } };
+    const style = STYLES.includes(b.style) ? b.style : null;
+    const cc = b.clientAd ? clientCreative(b.clientAd.data) : null;
+    if (cc?.error) return { code: 400, body: { error: cc.error } };
     if (!ask || provider() === "none") return { code: 400, body: { error: "The studio needs the AI key (Settings on the computer running the app)." } };
     if (!py || !ffmpeg) return { code: 503, body: { error: "Python and ffmpeg are needed on the computer running the app." } };
     if (studioBusy && jobs[studioBusy]?.status === "running") return { code: 409, body: { error: "A mock is already being made — wait for it to finish.", id: studioBusy } };
     const d = new Date(), z = (n) => String(n).padStart(2, "0"), slug = (s) => s.toLowerCase().normalize("NFKD").replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 40) || "brand";
     const rel = path.join(slug(brand), `${d.getFullYear()}${z(d.getMonth() + 1)}${z(d.getDate())}-${z(d.getHours())}${z(d.getMinutes())}${z(d.getSeconds())}`);
-    const workDir = path.join(studioRoot, rel); fs.mkdirSync(workDir, { recursive: true });
+    const workDir = path.join(studioRoot, rel); fs.mkdirSync(path.join(workDir, "assets"), { recursive: true });
+    let clientAd = null;
+    if (cc) { const file = path.join(workDir, "assets", "client_ad." + cc.ext); fs.writeFileSync(file, cc.buf); clientAd = { file, type: cc.type, name: String(b.clientAd.name || "").slice(0, 120), seconds: +b.clientAd.seconds || null }; }
     const j = job("studio"); Object.assign(j, { pct: 1, stage: "start", brand, product, dir: rel.replace(/\\/g, "/") }); studioBusy = j.id;
     const say = (pct, stage, msg) => { j.pct = Math.max(j.pct, pct); j.stage = stage; if (msg) log(j, msg); };
-    makeInImage({ brand, product, offer, productImage, workDir, indexDir: studioRoot, studio, cfg, store, ask, fetchImpl, py, ffmpeg, chromium, say })
+    makeInImage({ brand, product, offer, productImage, style, clientAd, brands, workDir, indexDir: studioRoot, studio, cfg, store, ask, fetchImpl, py, ffmpeg, chromium, say })
       .then((r) => { j.result = r; j.status = "done"; j.pct = 100; log(j, `Mock ready in ${r.seconds} s.`); })
       .catch((e) => { j.status = "failed"; j.error = e.message; log(j, "Stopped: " + e.message); try { fs.writeFileSync(path.join(workDir, "error.txt"), e.stack || e.message); } catch { /* best effort */ } })
       .finally(() => { j.tEnd = Date.now(); if (studioBusy === j.id) studioBusy = null; });
@@ -98,6 +120,7 @@ export function createOpenWeb({ dataDir, ask = null, provider = () => "none", ff
       return send(res, 200, fs.readFileSync(path.join(HERE, "inimage.html")), "text/html; charset=utf-8");
     }
     const p = u.pathname.slice("/api/ow".length);
+    if (p === "/studio/brands") return send(res, 200, { version: brands.version, brands: brands.brands.map((b) => ({ name: b.name, category: b.category, subBrands: (b.subBrands || []).map((x) => x.name) })) });
     if (p === "/studio/start" && req.method === "POST") { const r = studioStart(await body(req)); return send(res, r.code, r.body); }
     if (p === "/studio/list") {   // earlier mocks (newest first), read back from their result.json files
       const out = [];

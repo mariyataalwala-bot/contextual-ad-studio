@@ -19,7 +19,12 @@ main{max-width:1120px;margin:22px auto 60px;padding:0 20px;display:grid;gap:18px
 .ch{display:flex;align-items:flex-start;gap:14px;margin-bottom:18px}
 .num{flex:none;display:grid;place-items:center;width:34px;height:34px;border-radius:11px;background:var(--grad);color:#fff;font-size:15px;font-weight:700}
 .card h2{margin:2px 0;font-size:18px;font-weight:700}.s{color:var(--mute);font-size:13.5px}
-.row{display:grid;grid-template-columns:1fr 1.4fr 1fr;gap:14px}.row2{display:grid;grid-template-columns:1fr;gap:14px;margin-top:14px}
+.row{display:grid;grid-template-columns:1fr 1.4fr 1fr;gap:14px}
+.src{display:flex;gap:10px;flex-wrap:wrap;margin:0 0 16px}.src label{display:flex;align-items:center;gap:8px;margin:0;padding:10px 14px;border:1.5px solid var(--line);border-radius:12px;cursor:pointer;font-size:13.5px;font-weight:600;background:#FBFBFE}
+.src input{accent-color:var(--p)}.src label:has(input:checked){border-color:var(--p);background:#F4F4FF}
+select{width:100%;font:inherit;font-size:14.5px;padding:12px 14px;border:1.5px solid var(--line);border-radius:12px;background:#FBFBFE;color:var(--ink)}
+.drop{display:flex;align-items:center;gap:14px;padding:14px 16px;border:1.5px dashed #C9CBE0;border-radius:14px;background:#FBFBFE;cursor:pointer;position:relative}
+.drop input{position:absolute;inset:0;opacity:0;cursor:pointer}.drop b{font-size:13.5px}.drop img,.drop video{height:64px;border-radius:8px;border:1px solid var(--line);margin-left:auto}.row2{display:grid;grid-template-columns:1fr;gap:14px;margin-top:14px}
 label{display:block;font-size:12.5px;font-weight:600;margin:0 0 7px;color:#3A3C52}
 input{width:100%;font:inherit;font-size:14.5px;padding:12px 14px;border:1.5px solid var(--line);border-radius:12px;background:#FBFBFE;color:var(--ink)}
 input:focus{outline:none;border-color:var(--p);background:#fff;box-shadow:0 0 0 4px rgba(92,99,220,.13)}
@@ -58,12 +63,15 @@ button:disabled{opacity:.45;cursor:default}.ghost{background:#fff;color:var(--p)
 <main>
 <section class="card">
   <div class="ch"><div class="num">1</div><div><h2>Brand and product</h2><p class="s">The product photo, logo and copy are found and written automatically; the article comes from the media-plan in-image publishers.</p></div></div>
+  <div class="src"><label><input type="radio" name="src" value="make" checked> Make the ad for me</label><label><input type="radio" name="src" value="client"> Use the client's own ad</label></div>
   <div class="row">
-    <div><label for="brand">Brand</label><input type="text" id="brand" placeholder="e.g. Bata" autocomplete="off"></div>
+    <div><label for="brand">Brand</label><input type="text" id="brand" placeholder="e.g. Bata" autocomplete="off" list="brandList"><datalist id="brandList"></datalist></div>
     <div><label for="product">Product</label><input type="text" id="product" placeholder="e.g. Power running shoes" autocomplete="off"></div>
     <div><label for="offer">Offer line (optional)</label><input type="text" id="offer" placeholder="shown exactly as typed" autocomplete="off"></div>
   </div>
-  <div class="row2"><div><label for="pimg">Exact product photo link (optional)</label><input type="text" id="pimg" placeholder="https://… a photo of the exact product from the brand's site — used as it is instead of searching" autocomplete="off"></div></div>
+  <div class="row2" id="clientRow" hidden><label class="drop"><input type="file" id="cfile" accept="image/png,image/jpeg,image/gif,image/webp,video/mp4,video/webm"><div><b>Choose the client's ad file</b><div class="s" id="cname">PNG, JPEG, GIF, WebP or MP4 / WebM video, up to 40 MB — placed as it is over the bottom of the chosen article picture</div></div><span id="cprev"></span></label></div>
+  <div class="row2" id="makeRow2"><div><label for="style">Design</label><select id="style"><option value="">Auto — suits the brand</option><option value="bold">Bold — FMCG, sales, snacks</option><option value="luxe">Luxe — jewellery, beauty, premium</option><option value="sport">Sport — shoes, sportswear, fitness</option><option value="fresh">Fresh — drinks, food</option><option value="tech">Tech — phones, electronics</option><option value="journey">Journey — travel, stays, services</option></select></div></div>
+  <div class="row2" id="makeRow"><div><label for="pimg">Exact product photo link (optional)</label><input type="text" id="pimg" placeholder="https://… a photo of the exact product from the brand's site — used as it is instead of searching" autocomplete="off"></div></div>
   <div class="bar"><button id="go">Make the in-image mock</button><span class="s" id="hint">About a minute.</span></div>
   <div class="how">
     <div><b>1 · Product</b>Searched online; AI picks the official packshot and cuts it out</div>
@@ -91,10 +99,12 @@ let shown = 0, target = 0, tick;
 function setPct(p) { target = p; if (!tick) tick = setInterval(() => { if (shown < target) shown += Math.max(0.4, (target - shown) / 8); else if (shown < Math.min(99, target + 6)) shown += 0.05; /* creeps a little while a step runs */ $("pct").textContent = Math.floor(Math.min(shown, 100)) + "%"; $("fill").style.width = Math.min(shown, 100) + "%"; }, 120); }
 function setStage(st) { const i = ORDER.indexOf(st); for (const s of $("steps").children) { const k = ORDER.indexOf(s.dataset.k); s.className = k < i || st === "done" ? "ok" : k === i ? "on" : ""; } }
 async function go() {
-  const brand = $("brand").value.trim(), product = $("product").value.trim(), offer = $("offer").value.trim(), productImage = $("pimg").value.trim();
+  const brand = $("brand").value.trim(), product = $("product").value.trim(), offer = $("offer").value.trim(), productImage = $("pimg").value.trim(), style = $("style").value;
   if (!brand || !product) { $("hint").innerHTML = `<span class="err">Type the brand and the product.</span>`; return; }
+  const useClient = document.querySelector('input[name="src"]:checked').value === "client";
+  if (useClient && !clientAd) { $("hint").innerHTML = `<span class="err">Choose the client's ad file.</span>`; return; }
   $("go").disabled = true; $("out").hidden = true; $("prog").hidden = false; shown = 0; setPct(1); setStage("search"); $("log").textContent = "";
-  let id; try { id = (await api("/studio/start", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ brand, product, offer, productImage }) })).id; }
+  let id; try { id = (await api("/studio/start", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(useClient ? { brand, product, clientAd } : { brand, product, offer, productImage, style }) })).id; }
   catch (e) { $("log").innerHTML = `<span class="err">${esc(e.message)}</span>`; $("go").disabled = false; return; }
   for (;;) {
     await new Promise((r) => setTimeout(r, 1200));
@@ -105,8 +115,23 @@ async function go() {
   }
   $("go").disabled = false; loadGallery();
 }
+// the client's own ad: read in the browser and sent with the request (videos: their length decides how long the mock holds)
+let clientAd = null;
+for (const el of document.querySelectorAll('input[name="src"]')) el.addEventListener("change", () => { const c = document.querySelector('input[name="src"]:checked').value === "client";
+  $("clientRow").hidden = !c; $("makeRow").hidden = c; $("makeRow2").hidden = c; $("offer").disabled = c; });
+$("cfile").addEventListener("change", () => {
+  const f = $("cfile").files[0]; clientAd = null; $("cprev").innerHTML = ""; if (!f) return;
+  if (f.size > 40e6) { $("cname").innerHTML = `<span class="err">${esc(f.name)} is larger than 40 MB.</span>`; return; }
+  const rd = new FileReader();
+  rd.onload = () => { clientAd = { name: f.name, data: rd.result, seconds: null }; $("cname").textContent = `${f.name} · ${(f.size / 1e6).toFixed(1)} MB`;
+    const isVid = f.type.startsWith("video"), el = document.createElement(isVid ? "video" : "img"); el.src = rd.result;
+    if (isVid) { el.muted = true; el.onloadedmetadata = () => { clientAd.seconds = el.duration; }; }
+    $("cprev").replaceChildren(el); };
+  rd.readAsDataURL(f);
+});
 function showResult(dir, r) {
-  const pl = r.placement, f = r.files, info = r.productInfo || r.product, typed = typeof r.product === "string" ? r.product : info.name;   // mocks made before productInfo kept the details under "product"
+  const pl = r.placement, f = r.files, info = r.productInfo || (typeof r.product === "object" ? r.product : null), typed = typeof r.product === "string" ? r.product : info?.name;   // mocks made before productInfo kept the details under "product"
+  const isClient = r.creative?.source === "client";
   $("out").hidden = false;
   $("out").innerHTML = `<div class="ch"><div class="num">✓</div><div><h2>${esc(r.brand)} · ${esc(typed)} — placed in-image</h2><p class="s">Made in ${esc(r.seconds)} s · mock preview, not a live ad (nothing was served)</p></div></div>
   <div class="res"><div class="phone"><video src="${file(dir, f.video)}" autoplay muted loop playsinline controls></video></div>
@@ -116,21 +141,24 @@ function showResult(dir, r) {
     <h3 style="font-size:14px;margin:18px 0 4px">AI check list</h3>
     ${pl.checks.map((c) => `<div class="chk"><i>✓</i><div><b>${esc(c.name)}</b><div class="s" style="font-size:12.5px">${esc(c.detail)}</div></div></div>`).join("")}
     <h3 style="font-size:14px;margin:18px 0 4px">The creative</h3>
-    <div class="kv"><span>Copy</span><div><b>${esc(r.copy.headline)}</b> · ${esc(r.copy.subline)} · [${esc(r.copy.cta)}]${r.nameNote ? `<div class="s" style="font-size:12px">${esc(r.nameNote)}</div>` : ""}</div>
-      <span>Product photo</span><div><a href="${esc(info.picture.page)}" target="_blank" rel="noopener">${esc(info.picture.site)}</a>${info.picture.official ? " (brand's own site)" : ""} · ${esc(info.cutout === "photo" ? "photo" : "cut out")}</div>
-      <span>Logo</span><div>${r.brandLook.logo.page ? `<a href="${esc(r.brandLook.logo.page)}" target="_blank" rel="noopener">${esc(r.brandLook.logo.site)}</a>` : esc(r.brandLook.logo.note)}</div>
+    <div class="kv">${isClient ? `<span>Ad</span><div>The client's own creative${r.creative.name ? ` (${esc(r.creative.name)})` : ""}, placed as supplied</div>` : `<span>Design</span><div>${esc(r.design?.style || "bold")}${r.design?.chosenBy ? ` · chosen by ${esc(r.design.chosenBy)}` : ""}</div>
+      <span>Copy</span><div><b>${esc(r.copy.headline)}</b> · ${esc(r.copy.subline)} · [${esc(r.copy.cta)}]${r.nameNote ? `<div class="s" style="font-size:12px">${esc(r.nameNote)}</div>` : ""}</div>
+      <span>Product photo</span><div><a href="${esc(info.picture.page)}" target="_blank" rel="noopener">${esc(info.picture.site)}</a>${info.picture.official ? " (brand's own site)" : ""} · ${esc(info.cutout === "photo" ? "photo" : "cut out")}${info.checked ? " · checked" : ""}</div>
+      <span>Logo</span><div>${r.brandLook.logo.page ? `<a href="${esc(r.brandLook.logo.page)}" target="_blank" rel="noopener">${esc(r.brandLook.logo.site)}</a>` : esc(r.brandLook.logo.note)}</div>`}
       <span>Picture used</span><div><a href="${esc(pl.image.url)}" target="_blank" rel="noopener">${esc(pl.image.width)}×${esc(pl.image.height)}</a>${pl.image.lead ? " · lead image" : ""}</div>
       <span>Inventory</span><div>${esc(pl.inventory.mediaPlan)}</div></div>
-    <div class="assets"><img src="${file(dir, f.product)}" alt="product">${f.logo ? `<img src="${file(dir, f.logo)}" alt="logo">` : ""}<img src="${file(dir, f.still)}" alt="still" style="max-width:none"></div>
+    <div class="assets">${f.product ? `<img src="${file(dir, f.product)}" alt="product">` : ""}${f.logo ? `<img src="${file(dir, f.logo)}" alt="logo">` : ""}<img src="${file(dir, f.still)}" alt="still" style="max-width:none"></div>
     <div class="note">Other pictures considered: ${r.candidates.length} · articles left out: ${r.rejectedArticles.length}. Everything, with reasons and sources, is in result.json.</div></div></div>`;
   $("out").scrollIntoView({ behavior: "smooth", block: "start" });
 }
 async function loadGallery() {
   try { const l = await api("/studio/list"); if (!l.length) return;
-    $("gal").innerHTML = l.map((m) => `<a href="#" data-dir="${esc(m.dir)}"><img src="${file(m.dir, m.still)}" alt="" loading="lazy"><div><b>${esc(m.brand)} · ${esc(m.product)}</b>${esc(m.publisher || "")}<br>${esc((m.article || "").slice(0, 80))}</div></a>`).join("");
+    $("gal").innerHTML = l.map((m) => `<a href="#" data-dir="${esc(m.dir)}" title="${esc(m.brand)}"><img src="${file(m.dir, m.still)}" alt="" loading="lazy"><div><b>${esc(m.brand)} · ${esc(m.product)}</b>${esc(m.publisher || "")}<br>${esc((m.article || "").slice(0, 80))}</div></a>`).join("");
   } catch { /* gallery is optional */ }
 }
 $("gal").addEventListener("click", async (e) => { const a = e.target.closest("a[data-dir]"); if (!a) return; e.preventDefault(); showResult(a.dataset.dir, await api("/studio/result?dir=" + encodeURIComponent(a.dataset.dir))); });
 $("go").onclick = go; for (const id of ["brand", "product", "offer"]) $(id).addEventListener("keydown", (e) => { if (e.key === "Enter") go(); });
 loadGallery();
+// the brands MediaKart knows (brand knowledge): suggested as you type
+api("/studio/brands").then((b) => { $("brandList").innerHTML = b.brands.flatMap((x) => [x.name, ...x.subBrands]).map((n) => `<option value="${esc(n)}">`).join(""); }).catch(() => {});
 </script></body></html>

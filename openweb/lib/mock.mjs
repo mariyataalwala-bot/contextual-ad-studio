@@ -75,7 +75,7 @@ export function placeInPage({ format, src, isVideo, leadImage, html = null, stri
       const el = document.createElement("mk-unit"); el.id = "mk-slot"; el.setAttribute("style", imp(over + ";display:block"));
       el.attachShadow({ mode: "open" }).innerHTML = html; host.append(el);
     } else host.append(unit(over, "position:absolute;left:0;right:0;bottom:0;max-height:100%;overflow:hidden;box-shadow:0 -6px 18px rgba(0,0,0,.25)"));
-    slot = { ...docRect(img), how: exact ? (leadImage && html ? "the chosen article image" : "lead image (matches the article's declared image)") : "first large image on the page" };
+    slot = { ...docRect(img), how: exact ? (leadImage && (html || strict) ? "the chosen article image" : "lead image (matches the article's declared image)") : "first large image on the page" };
   } else if (format === "in-scroll" || format === "display") {
     const ps = paragraphs(); const after = ps[Math.min(format === "display" ? 1 : 2, ps.length - 1)];
     if (!after) return { error: "SLOT_NOT_FOUND: no article paragraphs are rendered on the page" };
@@ -114,9 +114,9 @@ async function screencast(page, dir, act) {
  * `assets` (name → local file, requested as ASSET_URL + name) and `fontsCss`. Its animation starts (data-go on the
  * unit) once the page has scrolled to it, and the recording then holds for holdMs. `strict`: fail rather than fall
  * back to another image when the chosen picture is not on the rendered page.
- * @param {{ articleUrl: string, leadImage?: string|null, creativeFile?: string|null, creativeHtml?: string|null, assets?: Record<string, string>, fontsCss?: string|null, fit?: Function|null, holdMs?: number, navTimeoutMs?: number, strict?: boolean, format: string, outBase: string, video?: boolean, ffmpeg?: ((args: string[]) => Promise<any>)|null, chromium?: any }} opts
+ * @param {{ articleUrl: string, leadImage?: string|null, creativeFile?: string|null, creativeHtml?: string|null, assets?: Record<string, string>, fontsCss?: string|null, fit?: Function|null, fontFaces?: string[], holdMs?: number, navTimeoutMs?: number, strict?: boolean, format: string, outBase: string, video?: boolean, ffmpeg?: ((args: string[]) => Promise<any>)|null, chromium?: any }} opts
  */
-export async function renderMock({ articleUrl, leadImage, creativeFile = null, creativeHtml = null, assets = {}, fontsCss = null, fit = null, holdMs = 4000, navTimeoutMs = 45000, strict = false, format, outBase, video = false, ffmpeg = null, chromium = null }) {
+export async function renderMock({ articleUrl, leadImage, creativeFile = null, creativeHtml = null, assets = {}, fontsCss = null, fit = null, fontFaces = [], holdMs = 4000, navTimeoutMs = 45000, strict = false, format, outBase, video = false, ffmpeg = null, chromium = null }) {
   const ext = creativeHtml ? ".html" : path.extname(creativeFile || "").toLowerCase(), type = creativeHtml ? "text/html" : TYPES[ext];
   if (!type) throw new MockError("CREATIVE_TYPE", `Unsupported creative file type ${ext}`);
   if (!creativeHtml && !fs.existsSync(creativeFile)) throw new MockError("CREATIVE_MISSING", "The source creative file is not in the creatives folder yet");
@@ -136,7 +136,8 @@ export async function renderMock({ articleUrl, leadImage, creativeFile = null, c
     if (format === "in-image") {   // lead images often lazy-load: wait (up to 15 s) for a large decoded image before placing
       await page.waitForFunction(() => [...document.images].some((i) => { const r = i.getBoundingClientRect(); return r.width >= innerWidth * 0.6 && r.height >= 120 && i.complete && i.naturalWidth >= 300; }), null, { timeout: 15000 }).catch(() => {});
     }
-    if (creativeHtml) {
+    const careful = !!creativeHtml || strict;
+    if (careful) {
       // a phone mock needs the phone layout: pages without a mobile viewport render the desktop site zoomed out,
       // and paywalled pages hide the article — both are reported so another article can be used
       const view = await page.evaluate(() => ({ w: innerWidth, wall: /requires a subscription|subscriber-only stor|subscribe to (continue|read)|to continue reading/i.test(document.body.innerText) }));
@@ -145,7 +146,7 @@ export async function renderMock({ articleUrl, leadImage, creativeFile = null, c
       // in-article pictures lazy-load as you scroll: pass down the page once so the chosen one is loaded
       for (let y = 0; y < 9000; y += 700) { const end = await page.evaluate((y) => { scrollTo(0, y); return y + innerHeight >= document.documentElement.scrollHeight; }, y); await page.waitForTimeout(160); if (end) break; }
       await page.evaluate(() => scrollTo(0, 0)); await page.waitForTimeout(700);
-      if (fontsCss) { await page.addStyleTag({ content: fontsCss }); await page.evaluate(() => Promise.all(["500", "600", "700"].map((w) => document.fonts.load(`${w} 20px Poppins`))).then(() => true, () => false)); }
+      if (fontsCss) { await page.addStyleTag({ content: fontsCss }); await page.evaluate((faces) => Promise.all([...["500", "600", "700"].map((w) => `${w} 20px Poppins`), ...faces].map((f) => document.fonts.load(f))).then(() => true, () => false), fontFaces); }
     }
     await page.evaluate(tidyPage);
     const slot = await page.evaluate(placeInPage, { format, src: CREATIVE_URL + ext, isVideo: type.startsWith("video"), leadImage, html: creativeHtml, strict });
@@ -160,8 +161,8 @@ export async function renderMock({ articleUrl, leadImage, creativeFile = null, c
     if (!(slot.w > 0 && slot.h > 0)) throw new MockError("CREATIVE_NOT_RENDERED", "The creative was placed but has no visible size on this page");
     await page.waitForTimeout(800);
     // an HTML creative: the picture ends up just above the middle of the screen, with article text above and below it
-    const target = Math.max(0, creativeHtml ? slot.y + slot.h / 2 - 915 * 0.42 : slot.y - (format === "in-image" ? 140 : 90));
-    if (creativeHtml) await page.evaluate((y) => scrollTo(0, Math.max(0, y - 1500)), target);   // start a little above it
+    const target = Math.max(0, careful ? slot.y + slot.h / 2 - 915 * 0.42 : slot.y - (format === "in-image" ? 140 : 90));
+    if (careful) await page.evaluate((y) => scrollTo(0, Math.max(0, y - 1500)), target);   // start a little above it
     await page.evaluate(tidyPage);
     let frames = null;
     await page.evaluate(`setInterval(${tidyPage.toString()}, 250)`);   // publisher ads keep loading: keep them hidden while capturing
@@ -174,7 +175,7 @@ export async function renderMock({ articleUrl, leadImage, creativeFile = null, c
           requestAnimationFrame(step);
         }), target);
         if (creativeHtml) { await page.waitForTimeout(250); await page.evaluate(() => document.getElementById("mk-slot").setAttribute("data-go", "")); }
-        await page.waitForTimeout(creativeHtml ? holdMs : 4000);
+        await page.waitForTimeout(holdMs);
       });
     }
     else {
@@ -182,7 +183,7 @@ export async function renderMock({ articleUrl, leadImage, creativeFile = null, c
       if (creativeHtml) { await page.evaluate(() => document.getElementById("mk-slot").setAttribute("data-go", "")); await page.waitForTimeout(holdMs); }
       await page.waitForTimeout(300);
     }
-    if (creativeHtml) {
+    if (careful) {
       // the page can still change while it is recorded (a late subscription wall, a script that blanks the article):
       // the unit must be on screen, not covered, and the article text still there — otherwise there is no mock
       const seen = await page.evaluate(() => {

@@ -9,12 +9,14 @@ import http from "node:http";
 import zlib from "node:zlib";
 import { execFileSync } from "node:child_process";
 import { parseBingImages, brandHost } from "../../openweb/lib/websearch.mjs";
-import { stripHtml, fitStrip, luminance } from "../../openweb/lib/strip.mjs";
-import { slugTitle, matchSlugs, sitemapIndex, loadStudioConfig, withRealName, usedArticles, rivalMatcher } from "../../openweb/lib/studio.mjs";
+import { stripHtml, fitStrip, luminance, STYLES } from "../../openweb/lib/strip.mjs";
+import { clientCreative } from "../../openweb/routes.mjs";
+import { slugTitle, matchSlugs, sitemapIndex, loadStudioConfig, withRealName, usedArticles, rivalMatcher, styleFonts } from "../../openweb/lib/studio.mjs";
 import { renderMock, ASSET_URL } from "../../openweb/lib/mock.mjs";
 import { loadMediaPlan, checkPublisherSources } from "../../openweb/lib/inventory.mjs";
 import { extractArticle } from "../../openweb/lib/extract.mjs";
 import { FILLER } from "./helpers.mjs";
+import { loadBrands, findBrand, brandBrief } from "../../openweb/lib/brands.mjs";
 
 test("image search results: full picture, thumbnail, source page and title from each tile; entities decoded; duplicates dropped", () => {
   const tile = (o) => ` m="${JSON.stringify(o).replace(/"/g, "&quot;").replace(/&(?!quot;)/g, "&amp;")}"`;
@@ -184,17 +186,50 @@ test("HTML creative: a wall that appears, or an article that is blanked, during 
   await assert.rejects(renderMock(opts("/blanked", "/walk.png")), (/** @type {any} */ e) => e.code === "NOT_VISIBLE");
 });
 
-test("fitStrip: long copy shrinks until it sits above the button", { timeout: 60000 }, async () => {
+test("designs: every one keeps the parts the text fitting and the checks rely on, escapes copy, and looks different", () => {
+  const html = (style, o = {}) => creative({ style, headline: "Hi <b>there</b>", productMode: style === "journey" ? "scene" : "plain-bg", ...o });
+  const seen = new Set();
+  for (const st of STYLES) {
+    const h = html(st);
+    for (const cls of ['class="lg', 'class="tx', 'class="hd"', 'class="sb"', 'class="cta"', `st-${st}"`]) assert.ok(h.includes(cls), `${st}: ${cls}`);
+    assert.ok(!h.includes("<b>there</b>") && h.includes("&lt;b&gt;there&lt;/b&gt;"), `${st}: copy escaped`);
+    assert.match(h, /data-lg="[\d.]+" data-tx="[\d.]+" data-fs="[\d.]+" data-fs2="[\d.]+"/);
+    seen.add(h.split("</style>")[0].length);
+  }
+  assert.equal(seen.size, STYLES.length, "each design has its own CSS");
+  assert.ok(html("fresh").includes('class="bb"') && html("fresh", { motif: "steam" }).includes('class="stm"'), "fresh: bubbles for drinks, steam for food");
+  assert.ok(html("luxe").includes('class="sp"') && html("sport").includes('class="sl"') && html("tech").includes('class="bm"'));
+  assert.ok(html("journey").includes("✈") && html("journey", { motif: "pin" }).includes("📍"));
+  assert.ok(creative({ style: "no-such-design" }).includes("st-bold"), "an unknown design falls back to bold");
+});
+
+test("client's ad file: the type is read from the file's own bytes; anything else (or too big) is refused", () => {
+  const url = (buf) => "data:application/octet-stream;base64," + Buffer.from(buf).toString("base64");
+  assert.deepEqual([clientCreative(url([0x89, 0x50, 0x4e, 0x47, 13, 10, 26, 10])).ext, clientCreative(url([0x89, 0x50, 0x4e, 0x47])).type], ["png", "image"]);
+  assert.equal(clientCreative(url([0xff, 0xd8, 0xff, 0xe0])).ext, "jpg");
+  assert.equal(clientCreative(url(Buffer.from("GIF89a"))).ext, "gif");
+  assert.equal(clientCreative(url(Buffer.concat([Buffer.from("RIFF"), Buffer.alloc(4), Buffer.from("WEBP")]))).ext, "webp");
+  assert.deepEqual([clientCreative(url(Buffer.concat([Buffer.alloc(4), Buffer.from("ftypisom")]))).ext, clientCreative(url(Buffer.concat([Buffer.alloc(4), Buffer.from("ftypisom")]))).type], ["mp4", "video"]);
+  assert.equal(clientCreative(url([0x1a, 0x45, 0xdf, 0xa3])).ext, "webm");
+  assert.ok(clientCreative(url(Buffer.from("<html><script>"))).error, "an HTML file renamed .png is refused");
+  assert.ok(clientCreative("not a data url").error);
+  assert.ok(clientCreative(url(Buffer.alloc(41e6))).error, "over 40 MB");
+});
+
+test("fitStrip: long copy shrinks until it sits above the button, in every design", { timeout: 90000 }, async () => {
   const { chromium } = await import("playwright");
   const b = await chromium.launch();
   try {
     const p = await b.newPage({ viewport: { width: 412, height: 400 } });
-    await p.setContent('<div id="box" style="position:relative;width:380px;height:214px"></div>');
-    await p.evaluate((html) => { const el = document.createElement("mk-unit"); el.id = "mk-slot"; el.style.cssText = "position:absolute;inset:0;display:block"; el.attachShadow({ mode: "open" }).innerHTML = html; document.getElementById("box").append(el); }, creative({ productUrl: "data:image/gif;base64,R0lGODlhAQABAAAAACw=" }));
-    await p.evaluate(`(${fitStrip})(document.getElementById("mk-slot"))`);
-    const r = await p.evaluate(() => { const root = document.getElementById("mk-slot").shadowRoot, q = (s) => /** @type {HTMLElement} */ (root.querySelector(s)); const tx = q(".tx"), cta = q(".cta");
-      return ["hd", "sb"].map((k) => ({ bottom: tx.offsetTop + q("." + k).offsetTop + q("." + k).offsetHeight, ctaTop: cta.offsetTop })); });
-    for (const x of r) assert.ok(x.bottom <= x.ctaTop, `text ends at ${x.bottom}px, button starts at ${x.ctaTop}px`);
+    for (const style of STYLES) {
+      await p.setContent('<div id="box" style="position:relative;width:380px;height:214px"></div>');
+      await p.evaluate((html) => { const el = document.createElement("mk-unit"); el.id = "mk-slot"; el.style.cssText = "position:absolute;inset:0;display:block"; el.attachShadow({ mode: "open" }).innerHTML = html; document.getElementById("box").append(el); },
+        creative({ style, productMode: style === "journey" ? "scene" : "plain-bg", productUrl: "data:image/gif;base64,R0lGODlhAQABAAAAACw=" }));
+      await p.evaluate(`(${fitStrip})(document.getElementById("mk-slot"))`);
+      const r = await p.evaluate(() => { const root = document.getElementById("mk-slot").shadowRoot, q = (s) => /** @type {HTMLElement} */ (root.querySelector(s)); const tx = q(".tx"), cta = q(".cta");
+        return ["hd", "sb"].map((k) => ({ bottom: tx.offsetTop + q("." + k).offsetTop + q("." + k).offsetHeight, ctaTop: cta.offsetTop })); });
+      for (const x of r) assert.ok(x.bottom <= x.ctaTop, `${style}: text ends at ${x.bottom}px, button starts at ${x.ctaTop}px`);
+    }
   } finally { await b.close(); }
 });
 
@@ -227,4 +262,38 @@ test("logo trim: a fake transparency checkerboard is cleaned and cropped to the 
   const [w, h, c] = execFileSync(PY, ["-c", `from PIL import Image; im = Image.open(r"${f}").convert("RGB"); print(im.size[0], im.size[1], im.getpixel((2, 2)))`]).toString().trim().split(/ (?=\d+ |\()/);
   assert.ok(+w < 360 && +h < 100, `cropped to the logo (${w}×${h})`);
   assert.equal(c, "(255, 255, 255)", "checkerboard squares painted white");
+});
+
+// ---------- brand knowledge, design fonts and the client's own file ----------
+
+test("brand knowledge: 50 brands, valid; a typed brand or a sub-brand in the product finds the right profile", () => {
+  const c = loadBrands();
+  assert.equal(c.brands.length, 50);
+  assert.equal(findBrand(c, "Nestle", "Maggi 2-minute noodles").name, "Maggi");
+  assert.equal(findBrand(c, "maggie", "noodles").name, "Maggi", "common misspelling is an alias");
+  assert.equal(findBrand(c, "Coke", "Zero Sugar").id, "coca-cola");
+  assert.equal(findBrand(c, "ITC", "Bingo Mad Angles").name, "Bingo!");
+  assert.equal(findBrand(c, "GIVA", "earrings"), null, "brands not on the list are left to the AI");
+  const oppo = findBrand(c, "OPPO", "Reno");
+  assert.ok(oppo.family.includes("OnePlus") && !oppo.competitors.includes("OnePlus"), "a sister brand is never a rival");
+  const sprite = findBrand(c, "Sprite", "lemon lime");
+  assert.ok(sprite.family.includes("Thums Up") && sprite.competitors.includes("7UP") && sprite.domains.includes("coca-colaindia.com"));
+  assert.match(brandBrief(sprite), /Competitors: .*7UP.*Same company \(not competitors\): .*Thums Up/);
+});
+
+test("design fonts: fetched once from Google Fonts into a local cache, then served from local files", async () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "gf-")); let calls = 0;
+  const fake = /** @type {any} */ (async (u) => { calls++; return u.includes("css2") ? { ok: true, text: async () => "@font-face{font-family:'Anton';src:url(https://fonts.gstatic.com/s/anton/v1/a.woff2) format('woff2')}" } : { ok: true, arrayBuffer: async () => new Uint8Array([1, 2, 3]).buffer }; });
+  const a = await styleFonts("sport", dir, fake);
+  assert.ok(a.css.includes(ASSET_URL + "gf-sport-0.woff2") && fs.existsSync(a.files["gf-sport-0.woff2"]));
+  const n = calls; await styleFonts("sport", dir, fake);
+  assert.equal(calls, n, "second time: nothing fetched");
+  assert.equal(await styleFonts("bold", dir, fake), null, "bold uses the local Poppins");
+});
+
+test("client's own ad: the supplied file is placed over the chosen picture with the same page checks", { timeout: 90000 }, async () => {
+  const f = path.join(dir, "client.png"); fs.writeFileSync(f, png(600, 200, [20, 90, 200]));
+  const out = await renderMock({ articleUrl: base + "/a", leadImage: base + "/walk.png", format: "in-image", outBase: path.join(dir, "client"), creativeFile: f, holdMs: 300, strict: true });
+  assert.equal(out.slot.how, "the chosen article image"); assert.ok(out.slot.y > 300);
+  await assert.rejects(renderMock({ articleUrl: base + "/wall", leadImage: base + "/walk.png", format: "in-image", outBase: path.join(dir, "client2"), creativeFile: f, holdMs: 300, strict: true }), (/** @type {any} */ e) => e.code === "PAYWALL");
 });
