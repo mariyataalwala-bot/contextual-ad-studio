@@ -99,6 +99,31 @@ export function matchSlugs(entries, words, limit = 80) {
     .filter((x) => x.hits > 0).sort((a, b) => b.hits - a.hits || String(b.e.published).localeCompare(String(a.e.published))).slice(0, limit).map((x) => x.e);
 }
 
+// Articles that already carry another brand's mock (every result.json in the studio folder that was not withdrawn):
+// one article, one advertiser — the same road-trip story must not show IndiGo, Airbnb and Motorola.
+const urlKey = (u) => String(u || "").replace(/[#?].*$/, "").replace(/\/$/, "").toLowerCase();
+export function usedArticles(root, brand) {
+  const used = new Map(), me = String(brand).trim().toLowerCase();
+  let dirs = []; try { dirs = fs.readdirSync(root).filter((x) => !x.startsWith("_")); } catch { return used; }
+  for (const b of dirs) {
+    let runs = []; try { runs = fs.readdirSync(path.join(root, b)); } catch { continue; }
+    for (const t of runs) {
+      let r; try { r = JSON.parse(fs.readFileSync(path.join(root, b, t, "result.json"), "utf8")); } catch { continue; }
+      const url = r?.placement?.article?.url;
+      if (!url || r.error || String(r.brand).trim().toLowerCase() === me) continue;
+      used.set(urlKey(url), `${r.brand} · ${typeof r.product === "string" ? r.product : r.product?.name || ""}`);
+    }
+  }
+  return used;
+}
+
+// Which rival names (or the brand's own) a headline or URL title mentions — whole words, case-insensitive
+export function rivalMatcher(names) {
+  const list = [...new Set(names.flatMap((n) => [String(n).trim(), String(n).trim().replace(/\s+/g, "")]).filter((n) => n.length >= 2))];   // "One Plus" also as "OnePlus"
+  const res = list.map((n) => [n, new RegExp(`(^|[^a-z0-9])${n.toLowerCase().replace(/[.*+?^${}()|[\]\\]/g, "\\$&").replace(/\s+/g, "[\\s-]+")}($|[^a-z0-9])`, "i")]);
+  return (text) => { const t = String(text || "").toLowerCase(), hit = res.filter(([, re]) => re.test(t)).map(([n]) => n); return hit.length ? hit : null; };
+}
+
 const TOPIC_SCHEMA = { type: "object", properties: { words: { type: "array", items: { type: "string" } } }, required: ["words"] };
 
 // ---------- AI prompts (versioned: STUDIO_PROMPTS) ----------
@@ -119,14 +144,14 @@ const PLAN_SCHEMA = (ctas) => ({ type: "object", properties: {
   audience: { type: "string" },
   contexts: { type: "array", items: { type: "string" } },
   avoid: { type: "array", items: { type: "string" } },
-  competitors: { type: "array", items: { type: "string" } },
+  competitors: { type: "array", items: { type: "string" }, description: "rival brands AND their product line names (e.g. Apple, iPhone, Samsung, Galaxy, Google, Pixel)" },
   headline: { type: "string" }, subline: { type: "string" }, cta: { type: "string", enum: ctas },
   shortlist: { type: "array", items: { type: "object", properties: { n: { type: "integer" }, why: { type: "string" } }, required: ["n", "why"] } },
 }, required: ["category", "audience", "contexts", "avoid", "competitors", "headline", "subline", "cta", "shortlist"] });
 
 const FINAL_SCHEMA = { type: "object", properties: {
   candidates: { type: "array", items: { type: "object", properties: {
-    k: { type: "integer" }, context_fit: { type: "integer", description: "0-10: the article's topic is a natural moment for this product" },
+    k: { type: "integer" }, context_fit: { type: "integer", description: "0-10: 9-10 the article is about this product's category or its main use; 6-8 closely related; 0-5 only a loose link" },
     image_fit: { type: "integer", description: "0-10: the picture's scene suits this product" },
     safe: { type: "boolean" }, safe_why: { type: "string" },
     strip_ok: { type: "boolean", description: "the bottom 46% of the picture can be covered without hiding the main subject's face or key text" },
@@ -174,7 +199,10 @@ export async function makeInImage(o) {
     ]);
     const topic = await topicP;
     const seenUrl = new Set(feedItems.map((x) => x.url));
-    const items = [...feedItems, ...matchSlugs(older.filter((x) => !seenUrl.has(x.url)), topic.words || [])];
+    const taken = usedArticles(o.indexDir || path.join(workDir, "..", ".."), brand);
+    const all = [...feedItems, ...matchSlugs(older.filter((x) => !seenUrl.has(x.url)), topic.words || [])];
+    const items = all.filter((x) => !taken.has(urlKey(x.url)));
+    result.articlesTakenByOtherBrands = all.filter((x) => taken.has(urlKey(x.url))).map((x) => ({ url: x.url, title: x.title, usedBy: taken.get(urlKey(x.url)) }));
     result.topicWords = topic.words || [];
     lap("search");
     // the brand's own sites first, then pictures with a clear background, then the rest
@@ -182,7 +210,7 @@ export async function makeInImage(o) {
     for (const x of [...web.filter((r) => brandHost(r.host, brand)), ...webClear.filter((r) => brandHost(r.host, brand)), ...webClear.slice(0, 6), ...web.slice(0, 8)]) if (!seen.has(x.url) && x.thumb) { seen.add(x.url); products.push(x); }
     const logos = [...webLogos.filter((x) => x.thumb).slice(0, 5), ...commons.slice(0, 3)].slice(0, 8);
     if (!products.length) throw new Error(`No pictures of “${brand} ${product}” were found online. Check the spelling, or add a word (e.g. the product type).`);
-    if (!items.length) throw new Error("None of the media-plan publisher feeds answered just now. Try again in a minute.");
+    if (!all.length) throw new Error("None of the media-plan publisher feeds answered just now. Try again in a minute.");
     say(12, "search", `${products.length} product picture(s), ${logos.length} logo candidate(s), ${items.length} recent articles from ${new Set(items.map((i) => i.section)).size} sections (${items.length - feedItems.length} of them matched by topic: ${(topic.words || []).slice(0, 6).join(", ")}…).`);
 
     const thumbs = async (list, pre) => (await Promise.all(list.slice(0, 8).map(async (x, i) => { const f = await downloadImage(x.thumb, path.join(cand, `${pre}${i + 1}`), { fetchImpl, fs }).catch(() => null); return f && /\.(jpg|png)$/.test(f) ? { ...x, file: f, n: i + 1 } : null; }))).filter(Boolean);
@@ -200,9 +228,9 @@ export async function makeInImage(o) {
     const planP = ask(
       "You plan contextual in-image ads for an Indian digital publisher network. You write short, honest ad copy and pick articles only from the list given.",
       `Brand: ${brand}\nProduct: ${product}\nProduct pages found: ${[...new Set(products.slice(0, 6).map((x) => x.title))].join(" | ")}\n${offer ? `Offer typed by the user (may be used word for word): ${offer}\n` : ""}\n` +
-      `1. category, audience, contexts (topics and moments where a reader naturally thinks of this product), avoid (topics this ad must never appear next to), competitors (brands that compete with ${brand} on this product).\n` +
+      `1. category, audience, contexts (topics and moments where a reader naturally thinks of this product), avoid (topics this ad must never appear next to), competitors (brands that compete with ${brand} on this product, and their product line names — e.g. for a phone: Apple, iPhone, Samsung, Galaxy, Google, Pixel, OnePlus, Xiaomi, Redmi, Vivo, Oppo, Realme; 8-20 names).\n` +
       `2. Ad copy for a strip over an article photo: headline at most ${studio.copy.maxHeadlineWords} words; subline at most ${studio.copy.maxSublineWords} words, naming the product; cta from the list. ${studio.copy.noClaims} No superlatives like "best" or "No.1". English.\n` +
-      `3. shortlist: up to ${studio.shortlist} article numbers from the list below whose topic is a natural context for this product, best first, each with why. Never: articles about ${brand} itself or any competitor — a review, launch or price story about another company's product of the same kind (another phone, shoe, noodle brand…) is competitor content, even if the product type matches; prefer stories about how people use this kind of product (tips, how-tos, photography, travel, workouts, recipes, gaming, festivals, shopping guides without rival brands); death, crime, accidents, disasters, war, illness scares, politics, controversy or negative stories about this kind of product; hard news. The topic must fit the product first. Among fitting stories, prefer ones that do not centre on a named celebrity or politician (an ad over a recognisable face reads as an endorsement, so such pictures are rejected later). Prefer service and lifestyle stories (how-tos, guides, recipes, trips, trends) published recently.\n\nARTICLES:\n${list}`,
+      `3. shortlist: up to ${studio.shortlist} article numbers from the list below whose topic is a DIRECT fit for this product, best first, each with why. A direct fit is an article about this product's category or about the main thing people buy it for: for a phone — phones, phone features, apps, mobile photography tips, gadgets; for running shoes — running, walking, workouts; for noodles — quick meals, snacks, recipes; for flights or stays — travel and destinations. A loose link ("people take photos on trips", "everyone uses a phone") is NOT a fit: leave such articles out, and return fewer (even none) rather than weak ones. Never: articles about ${brand} itself or any competitor — a review, launch or price story about another company's product of the same kind (another phone, shoe, noodle brand…) is competitor content, even if the product type matches; prefer stories about how people use this kind of product (tips, how-tos, guides, shopping guides without rival brands); death, crime, accidents, disasters, war, illness scares, politics, controversy or negative stories about this kind of product; hard news. The topic must fit the product first. Among fitting stories, prefer ones that do not centre on a named celebrity or politician (an ad over a recognisable face reads as an endorsement, so such pictures are rejected later). Prefer service and lifestyle stories (how-tos, guides, recipes, trips, trends) published recently.\n\nARTICLES:\n${list}`,
       PLAN_SCHEMA(studio.copy.ctas), [], "medium");
     const [pick, plan] = await Promise.all([pickP, planP]);
     lap("ai_assets_plan");
@@ -246,7 +274,11 @@ export async function makeInImage(o) {
     lap("assets");
 
     // 4) shortlisted articles → fetched, safety-checked, their in-article images listed
-    const short = (plan.shortlist || []).map((s) => ({ ...items[s.n - 1], why: s.why })).filter((x) => x.url).slice(0, studio.shortlist);
+    // a hard rule, not left to the AI: a headline naming a rival (or the brand itself) is never used
+    const rivals = rivalMatcher([...(plan.competitors || []), brand]);
+    const picked = (plan.shortlist || []).map((s) => ({ ...items[s.n - 1], why: s.why })).filter((x) => x.url);
+    result.rivalHeadlinesDropped = picked.filter((x) => rivals(x.title)).map((x) => ({ url: x.url, title: x.title, names: rivals(x.title) }));
+    const short = picked.filter((x) => !rivals(x.title)).slice(0, studio.shortlist);
     if (!short.length) throw new Error(`No recent article on the media-plan publishers is a good context for ${brand} ${product} right now.`);
     say(38, "articles", `Reading ${short.length} shortlisted articles…`);
     const secOf = new Map([...studio.sections, ...(studio.sitemaps || [])].map((s) => [s.id, s]));
@@ -282,12 +314,12 @@ export async function makeInImage(o) {
       `Ad: ${brand} — ${pick.product_name || product} (${plan.category}). Strip copy: "${copy.headline}" / "${copy.subline}".\nCompetitors: ${(plan.competitors || []).join(", ") || "-"}\nAvoid: ${(plan.avoid || []).join(", ") || "-"}\n\n` +
       // the article (first ~1,400 characters) and the paragraphs right around each picture: what a reader sees next to the ad
       shown.map((c) => `[${c.k}] Article: "${c.a.headline}"\n   Article text: ${norm(c.a.body || "").slice(0, 1400)}\n   Picture alt/caption: ${c.im.alt || c.im.caption || "-"}\n   Text just above the picture: ${norm(c.im.context?.before || "").slice(-450) || "-"}\n   Text just below the picture: ${norm(c.im.context?.after || "").slice(0, 450) || "-"}`).join("\n") +
-      `\n\nFor every picture k give: context_fit (0-10, is this article a natural moment for this product), image_fit (0-10, does the picture's scene suit the product — the right setting or activity), safe (false if the article or picture involves anything in Avoid, tragedy, crime, illness, a negative view of this kind of product (health warnings, "unhealthy", calories, sodium, additives, junk, addiction, safety problems — anywhere in the article text, not only the headline), a competitor's product or logo, a recognisable celebrity or politician whose face next to the ad could look like an endorsement, or children as the focus for an adult product), safe_why, strip_ok, why (one sentence).`,
+      `\n\nFor every picture k give: context_fit (0-10: 9-10 only when the article is about this product's category or the main thing it is bought for; 6-8 closely related; 5 or less when the link is loose or indirect — e.g. a phone on a road-trip or travel story, shoes on a motorbike trip, noodles on a dal recipe), image_fit (0-10, does the picture's scene suit the product — the right setting or activity), safe (false if the article or picture involves anything in Avoid, tragedy, crime, illness, a negative view of this kind of product (health warnings, "unhealthy", calories, sodium, additives, junk, addiction, safety problems — anywhere in the article text, not only the headline), a competitor's product or logo (an article that reviews, launches, prices or reports on a specific product from another company in the same or a neighbouring category counts — for a phone that includes other tablets, smartwatches, earbuds and laptops), a recognisable celebrity or politician whose face next to the ad could look like an endorsement, or children as the focus for an adult product), safe_why, strip_ok, why (one sentence).`,
       FINAL_SCHEMA, shown.map((c) => ({ label: `Picture [${c.k}] (from article ${c.a.headline.slice(0, 70)})`, file: c.file })), "high");
     lap("ai_match");
     const scored = shown.map((c) => { const v = (fin.candidates || []).find((x) => x.k === c.k) || {}; return { ...c, v, score: (v.context_fit || 0) * 0.55 + (v.image_fit || 0) * 0.45 }; })
       .sort((x, y) => (Number(y.v.safe && y.v.strip_ok) - Number(x.v.safe && x.v.strip_ok)) || y.score - x.score);
-    const ok = scored.filter((c) => c.v.safe && c.v.strip_ok && c.score >= studio.minScore && c.v.context_fit >= studio.minScore);
+    const ok = scored.filter((c) => c.v.safe && c.v.strip_ok && c.score >= studio.minScore && c.v.context_fit >= studio.minContext);
     result.candidates = scored.map((c) => ({ article: c.a.headline, url: c.a.url, image: c.im.finalUrl || c.im.src, ...c.v, score: +c.score.toFixed(1) }));
     result.rejectedArticles = rejected;
     if (!ok.length) throw new Error(`No article picture passed all three checks right now (best: “${scored[0]?.a.headline}” — ${scored[0]?.v.why || ""} ${scored[0]?.v.safe ? "" : scored[0]?.v.safe_why || ""}).`);

@@ -10,7 +10,7 @@ import zlib from "node:zlib";
 import { execFileSync } from "node:child_process";
 import { parseBingImages, brandHost } from "../../openweb/lib/websearch.mjs";
 import { stripHtml, fitStrip, luminance } from "../../openweb/lib/strip.mjs";
-import { slugTitle, matchSlugs, sitemapIndex, loadStudioConfig, withRealName } from "../../openweb/lib/studio.mjs";
+import { slugTitle, matchSlugs, sitemapIndex, loadStudioConfig, withRealName, usedArticles, rivalMatcher } from "../../openweb/lib/studio.mjs";
 import { renderMock, ASSET_URL } from "../../openweb/lib/mock.mjs";
 import { loadMediaPlan, checkPublisherSources } from "../../openweb/lib/inventory.mjs";
 import { FILLER } from "./helpers.mjs";
@@ -29,6 +29,28 @@ test("copy names the product found online, not a misspelt or made-up name that w
   assert.equal(withRealName("Discover Motorola V70 edge plus", "V70 edge plus", "Motorola Edge 70 Pro Plus", "Motorola"), "Discover Motorola Edge 70 Pro Plus");
   assert.equal(withRealName("Run in Power shoes", "Power running shoes", "power running shoes", "Bata"), "Run in Power shoes");
   assert.equal(withRealName("Try a.b (x)", "a.b (x)", "Real", "B"), "Try Real", "typed text with regex characters is matched literally");
+});
+
+test("one advertiser per article: an article used by another brand's mock is off-limits; withdrawn mocks and the same brand's own reruns are not", () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "used-"));
+  const put = (dir, r) => { fs.mkdirSync(path.join(root, dir), { recursive: true }); fs.writeFileSync(path.join(root, dir, "result.json"), JSON.stringify(r)); };
+  put("indigo/1", { brand: "IndiGo", product: "flights", placement: { article: { url: "https://news.test/article/road-trips-123/?ref=x" } } });
+  put("airbnb/1", { brand: "Airbnb", product: "stays", error: "Withdrawn", placement: { article: { url: "https://news.test/article/greece-456/" } } });
+  put("motorola/1", { brand: "Motorola", product: "phone", placement: { article: { url: "https://news.test/article/camera-tips-789/" } } });
+  put("_index", {}); fs.writeFileSync(path.join(root, "_index", "x.json"), "{}");
+  const used = usedArticles(root, "motorola");
+  assert.deepEqual([...used.keys()], ["https://news.test/article/road-trips-123"]);
+  assert.equal(used.get("https://news.test/article/road-trips-123"), "IndiGo · flights");
+});
+
+test("rival names in a headline are caught as whole words, with or without spaces, and never inside other words", () => {
+  const m = rivalMatcher(["Apple", "iPhone", "One Plus", "Samsung", "Motorola"]);
+  assert.deepEqual(m("iPhone Duo goes on sale in India"), ["iPhone"]);
+  assert.deepEqual(m("OnePlus 15 review"), ["OnePlus"]);
+  assert.deepEqual(m("Samsung's new tablet"), ["Samsung"]);
+  assert.deepEqual(m("Motorola Edge launch"), ["Motorola"], "the brand's own news is left out too");
+  assert.equal(m("Pineapple smoothie recipes"), null);
+  assert.equal(m("WhatsApp lets you screen callers"), null);
 });
 
 test("the brand's own site is recognised by its host name, retailers are not", () => {
