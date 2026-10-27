@@ -7,8 +7,11 @@
 //   fresh   — drinks, food: floating rounded card, bubbles (drinks) or steam (food), playful type, product bounces in on a splash
 //   tech    — phones, electronics: dark glass with a fine grid, a light beam, product rises tilted with a reflection
 //   journey — travel, stays, services: photo-led with a slow zoom, curved brand panel, a dotted route drawing to a plane / pin
+// No white patches: the logo sits directly on the ad (in its colours when it stands out, otherwise all-white or
+// all-black like a brand's reversed logo; a self-contained badge as it is; a faint frosted chip only when the logo could
+// not be separated), and a product photo that could not be cut out melts into a soft brand-tinted glow.
 // Plain HTML + CSS, sized with container units so it fits any image; the animation starts when the host gets data-go.
-export const STRIP_VERSION = "strip.v2";
+export const STRIP_VERSION = "strip.v3";
 export const STYLES = ["bold", "luxe", "sport", "fresh", "tech", "journey"];
 
 const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
@@ -17,6 +20,25 @@ const rgb = (h) => [1, 3, 5].map((i) => parseInt(h.slice(i, i + 2), 16));
 const toHex = (c) => "#" + c.map((v) => Math.max(0, Math.min(255, Math.round(v))).toString(16).padStart(2, "0")).join("");
 const mix = (h, to, k) => toHex(rgb(h).map((v, i) => v + (rgb(to)[i] - v) * k));
 export const luminance = (h) => { const [r, g, b] = rgb(h).map((v) => v / 255); return 0.2126 * r + 0.7152 * g + 0.0722 * b; };
+// WCAG contrast between two colours (relative luminance, gamma-corrected)
+const relLum = (h) => { const [r, g, b] = rgb(h).map((v) => { v /= 255; return v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4; }); return 0.2126 * r + 0.7152 * g + 0.0722 * b; };
+export const contrast = (a, b) => { const x = relLum(a), y = relLum(b); return (Math.max(x, y) + 0.05) / (Math.min(x, y) + 0.05); };
+// how the logo is shown on the colour behind it: "colour" (stands out as it is), "white" / "black" (reversed, one colour),
+// "badge" (a filled logo with its own background, e.g. Maggi's oval), "chip" (could not be separated: faint frosted chip)
+// A logo with light parts (Sprite's white outline, a white letter inside a coloured disc) loses them when shown
+// all-white, so it keeps its colours (or, when even that does not stand out, sits on a faint frosted chip).
+export function logoMode({ kind, ink, light = 0, behind, style }) {
+  if (kind === "badge") return "badge";
+  if (kind === "photo") return "chip";
+  const k = hex(ink) || "#222222";
+  if (light >= 0.08) return contrast(k, behind) >= 2 ? "colour" : "chip";
+  if ((style === "tech" || style === "luxe") && relLum(behind) < 0.25) return "white";   // sleek and elegant designs: one-colour logo
+  if (contrast(k, behind) >= 3.2) return "colour";
+  return relLum(behind) < 0.4 ? "white" : "black";
+}
+// fine film grain over the strips (print-like texture instead of flat digital colour)
+const GRAIN = `url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='180' height='180'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='.85' numOctaves='2' stitchTiles='stitch'/><feColorMatrix values='0 0 0 0 1 0 0 0 0 1 0 0 0 0 1 0 0 0 .6 0'/></filter><rect width='100%' height='100%' filter='url(%23n)'/></svg>")`;
+const ARROW = `<svg class="ar" viewBox="0 0 16 16" aria-hidden="true"><path d="M3 8h9.2M8.6 4.4 12.2 8l-3.6 3.6" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
 
 // Display fonts of the designs (Google Fonts, loaded into the page when the mock is recorded; Poppins is served locally)
 const FONTS = { luxe: "Playfair+Display:ital,wght@0,600;0,700;1,500", sport: "Anton", fresh: "Baloo+2:wght@600;800", tech: "Space+Grotesk:wght@500;700" };
@@ -36,14 +58,13 @@ function design(style, o, t) {
     return { lg: 4.8, tx: 8.6, fs: 5, fs2: 3.9, ink: "#fff8ec", css: `
 .s{background:linear-gradient(118deg,${base} 0%,${mix(base, c, 0.55)} 58%,${mix(c, "#ffffff", 0.08)} 100%);box-shadow:0 -1cqw 3cqw rgba(0,0,0,.3)}
 .s:before{height:.3cqw;background:linear-gradient(90deg,transparent,${gold} 20%,#fff3cf 50%,${gold} 80%,transparent)}
-.lg{border-radius:1cqw;border:.22cqw solid ${gold};box-shadow:none}
 .hd,.sb{font-family:'Playfair Display',Georgia,serif;font-weight:600;letter-spacing:.005em;line-height:1.1}
 .sb{font-style:italic;font-weight:500}
 .cta{background:transparent;color:${gold};border:.25cqw solid ${gold};border-radius:.6cqw;font:600 2.3cqw/1.2 Poppins,system-ui;letter-spacing:.16em;text-transform:uppercase;box-shadow:none}
 .cta:after{background:linear-gradient(100deg,transparent,rgba(255,240,200,.45),transparent)}
 .ring{right:-2cqw;width:40cqw;height:40cqw;margin-top:-20cqw;background:radial-gradient(circle,rgba(255,244,214,.38) 0%,rgba(255,244,214,.1) 50%,transparent 70%)}
-.p.card{border-radius:50%;padding:0;overflow:hidden;aspect-ratio:1/1;height:calc(var(--sh) - 3.2cqw);bottom:1.6cqw;right:6cqw;border:.45cqw solid ${gold};box-shadow:0 0 0 .9cqw rgba(214,180,106,.22),0 1.2cqw 3cqw rgba(0,0,0,.4)}
-.p.card img{border-radius:0;width:100%;height:100%;max-width:none;object-fit:cover}
+.p.photo:after{content:"";position:absolute;inset:4%;border-radius:50%;border:.16cqw solid ${gold};opacity:.55}
+.p.photo{right:6cqw}
 .sp{position:absolute;width:2.2cqw;height:2.2cqw;opacity:0;z-index:4;background:radial-gradient(circle,#fff 0 18%,transparent 19%),conic-gradient(from 45deg,transparent 0 10%,#fff6d8 12% 13%,transparent 15% 35%,#fff6d8 37% 38%,transparent 40% 60%,#fff6d8 62% 63%,transparent 65% 85%,#fff6d8 87% 88%,transparent 90%);filter:drop-shadow(0 0 .6cqw #ffe9a8)}
 :host([data-go]) .s{animation:upSoft .9s cubic-bezier(.25,.8,.25,1) forwards}
 :host([data-go]) .w1,:host([data-go]) .w2{animation:fadeIn .8s ease-out forwards}
@@ -64,7 +85,7 @@ function design(style, o, t) {
 .s{clip-path:polygon(0 16%,100% 0,100% 100%,0 100%);background:linear-gradient(100deg,${mix(c, "#000000", 0.15)} 0%,${c} 60%,${deep} 100%);box-shadow:none}
 .s:before{display:none}
 .st{position:absolute;inset:0;background:repeating-linear-gradient(115deg,rgba(255,255,255,.07) 0 1.6cqw,transparent 1.6cqw 4.2cqw)}
-.lg{top:4.4cqw;border-radius:.6cqw;transform:skewX(-10deg) scale(.7)}
+.lg{top:4.4cqw}
 .hd,.sb{font-family:Anton,Impact,'Arial Narrow',sans-serif;font-weight:400;text-transform:uppercase;letter-spacing:.015em;line-height:1}
 .sb{font-family:Poppins,system-ui;font-weight:700;text-transform:none;line-height:1.1}
 .cta{background:${pop};color:${popInk};border-radius:0;transform:skewX(-12deg) scale(.4);font:700 2.7cqw/1.15 Poppins,system-ui;text-transform:uppercase;letter-spacing:.06em;padding:1.1cqw 3.2cqw}
@@ -89,15 +110,15 @@ function design(style, o, t) {
     return { lg: 4.8, tx: 8.4, fs: 5.4, fs2: 4.1, ink: light ? "#13231a" : "#ffffff", css: `
 .s{left:2.4cqw;right:2.4cqw;bottom:2.2cqw;height:calc(var(--sh) - 2cqw);border-radius:4.2cqw;background:linear-gradient(125deg,${mix(c, "#ffffff", 0.12)} 0%,${c} 55%,${deep} 100%);box-shadow:0 1.4cqw 3.6cqw rgba(0,0,0,.3)}
 .s:before{display:none}
-.lg{left:3.4cqw;top:2.2cqw;border-radius:3cqw}
+.lg{left:3.4cqw;top:2.2cqw}
 .tx{left:3.4cqw}.cta{left:3.4cqw;bottom:2.4cqw}
 .hd,.sb{font-family:'Baloo 2',Poppins,system-ui;font-weight:800;line-height:1.02;letter-spacing:0}
 .sb{font-weight:600}
-.cta{background:${luminance(splash) > 0.6 ? "#13231a" : "#ffffff"};color:${luminance(splash) > 0.6 ? "#ffffff" : c};border-radius:5cqw;font:800 2.9cqw/1.15 'Baloo 2',Poppins,system-ui}
-.sp{position:absolute;right:5cqw;bottom:1cqw;width:34cqw;height:34cqw;border-radius:50%;background:radial-gradient(circle at 40% 35%,${mix(splash, "#ffffff", 0.35)},${splash} 60%,transparent 61%);transform:scale(0);z-index:1}
+.cta{background:${light ? "#13231a" : "#ffffff"};color:${light ? "#ffffff" : contrast(c, "#ffffff") >= 3 ? c : "#13231a"};border-radius:5cqw;font:800 2.9cqw/1.15 'Baloo 2',Poppins,system-ui}
+.sp{position:absolute;right:5cqw;bottom:2.2cqw;width:25cqw;height:25cqw;border-radius:50%;background:radial-gradient(circle at 38% 32%,${mix(splash, "#ffffff", 0.4)},${splash} 62%,transparent 64%);opacity:.92;transform:scale(0);z-index:1}
 .p{z-index:2;transform:translateY(70%) scale(.6)}
 .bb{position:absolute;border-radius:50%;border:.3cqw solid rgba(255,255,255,.75);background:rgba(255,255,255,.18);opacity:0;z-index:3}
-.stm{position:absolute;width:1.4cqw;height:12cqw;border-radius:2cqw;background:linear-gradient(transparent,rgba(255,255,255,.7),transparent);filter:blur(.5cqw);opacity:0;z-index:3}
+.stm{position:absolute;width:1.1cqw;height:8cqw;border-radius:2cqw;background:linear-gradient(transparent,rgba(255,255,255,.55),transparent);filter:blur(.6cqw);opacity:0;z-index:3}
 .w1,.w2{transform:scale(.3);opacity:0}
 :host([data-go]) .s{animation:bounceUp .7s cubic-bezier(.2,1.35,.4,1) forwards}
 :host([data-go]) .w1,:host([data-go]) .w2{animation:boing .5s cubic-bezier(.2,1.6,.4,1) forwards}
@@ -111,7 +132,7 @@ function design(style, o, t) {
 @keyframes splash{to{transform:none}}
 @keyframes hop{to{transform:none;opacity:1}}
 @keyframes bubble{0%{opacity:0;transform:translateY(0) scale(.6)}15%{opacity:1}100%{opacity:0;transform:translateY(-30cqw) scale(1.1)}}
-@keyframes steam{0%{opacity:0;transform:translateY(0) scaleX(1)}40%{opacity:.9}100%{opacity:0;transform:translateY(-12cqw) scaleX(2.2) rotate(8deg)}}
+@keyframes steam{0%{opacity:0;transform:translateY(0) scaleX(1)}45%{opacity:.5}100%{opacity:0;transform:translateY(-6cqw) scaleX(1.8) rotate(6deg)}}
 @keyframes wiggle{0%,90%,100%{rotate:0deg}93%{rotate:-4deg}96%{rotate:4deg}}`,
       deco: "", after: `<div class="sp"></div>` + (drink
         ? n(9, (i) => `<i class="bb" style="right:${[8, 16, 26, 12, 30, 20, 6, 24, 34][i]}cqw;bottom:${[3, 6, 2, 10, 5, 1, 8, 12, 4][i]}cqw;width:${[1.6, 2.6, 1.2, 2, 1.4, 3, 1.1, 1.8, 2.2][i]}cqw;height:${[1.6, 2.6, 1.2, 2, 1.4, 3, 1.1, 1.8, 2.2][i]}cqw;animation-delay:${(1 + i * 0.33).toFixed(2)}s"></i>`)
@@ -125,7 +146,6 @@ function design(style, o, t) {
 .s:before{height:.3cqw;background:linear-gradient(90deg,transparent,${neon},transparent)}
 .gr{position:absolute;inset:0;background-image:linear-gradient(rgba(255,255,255,.05) 1px,transparent 1px),linear-gradient(90deg,rgba(255,255,255,.05) 1px,transparent 1px);background-size:3.2cqw 3.2cqw;-webkit-mask-image:linear-gradient(90deg,transparent,#000 60%);mask-image:linear-gradient(90deg,transparent,#000 60%)}
 .bm{position:absolute;top:-30%;bottom:-30%;left:-30%;width:14cqw;background:linear-gradient(90deg,transparent,rgba(255,255,255,.22),transparent);transform:skewX(-24deg);opacity:0;z-index:4}
-.lg{border-radius:1.2cqw}
 .hd,.sb{font-family:'Space Grotesk',Poppins,system-ui;font-weight:700;letter-spacing:-.015em}
 .sb{font-weight:500;color:#c8d2ea}
 .cta{background:rgba(255,255,255,.06);color:#fff;border:.25cqw solid ${neon};font:500 2.7cqw/1.15 'Space Grotesk',Poppins,system-ui;box-shadow:0 0 2cqw ${neon}55}
@@ -167,7 +187,7 @@ function design(style, o, t) {
 }
 
 /**
- * @param {{ brand: string, headline: string, subline?: string, cta: string, colour: string, accent?: string|null, productUrl: string, productMode: "alpha"|"plain-bg"|"photo"|"scene", logoUrl?: string|null, style?: string, motif?: string }} o
+ * @param {{ brand: string, headline: string, subline?: string, cta: string, colour: string, accent?: string|null, productUrl: string, productMode: "alpha"|"plain-bg"|"photo"|"scene", logoUrl?: string|null, logoKind?: string|null, logoInk?: string|null, logoLight?: number, style?: string, motif?: string }} o
  */
 export function stripHtml(o) {
   const style = STYLES.includes(o.style) ? o.style : "bold";
@@ -178,45 +198,62 @@ export function stripHtml(o) {
   const cut = o.productMode === "alpha" || o.productMode === "plain-bg", scene = o.productMode === "scene";
   const d = design(style, o, { c, light, deep, glow, panel, cut, scene });
   const ink = d.ink;
-  const ctaBg = light ? "#141414" : "#ffffff", ctaInk = light ? "#ffffff" : c;
-  const logo = o.logoUrl ? `<div class="lg"><img src="${esc(o.logoUrl)}" alt="${esc(o.brand)}"></div>` : `<div class="lg lgt">${esc(o.brand)}</div>`;
+  const ctaBg = light ? "#141414" : "#ffffff", ctaInk = light ? "#ffffff" : contrast(c, "#ffffff") >= 3 ? c : "#141414";
+  // the colour right behind the logo in each design, for the contrast check
+  const behind = { bold: c, luxe: mix(c, "#000000", luminance(c) > 0.5 ? 0.55 : 0.25), sport: mix(c, "#000000", 0.15), fresh: mix(c, "#ffffff", 0.12), tech: "#0b0e15", journey: c }[style];
+  const lmode = o.logoUrl ? logoMode({ kind: o.logoKind || "mark", ink: o.logoInk, light: o.logoLight || 0, behind, style }) : "text";
+  const logo = o.logoUrl ? `<div class="lg ${lmode}"><img src="${esc(o.logoUrl)}" alt="${esc(o.brand)}"></div>` : `<div class="lg lgt">${esc(o.brand)}</div>`;
+  const halo = style === "luxe" ? "#f4e7cf" : mix(c, "#ffffff", 0.86);
   const back = style === "bold" ? `${scene ? "" : panel ? `<div class="pn"></div>` : ""}<div class="ring"></div>` : style === "luxe" ? `<div class="ring"></div>` : "";
   return `<style>
 :host{display:block}
 .w{position:absolute;inset:0;container-type:size;overflow:hidden;font-family:Poppins,system-ui,sans-serif;-webkit-font-smoothing:antialiased;--sh:max(46cqh,26cqw)}
 .s{position:absolute;left:0;right:0;bottom:0;height:max(46cqh,26cqw);max-height:56cqh;background:linear-gradient(105deg,${c} 0%,${c} 52%,${deep} 100%);box-shadow:0 -1cqw 3.4cqw rgba(0,0,0,.28);transform:translateY(105%)}
-.s:before{content:"";position:absolute;left:0;right:0;top:0;height:.55cqw;background:linear-gradient(90deg,${glow},rgba(255,255,255,.75),${glow})}
+.s:before{content:"";position:absolute;left:0;right:0;top:0;height:.3cqw;background:linear-gradient(90deg,transparent,rgba(255,255,255,.6) 30%,rgba(255,255,255,.6) 70%,transparent);opacity:.8}
+.s:after{content:"";position:absolute;inset:0;background-image:${GRAIN};background-size:24cqw;opacity:.09;mix-blend-mode:overlay;pointer-events:none;border-radius:inherit}
 .pn{position:absolute;right:0;top:0;bottom:0;width:44%;background:linear-gradient(160deg,${panel ? mix(panel, "#ffffff", 0.12) : "transparent"},${panel || "transparent"} 70%);clip-path:polygon(22% 0,100% 0,100% 100%,0 100%);transform:translateX(100%)}
 :host([data-go]) .pn{animation:up .6s .2s cubic-bezier(.2,.9,.25,1) forwards}
 .ring{position:absolute;right:-6cqw;top:50%;width:46cqw;height:46cqw;margin-top:-23cqw;border-radius:50%;background:radial-gradient(circle,rgba(255,255,255,.26) 0%,rgba(255,255,255,.08) 55%,rgba(255,255,255,0) 70%);transform:scale(.3);opacity:0}
 .sh{position:absolute;top:0;bottom:0;left:-40%;width:28%;background:linear-gradient(100deg,rgba(255,255,255,0),rgba(255,255,255,.28),rgba(255,255,255,0));transform:skewX(-18deg);opacity:0}
-.lg{position:absolute;left:3.6cqw;top:2.3cqw;height:5.2cqw;padding:.8cqw 2cqw;box-sizing:border-box;background:#fff;border-radius:4cqw;box-shadow:0 .4cqw 1.4cqw rgba(0,0,0,.18);display:flex;align-items:center;opacity:0;transform:scale(.7);transform-origin:left center}
-.lg img{height:100%;width:auto;max-width:26cqw;object-fit:contain;display:block}
-.lgt{font:700 3.2cqw/1 Poppins,system-ui;color:${c};letter-spacing:.02em}
+.lg{position:absolute;left:3.6cqw;top:2.3cqw;height:5.2cqw;box-sizing:border-box;display:flex;align-items:center;opacity:0;transform:translateY(35%);transform-origin:left center;z-index:2}
+.lg img{height:100%;width:auto;max-width:28cqw;object-fit:contain;display:block}
+.lg.colour img{filter:drop-shadow(0 .2cqw .6cqw rgba(0,0,0,.18))}
+.lg.white img{filter:brightness(0) invert(1) drop-shadow(0 .2cqw .7cqw rgba(0,0,0,.28))}
+.lg.black img{filter:brightness(0);opacity:.86}
+.lg.badge img{filter:drop-shadow(0 .35cqw .9cqw rgba(0,0,0,.3))}
+.lg.chip{padding:.5cqw 1.4cqw;border-radius:1.2cqw;background:rgba(255,255,255,.14);border:.15cqw solid rgba(255,255,255,.32);-webkit-backdrop-filter:blur(.8cqw);backdrop-filter:blur(.8cqw)}
+.lgt{font:800 3.5cqw/1 Poppins,system-ui;color:${ink};letter-spacing:.03em;text-shadow:0 .2cqw .8cqw rgba(0,0,0,.2)}
 .tx{position:absolute;left:3.6cqw;width:52cqw;top:8.7cqw;color:${ink}}
-.hd,.sb{position:absolute;left:0;right:0;top:0;font-weight:700;font-size:var(--fs,${d.fs}cqw);line-height:1.08;letter-spacing:-.01em;text-shadow:${light && style === "bold" ? "none" : "0 .3cqw 1.2cqw rgba(0,0,0,.22)"}}
+.hd,.sb{position:absolute;left:0;right:0;top:0;text-wrap:balance;font-weight:700;font-size:var(--fs,${d.fs}cqw);line-height:1.08;letter-spacing:-.01em;text-shadow:${light && style === "bold" ? "none" : "0 .3cqw 1.2cqw rgba(0,0,0,.22)"}}
 .sb{font-weight:600;font-size:var(--fs2,${d.fs2}cqw);line-height:1.12}
 .wd{display:inline-block;overflow:hidden;vertical-align:top;padding-bottom:.4cqw}
 .w1,.w2{display:inline-block;transform:translateY(115%);opacity:0}
-.cta{position:absolute;left:3.6cqw;bottom:2.3cqw;padding:1.05cqw 3cqw;border-radius:5cqw;background:${ctaBg};color:${ctaInk};font:600 2.9cqw/1.15 Poppins,system-ui;letter-spacing:.01em;overflow:hidden;transform:scale(.4);opacity:0;transform-origin:left center;box-shadow:0 .5cqw 1.6cqw rgba(0,0,0,.2)}
+.cta{position:absolute;left:3.6cqw;bottom:2.3cqw;display:inline-flex;align-items:center;gap:.9cqw;padding:1.05cqw 2.4cqw 1.05cqw 3cqw;border-radius:5cqw;background:${ctaBg};color:${ctaInk};font:600 2.9cqw/1.15 Poppins,system-ui;letter-spacing:.02em;overflow:hidden;transform:scale(.4);opacity:0;transform-origin:left center;box-shadow:0 .5cqw 1.6cqw rgba(0,0,0,.2),inset 0 0 0 .12cqw rgba(255,255,255,.18)}
+.ar{width:1.05em;height:1.05em;flex:none;transition:none}
+:host([data-go]) .ar{animation:nudge 2.6s 2.4s ease-in-out infinite}
+@keyframes nudge{0%,70%,100%{transform:none}80%{transform:translateX(.5cqw)}90%{transform:none}}
 .cta:after{content:"";position:absolute;top:0;bottom:0;left:-60%;width:40%;background:linear-gradient(100deg,rgba(255,255,255,0),rgba(255,255,255,.55),rgba(255,255,255,0));transform:skewX(-20deg)}
 .p{position:absolute;right:2.4cqw;bottom:1.4cqw;opacity:0;transform:translateX(60cqw) rotate(12deg)}
 .p img{display:block;width:auto;height:100%;max-width:100%;object-fit:contain;object-position:right bottom}
 .p.cut{height:calc(max(46cqh,26cqw) * 1.2);max-height:60cqh;width:40cqw;display:flex;justify-content:flex-end;align-items:flex-end;filter:drop-shadow(0 1.2cqw 1.6cqw rgba(0,0,0,.35))}
-.p.cut img{height:auto;max-height:100%}
-.p.card{height:calc(max(46cqh,26cqw) - 5cqw);max-height:46cqh;bottom:2.5cqw;right:3.4cqw;padding:.8cqw;background:#fff;border-radius:2.2cqw;box-shadow:0 1cqw 2.6cqw rgba(0,0,0,.3)}
-.p.card img{border-radius:1.6cqw;max-width:36cqw;object-fit:contain;background:#fff}
+.p.cut img{height:auto;max-height:100%;position:relative;z-index:1}
+.p.cut:after{content:"";position:absolute;right:6%;width:70%;bottom:-.8cqw;height:2.6cqw;border-radius:50%;background:radial-gradient(closest-side,rgba(0,0,0,.38),transparent)}
+/* a product photo that could not be cut out: it melts into a soft brand-tinted glow — no card, no rectangle */
+.p.photo{height:calc(var(--sh) - 4cqw);max-height:48cqh;aspect-ratio:1/1;bottom:2cqw;right:4cqw;display:grid;place-items:center;isolation:isolate}
+.p.photo:before{content:"";position:absolute;inset:-14%;border-radius:50%;background:radial-gradient(closest-side,${halo} 0%,${halo}f2 34%,${halo}80 58%,${halo}00 100%);filter:blur(.4cqw)}
+.p.photo img{position:relative;width:100%;height:100%;max-width:none;object-fit:contain;object-position:center;mix-blend-mode:multiply;-webkit-mask-image:radial-gradient(closest-side,#000 58%,transparent 92%);mask-image:radial-gradient(closest-side,#000 58%,transparent 92%)}
 .sc{position:absolute;right:0;top:0;bottom:0;width:50%;overflow:hidden;-webkit-mask-image:linear-gradient(90deg,transparent 0,#000 34%);mask-image:linear-gradient(90deg,transparent 0,#000 34%);opacity:0;transform:scale(1.12)}
 .sc img{width:100%;height:100%;object-fit:cover;display:block}
 :host([data-go]) .sc{animation:scene 1.1s .3s cubic-bezier(.2,.8,.3,1) forwards,drift 9s 1.4s ease-in-out infinite alternate}
 @keyframes scene{to{opacity:1;transform:scale(1.02)}}
 @keyframes drift{to{transform:scale(1.08) translateX(-1.5%)}}
-.x{position:absolute;right:1.2cqw;top:1.2cqw;width:4.2cqw;height:4.2cqw;border-radius:50%;background:rgba(0,0,0,.45);color:#fff;font:600 3.2cqw/4.2cqw system-ui;text-align:center;z-index:5;opacity:0}
-.ad{position:absolute;right:6.4cqw;top:1.5cqw;font:600 2.2cqw/1 system-ui;color:#fff;background:rgba(0,0,0,.45);padding:.7cqw 1.2cqw;border-radius:1cqw;z-index:5;opacity:0}
+.x{position:absolute;right:1.4cqw;top:1.4cqw;width:3.6cqw;height:3.6cqw;border-radius:50%;background:rgba(0,0,0,.32);-webkit-backdrop-filter:blur(.6cqw);backdrop-filter:blur(.6cqw);color:#fff;font:500 2.8cqw/3.5cqw system-ui;text-align:center;z-index:5;opacity:0}
+.ad{position:absolute;right:5.8cqw;top:1.75cqw;font:600 1.8cqw/1 system-ui;letter-spacing:.08em;color:#fff;background:rgba(0,0,0,.32);-webkit-backdrop-filter:blur(.6cqw);backdrop-filter:blur(.6cqw);padding:.55cqw .95cqw;border-radius:.8cqw;z-index:5;opacity:0}
 :host([data-go]) .s{animation:up .55s cubic-bezier(.2,.9,.25,1) forwards}
 :host([data-go]) .ring{animation:ring .8s .25s cubic-bezier(.2,.9,.3,1) forwards}
 :host([data-go]) .sh{animation:sweep 1s 1s ease-in-out forwards}
-:host([data-go]) .lg{animation:pop .45s .55s cubic-bezier(.2,1.3,.4,1) forwards}
+:host([data-go]) .lg{animation:lgIn .6s .5s cubic-bezier(.2,.9,.3,1) forwards}
+@keyframes lgIn{to{transform:none;opacity:1}}
 :host([data-go]) .p{animation:drop .8s .35s cubic-bezier(.18,1.22,.4,1) forwards,float 3.2s 1.4s ease-in-out infinite}
 :host([data-go]) .w1{animation:rise .45s cubic-bezier(.2,.9,.3,1) forwards}
 :host([data-go]) .tx:not(.one) .hd{animation:out .4s 3.9s ease-in forwards}
@@ -238,8 +275,8 @@ ${d.css}
 </style>
 <div class="w st-${style}" data-lg="${d.lg}" data-tx="${d.tx}" data-fs="${d.fs}" data-fs2="${d.fs2}"><div class="s">${d.deco}${scene ? `<div class="sc"><img src="${esc(o.productUrl)}" alt=""></div>` : back}<div class="sh"></div>${logo}
 <div class="tx${o.subline ? "" : " one"}"><div class="hd">${words(o.headline, "w1", d.words.d, d.words.step)}</div>${o.subline ? `<div class="sb">${words(o.subline, "w2", 4.15, d.words.step)}</div>` : ""}</div>
-<div class="cta">${esc(o.cta)} &rsaquo;</div></div>
-${d.after || ""}${scene ? "" : `<div class="p ${cut ? "cut" : "card"}"><img src="${esc(o.productUrl)}" alt=""></div>`}
+<div class="cta">${esc(o.cta)}${ARROW}</div></div>
+${d.after || ""}${scene ? "" : `<div class="p ${cut ? "cut" : "photo"}"><img src="${esc(o.productUrl)}" alt=""></div>`}
 <span class="ad">Ad</span><span class="x">&times;</span></div>`;
 }
 

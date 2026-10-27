@@ -153,6 +153,19 @@ export async function styleFonts(style, dir, fetchImpl = globalThis.fetch) {
   return { css, files };
 }
 
+// The first topic word (or phrase) found in a headline / URL, by word stem ("walking" finds "walk", "recipes" finds
+// "recipe"); null when none is there
+export function topicHit(text, topics) {
+  const toks = String(text || "").toLowerCase().replace(/[^a-z0-9]+/g, " ").split(" ").filter(Boolean);
+  const stem = (w) => w.length > 5 ? w.slice(0, Math.max(4, w.length - 3)) : w;
+  const has = (w) => toks.some((t) => t === w || (w.length >= 4 && (t.startsWith(stem(w)) || w.startsWith(stem(t)) && t.length >= 4)));
+  for (const raw of topics) {
+    const ws = String(raw || "").toLowerCase().replace(/[^a-z0-9 ]+/g, " ").split(" ").filter((w) => w.length >= 3 && !["and", "the", "for", "with"].includes(w));
+    if (ws.length && ws.every(has)) return raw;
+  }
+  return null;
+}
+
 const TOPIC_SCHEMA = { type: "object", properties: { words: { type: "array", items: { type: "string" } }, competitors: { type: "array", items: { type: "string" } } }, required: ["words"] };
 
 // ---------- AI prompts (versioned: STUDIO_PROMPTS) ----------
@@ -196,7 +209,15 @@ const bingLarge = (thumb, size) => /^https:\/\/[\w.]*bing\.(net|com)\/th/.test(t
 const reEsc = (t) => String(t).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 export const withRealName = (text, typed, found, brand) => !found || !typed || found.toLowerCase() === typed.toLowerCase() ? text
   : String(text).replace(new RegExp(reEsc(typed), "ig"), found.replace(new RegExp(`^${reEsc(brand)}\\s+`, "i"), ""));
-const words = (s, n) => String(s || "").trim().split(/\s+/).slice(0, n).join(" ");
+// copy kept to about n words without cutting a phrase in half: up to two extra words are allowed (the strip fits text
+// by size); a longer line is shortened and never left ending on "for", "your", "the" …
+export const words = (s, n) => {
+  const t = String(s || "").trim().split(/\s+/).filter(Boolean);
+  if (t.length <= n + 2) return t.join(" ");
+  const cut = t.slice(0, n);
+  while (cut.length > 2 && /^(for|every|the|a|an|and|or|with|your|to|of|in|on|at|by|from|our|its|is|are)$/i.test(cut.at(-1).replace(/[^a-z]/gi, ""))) cut.pop();
+  return cut.join(" ");
+};
 
 /**
  * @param {{ brand: string, product: string, offer?: string, productImage?: string, style?: string, brands?: any, clientAd?: { file: string, type: "image"|"video", name?: string, seconds?: number }|null, workDir: string, indexDir?: string, studio: any, cfg: any, store: any,
@@ -408,7 +429,13 @@ export async function makeInImage(o) {
       `\n\nFor every picture k give: context_fit (0-10: 9-10 only when the article is about this product's category or the main thing it is bought for; 6-8 closely related; 5 or less when the link is loose or indirect — e.g. a phone on a road-trip or travel story, shoes on a motorbike trip, noodles on a dal recipe), image_fit (0-10, does the picture's scene suit the product — the right setting or activity), safe (false if the article or picture involves anything in Avoid, tragedy, crime, illness, a negative view of this kind of product (health warnings, "unhealthy", calories, sodium, additives, junk, addiction, safety problems — anywhere in the article text, not only the headline), a competitor's product or logo (an article that reviews, launches, prices or reports on a specific product from another company in the same or a neighbouring category counts — for a phone that includes other tablets, smartwatches, earbuds and laptops), a recognisable celebrity or politician whose face next to the ad could look like an endorsement, or children as the focus for an adult product), safe_why, strip_ok, why (one sentence).`,
       FINAL_SCHEMA, [...(adRef ? [{ label: "AD — the client's own creative (for reference; do not score it)", file: adRef }] : []), ...shown.map((c) => ({ label: `Picture [${c.k}] (from article ${c.a.headline.slice(0, 70)})`, file: c.file }))], "high");
     lap("ai_match");
-    const scored = shown.map((c) => { const v = (fin.candidates || []).find((x) => x.k === c.k) || {}; return { ...c, v, score: (v.context_fit || 0) * 0.55 + (v.image_fit || 0) * 0.45 }; })
+    // a hard check next to the AI's score: the headline or section must name at least one of the product's topic words
+    // (an article about alarms and deep sleep is not an earbuds article, whatever score it gets)
+    const scored = shown.map((c) => { const v = { ...((fin.candidates || []).find((x) => x.k === c.k) || {}) };
+      const hit = topicHit(`${c.a.headline} ${c.a.url}`, [...topicWords, ...(known?.category ? [known.category] : [])]);
+      if (!hit && v.context_fit > 6) { v.context_fit_ai = v.context_fit; v.context_fit = 6; v.why = `${v.why || ""} (Capped at 6/10: the headline and section name none of the product's topics.)`.trim(); }
+      v.topic = hit;
+      return { ...c, v, score: (v.context_fit || 0) * 0.55 + (v.image_fit || 0) * 0.45 }; })
       .sort((x, y) => (Number(y.v.safe && y.v.strip_ok) - Number(x.v.safe && x.v.strip_ok)) || y.score - x.score);
     const ok = scored.filter((c) => c.v.safe && c.v.strip_ok && c.score >= studio.minScore && c.v.context_fit >= studio.minContext);
     result.candidates = scored.map((c) => ({ article: c.a.headline, url: c.a.url, image: c.im.finalUrl || c.im.src, ...c.v, score: +c.score.toFixed(1) }));
