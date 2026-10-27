@@ -52,5 +52,7 @@ export function extractArticle(html, url) {
     sections: [...new Set([...list(ld?.articleSection).map((s) => s.toLowerCase()), ...pathSections])],
     keywords: list(ld?.keywords || meta(html, "news_keywords") || meta(html, "keywords")).slice(0, 30),
     image,
+    // subscription articles: schema.org isAccessibleForFree (false → behind a paywall; null → the page doesn't say)
+    free: /"isAccessibleForFree"\s*:\s*"?false"?/i.test(html) ? false : /"isAccessibleForFree"\s*:\s*"?true"?/i.test(html) ? true : null,
   };
 }

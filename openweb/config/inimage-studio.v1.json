@@ -254,7 +254,7 @@
   }
  ],
  "feeds": {
-  "perSection": 40,
+  "perSection": 30,
   "maxAgeDays": 30,
   "cacheMinutes": 20
  },
@@ -264,7 +264,7 @@
   "minAspect": 1.25,
   "maxAspect": 2.4,
   "perArticle": 4,
-  "maxCandidates": 14
+  "maxCandidates": 8
  },
  "copy": {
   "maxHeadlineWords": 5,
@@ -320,7 +320,10 @@
   }
  ],
  "minScore": 7,
- "changes": "2026-10-27: added Mid-day Lifestyle and Asianet Newsable Technology / Lifestyle (both listed in Category Wise In-Image › Premium SiteList for Display); Asianet photo galleries (slideshows) are left out. Later the same day: an article that carries another brand's mock is not used again; only direct fits (context 8/10 or more) are placed.",
+ "changes": "2026-10-27: added Mid-day Lifestyle and Asianet Newsable Technology / Lifestyle (both listed in Category Wise In-Image › Premium SiteList for Display); Asianet photo galleries (slideshows) are left out. Later the same day: an article that carries another brand's mock is not used again; only direct fits (context 8/10 or more) are placed. Speed: at most 6 articles read and 8 pictures checked, 240 headlines planned, a 115 s budget (a page is re-tried only while a full recording still fits).",
  "minContext": 8,
- "oneAdvertiserPerArticle": true
+ "oneAdvertiserPerArticle": true,
+ "fetchArticles": 6,
+ "listMax": 240,
+ "budgetSeconds": 115
 }

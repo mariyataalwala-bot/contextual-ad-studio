@@ -124,7 +124,7 @@ export function rivalMatcher(names) {
   return (text) => { const t = String(text || "").toLowerCase(), hit = res.filter(([, re]) => re.test(t)).map(([n]) => n); return hit.length ? hit : null; };
 }
 
-const TOPIC_SCHEMA = { type: "object", properties: { words: { type: "array", items: { type: "string" } } }, required: ["words"] };
+const TOPIC_SCHEMA = { type: "object", properties: { words: { type: "array", items: { type: "string" } }, competitors: { type: "array", items: { type: "string" } } }, required: ["words"] };
 
 // ---------- AI prompts (versioned: STUDIO_PROMPTS) ----------
 const PICK_SCHEMA = { type: "object", properties: {
@@ -177,7 +177,7 @@ export async function makeInImage(o) {
   const fetchImpl = o.fetchImpl || globalThis.fetch, say = o.say || (() => {});
   const offer = String(o.offer || "").trim();
   const cand = path.join(workDir, "candidates"); fs.mkdirSync(cand, { recursive: true });
-  const fetcher = makeFetcher({ fetchImpl }), feeds = feedFetcher(fetchImpl);
+  const fetcher = makeFetcher({ fetchImpl, gapMs: 1000 }), feeds = feedFetcher(fetchImpl);   // a handful of article pages, a second apart per site
   const t0 = Date.now(), timing = {}; const lap = (k) => { timing[k] = +((Date.now() - t0) / 1000).toFixed(1); };
   /** @type {Record<string, any>} */
   const result = { version: studio.version, prompts: STUDIO_PROMPTS, strip: STRIP_VERSION, brand, product, offer: offer || null, mock: true,
@@ -187,8 +187,8 @@ export async function makeInImage(o) {
     // 1) product pictures, logo candidates and the latest articles — all at once
     say(4, "search", `Searching online for ${brand} ${product}…`);
     const topicP = ask("You help find articles for contextual ads.",
-      `Brand: ${brand}. Product: ${product}.\nGive 15-25 lowercase single words (a few two-word phrases at most) that would appear in the web address of a news or lifestyle article that is a natural place for this ad — the product type, how and where it is used, occasions, activities, dishes, places (e.g. for running shoes: running, marathon, jogging, walking, workout, fitness, steps, cardio, sneakers; for instant noodles: noodles, recipe, snack, ramen, hostel, monsoon, chai, breakfast). Never the brand name or competitor names.`,
-      TOPIC_SCHEMA, [], "medium").catch(() => ({ words: [] }));
+      `Brand: ${brand}. Product: ${product}.\nGive 15-25 lowercase single words (a few two-word phrases at most) that would appear in the web address of a news or lifestyle article that is a natural place for this ad — the product type, how and where it is used, occasions, activities, dishes, places (e.g. for running shoes: running, marathon, jogging, walking, workout, fitness, steps, cardio, sneakers; for instant noodles: noodles, recipe, snack, ramen, hostel, monsoon, chai, breakfast). Never the brand name or competitor names.\nAlso competitors: 8-20 rival brands of ${brand} for this product and their product line names (e.g. for a phone: Apple, iPhone, Samsung, Galaxy, Google, Pixel, OnePlus, Xiaomi, Redmi, Vivo, Oppo, Realme).`,
+      TOPIC_SCHEMA, [], "medium").catch(() => ({ words: [], competitors: [] }));
     const [web, webClear, commons, webLogos, feedItems, older] = await Promise.all([
       imageSearch(`${brand} ${product}`, { fetchImpl }).catch(() => []),
       imageSearch(`${brand} ${product}`, { fetchImpl, transparent: true }).catch(() => []),
@@ -201,7 +201,9 @@ export async function makeInImage(o) {
     const seenUrl = new Set(feedItems.map((x) => x.url));
     const taken = usedArticles(o.indexDir || path.join(workDir, "..", ".."), brand);
     const all = [...feedItems, ...matchSlugs(older.filter((x) => !seenUrl.has(x.url)), topic.words || [])];
-    const items = all.filter((x) => !taken.has(urlKey(x.url)));
+    // speed and focus: rival headlines out before any AI reads the list, topic matches first, at most studio.listMax lines
+    const early = rivalMatcher([...(topic.competitors || []), brand]), hits = new Set(matchSlugs(all, topic.words || [], 1e9).map((x) => x.url));
+    const items = all.filter((x) => !taken.has(urlKey(x.url)) && !early(x.title)).sort((a, b) => Number(hits.has(b.url)) - Number(hits.has(a.url))).slice(0, studio.listMax);
     result.articlesTakenByOtherBrands = all.filter((x) => taken.has(urlKey(x.url))).map((x) => ({ url: x.url, title: x.title, usedBy: taken.get(urlKey(x.url)) }));
     result.topicWords = topic.words || [];
     lap("search");
@@ -278,12 +280,12 @@ export async function makeInImage(o) {
     const rivals = rivalMatcher([...(plan.competitors || []), brand]);
     const picked = (plan.shortlist || []).map((s) => ({ ...items[s.n - 1], why: s.why })).filter((x) => x.url);
     result.rivalHeadlinesDropped = picked.filter((x) => rivals(x.title)).map((x) => ({ url: x.url, title: x.title, names: rivals(x.title) }));
-    const short = picked.filter((x) => !rivals(x.title)).slice(0, studio.shortlist);
+    const short = picked.filter((x) => !rivals(x.title)).slice(0, studio.fetchArticles);
     if (!short.length) throw new Error(`No recent article on the media-plan publishers is a good context for ${brand} ${product} right now.`);
     say(38, "articles", `Reading ${short.length} shortlisted articles…`);
     const secOf = new Map([...studio.sections, ...(studio.sitemaps || [])].map((s) => [s.id, s]));
     const got = await Promise.all(short.map(async (s) => {
-      const old = store.listArticles().find((a) => a.url === s.url && !a.error && a.images && !a.images.some((im) => im.status === "unavailable") && Date.now() - Date.parse(a.fetchedAt) < 6 * 3600e3);
+      const old = store.listArticles().find((a) => a.url === s.url && !a.error && a.images && !a.images.some((im) => im.status === "unavailable") && "free" in a && Date.now() - Date.parse(a.fetchedAt) < 6 * 3600e3);
       const a = old || await analyseUrl({ url: s.url, publisher: secOf.get(s.section), fetcher, cfg, store, ask: null, fetchImpl, tmpDir: path.join(store.root, "tmp", "img") });
       return { s, a };
     }));
@@ -291,13 +293,15 @@ export async function makeInImage(o) {
     const rejected = [], images = /** @type {any[]} */ ([]);
     for (const { s, a } of got) {
       if (a.error) { rejected.push({ url: s.url, title: s.title, why: `could not be read (${a.error.code})` }); continue; }
+      if (a.free === false) { rejected.push({ url: s.url, title: s.title, why: "subscription article (the page marks it isAccessibleForFree: false)" }); continue; }
       // page safety (word lists, safety policy): only pages where nothing was flagged; the AI check below sees the text too
       if (a.safety.state === "unsafe" || a.safety.reasons.some((r) => r !== "SAFETY_AI_UNAVAILABLE" && r !== "SAFETY_CLEAR")) { rejected.push({ url: s.url, title: s.title, why: `page safety: ${a.safety.reasons.join(", ")}`, evidence: a.safety.evidence?.slice(0, 3) }); continue; }
       const usable = (a.images || []).filter((im) => im.status === "ok" && im.width >= studio.image.minWidth && im.width / im.height >= studio.image.minAspect && im.width / im.height <= studio.image.maxAspect).slice(0, studio.image.perArticle);
       if (!usable.length) { rejected.push({ url: s.url, title: s.title, why: "no landscape picture big enough for an in-image unit" }); continue; }
       for (const im of usable) { const rec = store.getImage(im.id); if (rec) images.push({ a, s, im: { ...rec, ...(rec.uses?.[a.id] || {}) } }); }
     }
-    const pool = images.slice(0, studio.image.maxCandidates);
+    const rank = new Map(); for (const c of images) { const n = (rank.get(c.a.id) || 0); c.nth = n; rank.set(c.a.id, n + 1); }
+    const pool = images.sort((x, y) => x.nth - y.nth).slice(0, studio.image.maxCandidates);
     if (!pool.length) throw new Error(`The shortlisted articles have no usable pictures (${rejected.map((r) => r.why).join("; ")}).`);
     say(52, "images", `Checking ${pool.length} article picture(s)…`);
     await Promise.all(pool.map(async (c, i) => {   // small JPEG copies for the AI check
@@ -337,10 +341,11 @@ export async function makeInImage(o) {
     const refused = new Set();   // an article refused for its page (wall, no phone layout, blanked) is not tried again with another picture
     for (const c of ok.filter((x, i, all) => all.findIndex((y) => y.a.url === x.a.url && y.im.id === x.im.id) === i).slice(0, 4)) {
       if (refused.has(c.a.url)) continue;
+      if (out === null && result.renderProblems?.length && (Date.now() - t0) / 1000 > studio.budgetSeconds - 32) { result.renderProblems.push({ url: c.a.url, error: "not tried: the time budget was used up" }); break; }
       say(72, "render", `Recording the mock on “${c.a.headline.slice(0, 70)}”…`);
       try {
         out = await renderMock({ articleUrl: c.a.url, leadImage: c.im.finalUrl || c.im.src, format: "in-image", outBase: path.join(workDir, base), video: true, strict: true,
-          creativeHtml: html, assets: files, fontsCss, fit: fitStrip, holdMs: studio.creative.seconds * 1000, ffmpeg, chromium: o.chromium });
+          creativeHtml: html, assets: files, fontsCss, fit: fitStrip, holdMs: studio.creative.seconds * 1000, navTimeoutMs: 25000, ffmpeg, chromium: o.chromium });
         chosen = c; break;
       } catch (e) { (result.renderProblems ||= []).push({ url: c.a.url, error: e.message }); if (/PAYWALL|NOT_MOBILE|NOT_VISIBLE|PAGE_LOAD/.test(e.code || "")) refused.add(c.a.url); }
     }

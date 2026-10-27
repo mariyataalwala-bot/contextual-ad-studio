@@ -13,6 +13,7 @@ import { stripHtml, fitStrip, luminance } from "../../openweb/lib/strip.mjs";
 import { slugTitle, matchSlugs, sitemapIndex, loadStudioConfig, withRealName, usedArticles, rivalMatcher } from "../../openweb/lib/studio.mjs";
 import { renderMock, ASSET_URL } from "../../openweb/lib/mock.mjs";
 import { loadMediaPlan, checkPublisherSources } from "../../openweb/lib/inventory.mjs";
+import { extractArticle } from "../../openweb/lib/extract.mjs";
 import { FILLER } from "./helpers.mjs";
 
 test("image search results: full picture, thumbnail, source page and title from each tile; entities decoded; duplicates dropped", () => {
@@ -51,6 +52,14 @@ test("rival names in a headline are caught as whole words, with or without space
   assert.deepEqual(m("Motorola Edge launch"), ["Motorola"], "the brand's own news is left out too");
   assert.equal(m("Pineapple smoothie recipes"), null);
   assert.equal(m("WhatsApp lets you screen callers"), null);
+});
+
+test("subscription articles are recognised from the page's own schema.org flag (Indian Express marks them isAccessibleForFree: false)", () => {
+  const page = (flag) => `<html><head><script type="application/ld+json">${JSON.stringify({ "@type": "NewsArticle", headline: "H", articleBody: FILLER, ...(flag === undefined ? {} : { isAccessibleForFree: flag }) })}</script></head><body></body></html>`;
+  assert.equal(extractArticle(page("False"), "https://x.test/a").free, false);
+  assert.equal(extractArticle(page(false), "https://x.test/a").free, false);
+  assert.equal(extractArticle(page("True"), "https://x.test/a").free, true);
+  assert.equal(extractArticle(page(undefined), "https://x.test/a").free, null);
 });
 
 test("the brand's own site is recognised by its host name, retailers are not", () => {

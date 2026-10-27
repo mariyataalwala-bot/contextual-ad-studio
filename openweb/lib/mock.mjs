@@ -114,9 +114,9 @@ async function screencast(page, dir, act) {
  * `assets` (name → local file, requested as ASSET_URL + name) and `fontsCss`. Its animation starts (data-go on the
  * unit) once the page has scrolled to it, and the recording then holds for holdMs. `strict`: fail rather than fall
  * back to another image when the chosen picture is not on the rendered page.
- * @param {{ articleUrl: string, leadImage?: string|null, creativeFile?: string|null, creativeHtml?: string|null, assets?: Record<string, string>, fontsCss?: string|null, fit?: Function|null, holdMs?: number, strict?: boolean, format: string, outBase: string, video?: boolean, ffmpeg?: ((args: string[]) => Promise<any>)|null, chromium?: any }} opts
+ * @param {{ articleUrl: string, leadImage?: string|null, creativeFile?: string|null, creativeHtml?: string|null, assets?: Record<string, string>, fontsCss?: string|null, fit?: Function|null, holdMs?: number, navTimeoutMs?: number, strict?: boolean, format: string, outBase: string, video?: boolean, ffmpeg?: ((args: string[]) => Promise<any>)|null, chromium?: any }} opts
  */
-export async function renderMock({ articleUrl, leadImage, creativeFile = null, creativeHtml = null, assets = {}, fontsCss = null, fit = null, holdMs = 4000, strict = false, format, outBase, video = false, ffmpeg = null, chromium = null }) {
+export async function renderMock({ articleUrl, leadImage, creativeFile = null, creativeHtml = null, assets = {}, fontsCss = null, fit = null, holdMs = 4000, navTimeoutMs = 45000, strict = false, format, outBase, video = false, ffmpeg = null, chromium = null }) {
   const ext = creativeHtml ? ".html" : path.extname(creativeFile || "").toLowerCase(), type = creativeHtml ? "text/html" : TYPES[ext];
   if (!type) throw new MockError("CREATIVE_TYPE", `Unsupported creative file type ${ext}`);
   if (!creativeHtml && !fs.existsSync(creativeFile)) throw new MockError("CREATIVE_MISSING", "The source creative file is not in the creatives folder yet");
@@ -130,7 +130,7 @@ export async function renderMock({ articleUrl, leadImage, creativeFile = null, c
     if (!creativeHtml) await ctx.route(CREATIVE_URL + ext, (r) => r.fulfill({ status: 200, contentType: type, body: fs.readFileSync(creativeFile) }));
     for (const [name, file] of Object.entries(assets)) await ctx.route(ASSET_URL + name, (r) => r.fulfill({ status: 200, contentType: TYPES[path.extname(file).toLowerCase()] || (file.endsWith(".woff2") ? "font/woff2" : "application/octet-stream"), body: fs.readFileSync(file), headers: { "Access-Control-Allow-Origin": "*" } }));
     const page = await ctx.newPage();
-    const resp = await page.goto(articleUrl, { waitUntil: "domcontentloaded", timeout: 45000 }).catch((e) => { throw new MockError("PAGE_LOAD", e.message.slice(0, 200)); });
+    const resp = await page.goto(articleUrl, { waitUntil: "domcontentloaded", timeout: navTimeoutMs }).catch((e) => { throw new MockError("PAGE_LOAD", e.message.slice(0, 200)); });
     if (!resp || resp.status() >= 400) throw new MockError("PAGE_LOAD", `The article returned HTTP ${resp?.status()} in the browser`);
     await page.waitForTimeout(2500);
     if (format === "in-image") {   // lead images often lazy-load: wait (up to 15 s) for a large decoded image before placing
