@@ -13,6 +13,10 @@ services:
         sync: false
       - key: APP_PASSWORD       # login password for the hosted page (anyone with the URL could otherwise use your key)
         sync: false
+      - key: YOUTUBE_API_KEY    # optional YouTube Data API key (faster, more reliable video search)
+        sync: false
+      - key: FIRECRAWL_API_KEY  # optional: renders JavaScript-built article pages (never refused or paywalled ones)
+        sync: false
       - key: CAPTURE_PARALLEL   # one browser at a time on the free plan
         value: "1"
       - key: RENDER_SUBFRAMES   # 1 = no motion blur, ~4x faster and lighter (4 = full quality)

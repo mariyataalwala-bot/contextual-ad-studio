@@ -3,3 +3,8 @@ settings.json
 output
 *.log
 .git
+test
+_*
+share-*.txt
+server-log.txt
+logs_server.txt
