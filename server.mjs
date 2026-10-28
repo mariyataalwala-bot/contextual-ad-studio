@@ -868,7 +868,9 @@ http.createServer(async (req, res) => {
   const viaShare = !!(req.headers["cf-connecting-ip"] || req.headers["x-forwarded-for"]) || !/^(::1|127\.0\.0\.1|::ffff:127\.0\.0\.1)$/.test(req.socket.remoteAddress || "");
   const PW = sharePassword();
   if (viaShare || process.env.APP_PASSWORD) {   // people using the link must sign in; you on this PC don't
-    if (!PW) { res.writeHead(503, { "Content-Type": "text/plain" }); return res.end("Sharing isn't set up yet: start share.bat on the host PC."); }
+    if (!PW) { res.writeHead(503, { "Content-Type": "text/plain" }); return res.end(process.env.RENDER || process.env.PORT
+      ? "This hosted app is locked until it has a login password: add APP_PASSWORD (and GEMINI_API_KEY) under Environment in the Render dashboard, then redeploy."
+      : "Sharing isn't set up yet: start share.bat on the host PC."); }
     const [, b64] = (req.headers.authorization || "").split(" ");
     const pw = b64 ? Buffer.from(b64, "base64").toString().split(":").slice(1).join(":") : "";
     if (pw !== PW) { res.writeHead(401, { "WWW-Authenticate": 'Basic realm="Contextual Ad Studio"' }); return res.end("Login required"); }
