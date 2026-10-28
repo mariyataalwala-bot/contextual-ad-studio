@@ -8,6 +8,8 @@ import { fileURLToPath } from "node:url";
 import Anthropic from "@anthropic-ai/sdk";
 import { GoogleGenAI } from "@google/genai";
 import { createOpenWeb } from "./openweb/routes.mjs";
+import { loadBrands, findBrand, brandBrief, bannedReason, ownNames } from "./openweb/lib/brands.mjs";
+import { rivalMatcher } from "./openweb/lib/studio.mjs";
 
 const APP = path.dirname(fileURLToPath(import.meta.url));
 const PIPE = path.join(APP, "pipeline");
@@ -330,7 +332,8 @@ const RULES = `House rules for Mediakart contextual-ad demos:
   Object Identify = the product itself or its direct equivalent clearly visible (bowl of chips, cream tube or jar, teacup...).
 - No stretches: never a bathrobe for a moisturiser, a rival's drink for chips, a breakfast plate for a snack, or "home tour" as a keyword.
 - Visual Identify must show the product category itself on screen (the food being cooked/served, the product being used). Never a presenter's face or a talking-head shot, unless the product is worn on the face (skincare, make-up, eyewear).
-- If the clearest object is a competitor's product, it may be used but must be flagged in "notes".
+- Never a competitor's product as the Visual or the Object, and never a video about a competitor: reject the video instead.
+- Brand safety, for every brand: never alcohol (cocktails with spirits, beer, wine, vodka, whisky, rum …), tobacco or vaping, gambling or betting, adult content, violence, accidents, disasters or illness.
 - The content video must be INDEPENDENT of the advertised brand: never uploaded, made, sponsored or promoted by the brand (or its parent company), never about the brand's own products (none of the advertised brand's own tutorials, installation guides, unboxings, reviews or ads — general tutorials and guides by independent publishers are fine), and the brand's logo or products must not appear in the chosen moments.
 - Never invent claims, numbers or slogans.`;
 
@@ -341,8 +344,14 @@ const GENERIC_WORDS = /\b(india|indian|official|tv|ltd|limited|pvt|private|group
 const near1 = (a, b) => { if (Math.abs(a.length - b.length) > 1) return false; let i = 0, j = 0, d = 0;   // edit distance ≤ 1
   while (i < a.length && j < b.length) { if (a[i] === b[j]) { i++; j++; continue; } if (++d > 1) return false; if (a.length > b.length) i++; else if (b.length > a.length) j++; else { i++; j++; } }
   return d + (a.length - i) + (b.length - j) <= 1; };
+// MediaKart brand knowledge (openweb/config/brands.v2.json, checked online): products, rivals, sister brands, logos.
+// If the file is missing or broken, the tool works as before, without it.
+let BRANDS = null;
+try { BRANDS = loadBrands(); } catch (e) { console.error("Brand knowledge unavailable:", e.message); }
+const brandOf = (I) => BRANDS ? findBrand(BRANDS, I.brand, `${I.product || ""} ${I.adTitle || ""}`) : null;
 function brandNames(I) {
   const out = new Set(), clean = (x) => normTxt(x).replace(GENERIC_WORDS, " ").replace(/\s+/g, " ").trim();
+  for (const n of ownNames(brandOf(I))) out.add(n);   // its official names, sub-brands and sister brands (Sprite → Coca-Cola, Thums Up …)
   for (const x of [I.brand, I.adChannel]) { const n = clean(x); if (n.length >= 3) out.add(n); }
   const typed = clean(I.brand).replace(/\s/g, ""), chW = clean(I.adChannel).split(" "), tiW = new Set(clean(I.adTitle).split(" "));
   for (const w of [...chW, ...tiW]) if (w.length >= 4 && ((chW.includes(w) && tiW.has(w)) || (typed.length >= 4 && near1(w, typed)))) out.add(w);   // "MERI MAGGI" + "…MAGGI Veg Atta" → maggi; "Maggie" → maggi
@@ -353,6 +362,7 @@ const mentionsBrand = (text, names) => { const t = ` ${normTxt(text)} `, sq = t.
 const channelIsBrand = (ch, names) => { const sq = normTxt(ch).replace(/\s/g, ""); return names.some((n) => sq.includes(n.replace(/\s/g, ""))); };
 const brandOwned = (v, names) => channelIsBrand(v.channel, names) || mentionsBrand(v.title, names);
 const stripBrand = (q, names) => { let t = ` ${normTxt(q)} `; for (const n of names) t = t.split(` ${n} `).join(" "); return t.replace(/\s+/g, " ").trim(); };
+const UNSAFE_TITLE = /\b(vodka|whisk(e)?y|beer|beers|wine|wines|rum|gin|tequila|brandy|liquor|cocktails?|margarita|mojito with rum|sangria|daaru|daru|sharab|cigarettes?|vape|vaping|hookah|betting|casino|gambling|poker)\b/i;
 const ICONS = ["mesh", "pan", "chip", "bowl", "plate", "tube", "jar", "bottle", "cup", "shirt", "people", "hand", "phone", "shoe", "car"];
 
 // Step A: find the brand's official ads (AI ranks them; without AI: the brand's own channel first)
@@ -366,7 +376,7 @@ async function findAds({ brand, product }) {
   try {
     const pick = await ask(
       "You help an ad agency find a brand's own official TV/YouTube commercials.",
-      `Brand: ${brand}${product ? `\nProduct focus: ${product}` : ""}\nYouTube results (JSON):\n${JSON.stringify(list)}\n\n` +
+      `${brandBrief(BRANDS ? findBrand(BRANDS, brand, product || "") : null)}\nBrand: ${brand}${product ? `\nProduct focus: ${product}` : ""}\nYouTube results (JSON):\n${JSON.stringify(list)}\n\n` +
         `Return up to 6 that are the brand's OWN official TV / CTV commercials (16:9 TVCs uploaded by the brand's or its parent company's official channel; not vertical mobile/Shorts/Reels ads, not reactions, reviews, compilations or fan uploads). Prefer recent ads that show the product clearly. Rank best first, and say in one short line why each fits.`,
       { type: "object", additionalProperties: false, required: ["ads"],
         properties: { ads: { type: "array", items: { type: "object", additionalProperties: false, required: ["id", "why"], properties: { id: { type: "string" }, why: { type: "string" } } } } } },
@@ -462,7 +472,7 @@ async function placeBoxes(job, pick, files, verify = false) {
     const what = pick[k].what || "the main product";
     const check = verify ? `\n\nAlso check this full frame strictly. Product type being advertised: ${job.ptype || job.category} (any material, flavour, colour or variant of it counts). This is the ${k === "visual" ? "Visual Identify (the product category in action)" : "Object Identify (the product itself or its direct equivalent)"} moment and should show: ${what}.\n` +
       `matches = true only if the frame clearly shows that TYPE of product${k === "visual" ? " (being used, made, worn or shown in action)" : " (the product itself or its direct equivalent — an accessory, remote, box, manual or spare part is NOT the product)"} — judged at the product-type level: any material, flavour, colour or variant counts (gold rings count for silver jewellery, any ceiling fan counts for a ceiling fan). A different kind of product, an ingredient, a tool, or a scene where the product isn't clearly visible is NOT a match, whatever the description says (no stretches${k === "visual" && !faceOk ? "; a presenter's face or a talking head is NOT a match" : ""}).\n` +
-      `brand_visible = true if ${I.brand}'s own logo, packaging or product is visible (the content must be independent of ${I.brand}).\nreason = one short line.` : "";
+      `brand_visible = true if ${I.brand}'s own logo, packaging or product is visible${(brandOf(I)?.family || []).length ? `, or that of a sister brand of the same company (${brandOf(I).family.slice(0, 12).join(", ")})` : ""} (the content must be independent of ${I.brand}).\nreason = one short line.` : "";
     const kwCheck = false && verify && k === "visual" && job.proposal ? `\nThe video's title is “${job.proposal.video.title}” and the keywords picked from it are: ${pick.keywords.map((x) => `“${x}”`).join(", ")}. keywords_match = true only if every keyword names that type of product (e.g. "Jewelry" or "Rings" for silver jewellery, "Ceiling Fan" for a ceiling fan, "Potato Chips" for chips) — false for words about something else in the video (a person, a place, a film, a style).` : "";
     const props = { box_2d: { type: "array", items: { type: "number" } } }, req = ["box_2d"];
     if (verify) { Object.assign(props, { matches: { type: "boolean" }, brand_visible: { type: "boolean" }, reason: { type: "string" } }); req.push("matches", "brand_visible", "reason"); }
@@ -496,11 +506,13 @@ async function proposeMoments(job) {
   if (!job.category) job.category = product || brand;
   if (!job.candidates) {
     const seen = new Map(); let queries;
-    const names = brandNames(job.input);
+    const names = brandNames(job.input), known = brandOf(job.input);
+    job.brief = brandBrief(known);
+    job.rivals = known ? rivalMatcher(known.competitors) : () => null;
     if (!job.aiDown) {
       try {
         say(job, `Planning searches for premium videos (AI: ${provider()})…`);
-        const plan = await ask("You plan YouTube searches for contextual ad placement.", `${RULES}\n\nBrand: ${brand}\nProduct: ${product || "(infer it from the ad title)"}\nAd being placed: ${adTitle}\n\n` +
+        const plan = await ask("You plan YouTube searches for contextual ad placement.", `${RULES}\n\n${job.brief ? job.brief + "\n" : ""}Brand: ${brand}\nProduct: ${product || "(infer it from the ad title)"}\nAd being placed: ${adTitle}\n\n` +
           `Step 1 — category: the EXACT product the ad sells, in 1–3 plain words (e.g. "ceiling fan", "potato chips", "moisturising cream", "gold jewellery", "instant noodles"). Not a mood or a theme ("summer cooling", "home comfort").\n` +
           `Step 2 — 6 YouTube search queries for premium, professional videos where THAT product is clearly on screen and is the subject (the product must be the SUBJECT of the video, not just somewhere in the room — for a ceiling fan: independent fan reviews, buying guides, an electrician installing a ceiling fan, how fans are made; for chips: chip recipes, taste tests, how chips are made; for a cream: skincare routines; for jewellery: styling guides, how jewellery is made). Avoid home tours and vlogs where the product only appears in the background. EVERY query must contain the category words. At least 3 queries should name a top professional creator, studio or media brand for that category. Never put the brand name "${brand}" (or its sub-brands) in a query.\n` +
           `Step 3 — product_type: the general kind of product, ignoring material, flavour, colour or variant (e.g. "jewellery" for silver earrings, "ceiling fan", "potato chips", "face cream", "noodles"). title_terms: 6–15 lowercase words or short phrases that name this product type in video titles, including spelling variants, plurals and close synonyms (e.g. for jewellery: jewellery, jewelry, jewels, rings, necklace, earrings, bracelet, pendant; for face cream: cream, moisturiser, moisturizer, skincare, skin care, lotion). Only names of the product itself — never activities, places or themes (not \"room makeover\", \"interior design\", \"home decor\", \"recipe\").`,
@@ -525,6 +537,10 @@ async function proposeMoments(job) {
     let pool = [...seen.values()].filter((r) => { const s = lenSec(r.length); return s >= 60 && s <= 1800 && isCTV(r) && (r.definition == null || r.definition === "hd"); });
     const own = pool.filter((r) => brandOwned(r, names)); pool = pool.filter((r) => !brandOwned(r, names));   // never the brand's own videos
     if (own.length) job.log.push(`   left out ${own.length} video(s) from or about ${brand} itself`);
+    const unsafe = pool.filter((r) => UNSAFE_TITLE.test(r.title || "")); pool = pool.filter((r) => !unsafe.includes(r));   // brand safety: never alcohol, tobacco or gambling
+    if (unsafe.length) job.log.push(`   left out ${unsafe.length} video(s) about alcohol, tobacco or gambling`);
+    const rivalVids = pool.filter((r) => job.rivals(r.title) || job.rivals(r.channel)); pool = pool.filter((r) => !rivalVids.includes(r));   // never a competitor's video or channel
+    if (rivalVids.length) job.log.push(`   left out ${rivalVids.length} video(s) about competitors (${[...new Set(rivalVids.flatMap((r) => job.rivals(r.title) || job.rivals(r.channel) || []))].slice(0, 6).join(", ")})`);
     // premium = 1M+ subscribers and 100K+ views; when that leaves too few, 300K+ / 50K+ (still professional channels)
     const big = pool.filter((r) => r.subs == null || (r.subs >= 1e6 && r.views >= 1e5)), mid = pool.filter((r) => r.subs == null || (r.subs >= 3e5 && r.views >= 5e4));
     if (big.length >= 8) pool = big; else if (mid.length >= 3) pool = mid; else if (big.length >= 3) pool = big;
@@ -536,7 +552,7 @@ async function proposeMoments(job) {
     if (!job.aiDown) {
       try {
         say(job, `Ranking ${pool.length} candidate videos…`);
-        const ranked = await ask("You choose premium YouTube videos for contextual ad placement.", `${RULES}\n\nBrand: ${brand}. Product category: ${job.category}.\nCandidates (JSON):\n${JSON.stringify(pool)}\n\nPick up to 5 candidates, best first. Rank by PRODUCTION QUALITY first (celebrity chef / professional studio / media brand; the subscriber count in "meta" helps), then by how clearly the product is the SUBJECT of the video (reviews, guides, recipes, how-it's-made — not home tours or vlogs where it is only in the background), then titles containing product-category words. Skip amateur or clickbait videos even if they have many views.`,
+        const ranked = await ask("You choose premium YouTube videos for contextual ad placement.", `${RULES}\n\n${job.brief ? job.brief + "\n" : ""}Brand: ${brand}. Product category: ${job.category}.\nCandidates (JSON):\n${JSON.stringify(pool)}\n\nPick up to 5 candidates, best first. Rank by PRODUCTION QUALITY first (celebrity chef / professional studio / media brand; the subscriber count in "meta" helps), then by how clearly the product is the SUBJECT of the video (reviews, guides, recipes, how-it's-made — not home tours or vlogs where it is only in the background), then titles containing product-category words. Skip amateur or clickbait videos even if they have many views.`,
           { type: "object", additionalProperties: false, required: ["ids"], properties: { ids: { type: "array", items: { type: "string" } } } }, [], "medium");
         const c = [...new Set(ranked.ids)].map((id) => seen.get(id)).filter((v) => v && pool.includes(v));
         if (c.length) job.candidates = [...c, ...pool.filter((v) => !c.includes(v))].slice(0, 8);   // the AI's order first, then the rest of the pool
@@ -545,117 +561,140 @@ async function proposeMoments(job) {
     job.tried = 0;
   }
   const fast = !job.input.review;   // automatic run: storyboard frames now, boxes later on the captured frames
+  // a video already checked and accepted alongside the one used (see below) is used straight away — no new AI checks
+  if (job.ready?.length) {
+    const r = job.ready.shift(); job.scan = r.stills; job.proposal = r.proposal;
+    if (fast && job.pagesEarly?.id !== r.proposal.video.id) startPages(job, r.proposal.video.id, r.q0);
+    say(job, `Next checked video: “${r.proposal.video.title}” (${r.proposal.video.channel})`); return true;
+  }
+  // automatic runs check three candidate videos at once (each takes ~30–60 s: page, storyboard, AI frame check);
+  // the first accepted one in the ranking is used, the other accepted ones are kept as backups
+  const width = fast ? 3 : 1;
   while (job.tried < job.candidates.length) {
-    const cand = job.candidates[job.tried++];
-    say(job, `Checking video ${job.tried}/${job.candidates.length}: “${cand.title}” (${cand.channel})`);
-    let meta; try { meta = await ytJson(["meta", cand.id]); } catch { continue; }
-    if (meta.size && Math.min(...meta.size) < 480) { say(job, "  skipped: low resolution"); continue; }
-    { const names = brandNames(job.input);
-      if (brandOwned({ title: meta.title, channel: meta.channel }, names) || mentionsBrand((meta.keywords || []).join(" "), names) || mentionsBrand(meta.description, names)) {
-        say(job, `  skipped: this video is from, about or sponsored by ${brand} — it must be independent of the brand`); continue; } }
-    const L = +meta.length;
-    let stills = null;
-    if (fast) {   // storyboard frames (seconds, no browser); the YouTube pages are captured meanwhile
-      startPages(job, cand.id, searchQuery(meta.title, meta.channel));
-      say(job, "  reading the video's storyboard…");
-      try { const sb = await storyboard(cand.id, path.join(W, "sb", cand.id), L); if (sb && sb.length >= 12) stills = sb; }
-      catch (e) { console.error("storyboard failed:", e.message); }
-    }
-    if (!stills) {   // full-resolution stills from the player (review mode, or no storyboard)
-      const ts = [];
-      for (let i = 0; i < 12; i++) ts.push(+(Math.max(2, L * 0.03) + (L * 0.9 - Math.max(2, L * 0.03)) * i / 11).toFixed(1));
-      const sdir = path.join(W, "scan", cand.id); fs.mkdirSync(sdir, { recursive: true });
-      say(job, "  scanning 12 frames…");
-      const parts = [0, 1, 2, 3].map((k) => ts.filter((_, i) => i % 4 === k));
-      await Promise.all(parts.map((p) => yt(["scan", cand.id, sdir, ...p.map(String)], { timeout: 40000 }).catch(() => {})));   // max 40 s, then the next video
-      stills = ts.map((t) => ({ t, file: stillAt(sdir, t) })).filter((s) => fs.existsSync(s.file));
-      if (stills.length < 7) { say(job, "  skipped: could not capture frames"); continue; }
-      await Promise.all(stills.map(async (s) => { const j = s.file.replace(".png", "_s.jpg"); await run("ffmpeg", ["-loglevel", "error", "-y", "-i", s.file, "-vf", "scale=640:-2", "-q:v", "4", j]); s.small = j; }));
-    }
-    const thumbs = stills[0].file.includes(`${path.sep}sb${path.sep}`);
-    let pick = null;
-    if (!job.aiDown) {
-      try {
-        say(job, "  AI is checking the frames…");
-        pick = await ask("You pick the moments for a contextual-ad demo, strictly.", `${RULES}\n\nBrand: ${brand}. Product category: ${job.category}. Ad: ${adTitle}\nVideo title (exact): ${meta.title}\nChannel: ${meta.channel}, ${meta.views} views, length ${L}s${meta.chapters?.length ? `\nChapters: ${JSON.stringify(meta.chapters)}` : ""}\n\nThe ${stills.length} frames above are labelled with their time in seconds${thumbs ? " (small preview thumbnails of the video at those times)" : ""}.\n` +
-          `The video must be independent of ${brand}: reject (accept=false) if it is made, sponsored or promoted by ${brand}, or if ${brand}'s own products or logo are the subject. ` +
-          `Decide whether this video passes the house rules. If it does, choose: open_t (a strong 2-second opening shot), visual (time + what the Visual Identify shows), object (time + the object), keyword phrases that are EXACT substrings of the title (1–3 phrases, product-category words), a 2-line keyword card (max ~10 characters per line, use \\n), an icon for each mark (one of ${ICONS.join(", ")}; use mesh only when a face is the subject), and a YouTube search query that should return this exact video near the top (use distinctive title words).` +
-          ` Times must be among the labelled frame times, and open_t, visual and object must be three DIFFERENT moments at least 10 s apart. Reject (accept=false) if any of the three checks would be a stretch.`,
-          { type: "object", additionalProperties: false, required: ["accept", "reason", "open_t", "visual", "object", "keywords", "card", "query", "notes"],
-            properties: { accept: { type: "boolean" }, reason: { type: "string" }, open_t: { type: "number" },
-              visual: { type: "object", additionalProperties: false, required: ["t", "what", "why", "icon"], properties: { t: { type: "number" }, what: { type: "string" }, why: { type: "string" }, icon: { type: "string", enum: ICONS } } },
-              object: { type: "object", additionalProperties: false, required: ["t", "what", "why", "icon"], properties: { t: { type: "number" }, what: { type: "string" }, why: { type: "string" }, icon: { type: "string", enum: ICONS } } },
-              keywords: { type: "array", items: { type: "string" } }, card: { type: "string" }, query: { type: "string" }, notes: { type: "string" } } },
-          stills.map((s) => ({ label: `t=${s.t}s`, file: s.small })), "high");
-        if (!pick.accept) { say(job, "  rejected: " + pick.reason); continue; }
-        const faceOk = /skin|face|make.?up|cosmetic|serum|cream|lotion|sunscreen|eyewear|glasses|lipstick|beauty/i.test(job.category + " " + (product || ""));
-        if (!faceOk && (pick.visual.icon === "mesh" || /(face|presenter|chef|host|talking|man|woman|person|smil)/i.test(pick.visual.what))) {
-          const alt = stills.filter((x) => Math.abs(x.t - pick.visual.t) > 0.01);
-          say(job, "  visual was a person, not the product — asking again…");
-          try {
-            const v2 = await ask("You pick ONE frame for a contextual-ad Visual Identify.", `Product category: ${job.category}. From the labelled frames, pick the frame where the product category itself (e.g. the food being cooked or served, the product in use) fills the picture best. NOT a face or presenter. Times must be among the labels.`,
-              { type: "object", additionalProperties: false, required: ["t", "what", "icon"], properties: { t: { type: "number" }, what: { type: "string" }, icon: { type: "string", enum: ICONS.filter((x) => x !== "mesh") } } },
-              alt.map((x) => ({ label: `t=${x.t}s`, file: x.small })), "high");
-            pick.visual = { ...pick.visual, t: v2.t, what: v2.what, icon: v2.icon, why: "the product category on screen" };
-          } catch (e) { if (!(e instanceof AIError)) throw e; }
-        }
-        // Visual and Object must show the product itself — never an accessory, remote, part, box or tool. One more ask;
-        // if that is still an accessory (or nothing shows the product), the video is rejected.
-        const ACCESSORY = /\b(remote|charger|manual|cable|wire|bracket|screws?|screwdriver|canopy|mechanism|spare|parts?|components?|accessor(y|ies)|tools?|packaging|box|carton|receipt|warranty)\b/i;
-        let accessoryOnly = false;
-        for (const k of ["visual", "object"]) {
-          if (!ACCESSORY.test(pick[k].what || "")) continue;
-          say(job, `  ${k} was an accessory, not the product — asking again…`);
-          try {
-            const other = k === "visual" ? pick.object.t : pick.visual.t, alt = stills.filter((x) => Math.abs(x.t - other) >= 5);
-            const r2 = await ask(`You pick ONE frame for a contextual-ad ${k === "visual" ? "Visual" : "Object"} Identify.`, `Product type: ${job.ptype || job.category}. From the labelled frames, pick the frame where that product ITSELF is clearly visible${k === "visual" ? " and in use / in action" : ""} and fills a good part of the picture — not an accessory, remote, spare part, component, box, manual or tool. If no frame shows the product itself, set found=false. Times must be among the labels.`,
-              { type: "object", additionalProperties: false, required: ["found", "t", "what", "icon"], properties: { found: { type: "boolean" }, t: { type: "number" }, what: { type: "string" }, icon: { type: "string", enum: ICONS.filter((x) => x !== "mesh") } } },
-              alt.map((x) => ({ label: `t=${x.t}s`, file: x.small })), "high");
-            if (!r2.found || ACCESSORY.test(r2.what || "")) { accessoryOnly = true; break; }
-            pick[k] = { ...pick[k], t: r2.t, what: r2.what, icon: r2.icon, why: "the product itself on screen" };
-          } catch (e) { if (!(e instanceof AIError)) throw e; }
-        }
-        if (accessoryOnly) { say(job, "  rejected: no frame shows the product itself (only accessories or parts)"); continue; }
-      } catch (e) { if (!(e instanceof AIError)) throw e; job.aiDown = true; job.aiError = e.message; pick = null; say(job, e.message); }
-    }
-    const manual = !pick;
-    if (manual) {   // starting point for manual picking
-      const n = stills.length;
-      pick = { open_t: stills[1].t, notes: "", query: "", keywords: [], card: "",
-        visual: { t: stills[Math.floor(n * 0.35)].t, what: "", why: "", icon: "hand" },
-        object: { t: stills[Math.floor(n * 0.65)].t, what: "", why: "", icon: "bowl" } };
-    }
-    // the face-mesh icon only for products worn on the face (skincare, make-up, eyewear)
-    if (!/skin|face|make.?up|cosmetic|serum|cream|lotion|sunscreen|eyewear|glasses|lipstick|beauty/i.test(`${job.category} ${product || ""}`))
-      for (const k of ["visual", "object"]) if (pick[k].icon === "mesh") pick[k].icon = "hand";
-    pick.open_t = nearest(stills, pick.open_t).t;
-    for (const k of ["visual", "object"]) { const s = nearest(stills, pick[k].t); pick[k].t = s.t; pick[k].still = s.file; }
-    if (!manual && Math.abs(pick.visual.t - pick.object.t) < 5) { say(job, "  rejected: Visual and Object were the same moment"); continue; }
-    const far = (t) => Math.abs(t - pick.visual.t) >= 8 && Math.abs(t - pick.object.t) >= 8;
-    if (!far(pick.open_t)) pick.open_t = (stills.filter((x) => far(x.t) && x.t < Math.min(pick.visual.t, pick.object.t))[0] || stills.find((x) => far(x.t)) || stills[0]).t;   // opening shot: another moment
-    const tl = meta.title.toLowerCase();
-    const chl = String(meta.channel || "").toLowerCase();
-    const chn = normTxt(meta.channel), names = brandNames(job.input);
-    const namesProduct = (k) => !job.terms?.length || job.terms.some((t) => ` ${normTxt(k)} `.includes(` ${t} `) || normTxt(k).includes(t.length >= 5 ? t.slice(0, -1) : `${t} `));
-    pick.keywords = (pick.keywords || []).filter((k) => k && tl.includes(k.toLowerCase()) && !chl.includes(k.toLowerCase().trim()) && !(chn && ` ${normTxt(k)} `.includes(` ${chn} `))
-      && !mentionsBrand(k, names) && namesProduct(k)).slice(0, 3);   // exact title words naming the product; never the channel or the brand
-    if (!manual && !pick.keywords.length) { say(job, "  rejected: no exact title keywords"); continue; }
-    for (const k of ["visual", "object"]) pick[k].box = [0.2, 0.2, 0.6, 0.6];
-    let q = searchQuery(meta.title, meta.channel), boxesPending = false;
-    if (fast) boxesPending = !manual && !job.aiDown;   // automatic run: boxes + the final full-frame check after capture
-    else {
-      if (!manual && !job.aiDown) { say(job, "  AI is placing both boxes…"); await placeBoxes(job, pick, { visual: pick.visual.still, object: pick.object.still }); }
-      // the search query must show this video on the first screen
-      for (const tryQ of [pick.query || q, q]) {
-        try { const r = await ytJson(["searchjson", tryQ, "3"]); if (r.some((x) => x.id === cand.id)) { q = tryQ; break; } } catch {}
-      }
-    }
-    job.scan = stills;
-    job.proposal = { video: { id: cand.id, title: meta.title, channel: meta.channel, views: meta.views, length: L }, pick, query: q, boxesPending,
-      manual: manual || !!job.aiDown, frames: stills.map((s) => s.t), icons: ICONS };
+    const batch = job.candidates.slice(job.tried, job.tried + width), n0 = job.tried; job.tried += batch.length;
+    const results = await Promise.all(batch.map((cand, i) => checkCandidate(job, cand, n0 + i + 1, fast, i === 0, width > 1)));
+    const ok = results.filter(Boolean);
+    if (!ok.length) continue;
+    const [first, ...rest] = ok; (job.ready ||= []).push(...rest);
+    job.scan = first.stills; job.proposal = first.proposal;
+    if (fast && job.pagesEarly?.id !== first.proposal.video.id) startPages(job, first.proposal.video.id, first.q0);
     return true;
   }
   return false;
+}
+
+// One candidate video: details, frames, the AI's three checks. Returns the proposal, or null (the reason is logged).
+async function checkCandidate(job, cand, num, fast, eagerPages, many) {
+  const { brand, product, adTitle } = job.input, W = job.work;
+  const sayC = (m) => say(job, many ? `[${num}] ${m.trim()}` : m);
+  sayC(`Checking video ${num}/${job.candidates.length}: “${cand.title}” (${cand.channel})`);
+  let meta; try { meta = await ytJson(["meta", cand.id]); } catch { return null; }
+  if (meta.size && Math.min(...meta.size) < 480) { sayC("  skipped: low resolution"); return null; }
+  { const names = brandNames(job.input);
+    if (brandOwned({ title: meta.title, channel: meta.channel }, names) || mentionsBrand((meta.keywords || []).join(" "), names) || mentionsBrand(meta.description, names)) {
+      sayC(`  skipped: this video is from, about or sponsored by ${brand} — it must be independent of the brand`); return null; } }
+  { const hit = job.rivals?.(meta.title) || job.rivals?.(meta.channel); if (hit) { sayC(`  skipped: about a competitor (${hit.join(", ")})`); return null; } }
+  if (UNSAFE_TITLE.test(meta.title || "")) { sayC("  skipped: about alcohol, tobacco or gambling"); return null; }
+  const L = +meta.length;
+  let stills = null;
+  if (fast) {   // storyboard frames (seconds, no browser); the YouTube pages are captured meanwhile
+    if (eagerPages) startPages(job, cand.id, searchQuery(meta.title, meta.channel));
+    sayC("  reading the video's storyboard…");
+    try { const sb = await storyboard(cand.id, path.join(W, "sb", cand.id), L); if (sb && sb.length >= 12) stills = sb; }
+    catch (e) { console.error("storyboard failed:", e.message); }
+  }
+  if (!stills) {   // full-resolution stills from the player (review mode, or no storyboard)
+    const ts = [];
+    for (let i = 0; i < 12; i++) ts.push(+(Math.max(2, L * 0.03) + (L * 0.9 - Math.max(2, L * 0.03)) * i / 11).toFixed(1));
+    const sdir = path.join(W, "scan", cand.id); fs.mkdirSync(sdir, { recursive: true });
+    sayC("  scanning 12 frames…");
+    const parts = [0, 1, 2, 3].map((k) => ts.filter((_, i) => i % 4 === k));
+    await Promise.all(parts.map((p) => yt(["scan", cand.id, sdir, ...p.map(String)], { timeout: 40000 }).catch(() => {})));   // max 40 s, then the next video
+    stills = ts.map((t) => ({ t, file: stillAt(sdir, t) })).filter((s) => fs.existsSync(s.file));
+    if (stills.length < 7) { sayC("  skipped: could not capture frames"); return null; }
+    await Promise.all(stills.map(async (s) => { const j = s.file.replace(".png", "_s.jpg"); await run("ffmpeg", ["-loglevel", "error", "-y", "-i", s.file, "-vf", "scale=640:-2", "-q:v", "4", j]); s.small = j; }));
+  }
+  const thumbs = stills[0].file.includes(`${path.sep}sb${path.sep}`);
+  let pick = null;
+  if (!job.aiDown) {
+    try {
+      sayC("  AI is checking the frames…");
+      pick = await ask("You pick the moments for a contextual-ad demo, strictly.", `${RULES}\n\nBrand: ${brand}. Product category: ${job.category}. Ad: ${adTitle}\nVideo title (exact): ${meta.title}\nChannel: ${meta.channel}, ${meta.views} views, length ${L}s${meta.chapters?.length ? `\nChapters: ${JSON.stringify(meta.chapters)}` : ""}\n\nThe ${stills.length} frames above are labelled with their time in seconds${thumbs ? " (small preview thumbnails of the video at those times)" : ""}.\n` +
+        `${job.brief ? job.brief + "\n" : ""}The video must be independent of ${brand} and of its competitors: reject (accept=false) if it is made, sponsored or promoted by ${brand}, if ${brand}'s own products or logo are the subject, or if a competitor's product or logo is the subject. ` +
+        `Decide whether this video passes the house rules. If it does, choose: open_t (a strong 2-second opening shot), visual (time + what the Visual Identify shows), object (time + the object), keyword phrases that are EXACT substrings of the title (1–3 phrases, product-category words), a 2-line keyword card (max ~10 characters per line, use \\n), an icon for each mark (one of ${ICONS.join(", ")}; use mesh only when a face is the subject), and a YouTube search query that should return this exact video near the top (use distinctive title words).` +
+        ` Times must be among the labelled frame times, and open_t, visual and object must be three DIFFERENT moments at least 10 s apart. Reject (accept=false) if any of the three checks would be a stretch.`,
+        { type: "object", additionalProperties: false, required: ["accept", "reason", "open_t", "visual", "object", "keywords", "card", "query", "notes"],
+          properties: { accept: { type: "boolean" }, reason: { type: "string" }, open_t: { type: "number" },
+            visual: { type: "object", additionalProperties: false, required: ["t", "what", "why", "icon"], properties: { t: { type: "number" }, what: { type: "string" }, why: { type: "string" }, icon: { type: "string", enum: ICONS } } },
+            object: { type: "object", additionalProperties: false, required: ["t", "what", "why", "icon"], properties: { t: { type: "number" }, what: { type: "string" }, why: { type: "string" }, icon: { type: "string", enum: ICONS } } },
+            keywords: { type: "array", items: { type: "string" } }, card: { type: "string" }, query: { type: "string" }, notes: { type: "string" } } },
+        stills.map((s) => ({ label: `t=${s.t}s`, file: s.small })), "high");
+      if (!pick.accept) { sayC("  rejected: " + pick.reason); return null; }
+      const faceOk = /skin|face|make.?up|cosmetic|serum|cream|lotion|sunscreen|eyewear|glasses|lipstick|beauty/i.test(job.category + " " + (product || ""));
+      if (!faceOk && (pick.visual.icon === "mesh" || /(face|presenter|chef|host|talking|man|woman|person|smil)/i.test(pick.visual.what))) {
+        const alt = stills.filter((x) => Math.abs(x.t - pick.visual.t) > 0.01);
+        sayC("  visual was a person, not the product — asking again…");
+        try {
+          const v2 = await ask("You pick ONE frame for a contextual-ad Visual Identify.", `Product category: ${job.category}. From the labelled frames, pick the frame where the product category itself (e.g. the food being cooked or served, the product in use) fills the picture best. NOT a face or presenter. Times must be among the labels.`,
+            { type: "object", additionalProperties: false, required: ["t", "what", "icon"], properties: { t: { type: "number" }, what: { type: "string" }, icon: { type: "string", enum: ICONS.filter((x) => x !== "mesh") } } },
+            alt.map((x) => ({ label: `t=${x.t}s`, file: x.small })), "high");
+          pick.visual = { ...pick.visual, t: v2.t, what: v2.what, icon: v2.icon, why: "the product category on screen" };
+        } catch (e) { if (!(e instanceof AIError)) throw e; }
+      }
+      // Visual and Object must show the product itself — never an accessory, remote, part, box or tool. One more ask;
+      // if that is still an accessory (or nothing shows the product), the video is rejected.
+      const ACCESSORY = /\b(remote|charger|manual|cable|wire|bracket|screws?|screwdriver|canopy|mechanism|spare|parts?|components?|accessor(y|ies)|tools?|packaging|box|carton|receipt|warranty)\b/i;
+      let accessoryOnly = false;
+      for (const k of ["visual", "object"]) {
+        if (!ACCESSORY.test(pick[k].what || "")) continue;
+        sayC(`  ${k} was an accessory, not the product — asking again…`);
+        try {
+          const other = k === "visual" ? pick.object.t : pick.visual.t, alt = stills.filter((x) => Math.abs(x.t - other) >= 5);
+          const r2 = await ask(`You pick ONE frame for a contextual-ad ${k === "visual" ? "Visual" : "Object"} Identify.`, `Product type: ${job.ptype || job.category}. From the labelled frames, pick the frame where that product ITSELF is clearly visible${k === "visual" ? " and in use / in action" : ""} and fills a good part of the picture — not an accessory, remote, spare part, component, box, manual or tool. If no frame shows the product itself, set found=false. Times must be among the labels.`,
+            { type: "object", additionalProperties: false, required: ["found", "t", "what", "icon"], properties: { found: { type: "boolean" }, t: { type: "number" }, what: { type: "string" }, icon: { type: "string", enum: ICONS.filter((x) => x !== "mesh") } } },
+            alt.map((x) => ({ label: `t=${x.t}s`, file: x.small })), "high");
+          if (!r2.found || ACCESSORY.test(r2.what || "")) { accessoryOnly = true; break; }
+          pick[k] = { ...pick[k], t: r2.t, what: r2.what, icon: r2.icon, why: "the product itself on screen" };
+        } catch (e) { if (!(e instanceof AIError)) throw e; }
+      }
+      if (accessoryOnly) { sayC("  rejected: no frame shows the product itself (only accessories or parts)"); return null; }
+    } catch (e) { if (!(e instanceof AIError)) throw e; job.aiDown = true; job.aiError = e.message; pick = null; sayC(e.message); }
+  }
+  const manual = !pick;
+  if (manual) {   // starting point for manual picking
+    const n = stills.length;
+    pick = { open_t: stills[1].t, notes: "", query: "", keywords: [], card: "",
+      visual: { t: stills[Math.floor(n * 0.35)].t, what: "", why: "", icon: "hand" },
+      object: { t: stills[Math.floor(n * 0.65)].t, what: "", why: "", icon: "bowl" } };
+  }
+  // the face-mesh icon only for products worn on the face (skincare, make-up, eyewear)
+  if (!/skin|face|make.?up|cosmetic|serum|cream|lotion|sunscreen|eyewear|glasses|lipstick|beauty/i.test(`${job.category} ${product || ""}`))
+    for (const k of ["visual", "object"]) if (pick[k].icon === "mesh") pick[k].icon = "hand";
+  pick.open_t = nearest(stills, pick.open_t).t;
+  for (const k of ["visual", "object"]) { const s = nearest(stills, pick[k].t); pick[k].t = s.t; pick[k].still = s.file; }
+  if (!manual && Math.abs(pick.visual.t - pick.object.t) < 5) { sayC("  rejected: Visual and Object were the same moment"); return null; }
+  const far = (t) => Math.abs(t - pick.visual.t) >= 8 && Math.abs(t - pick.object.t) >= 8;
+  if (!far(pick.open_t)) pick.open_t = (stills.filter((x) => far(x.t) && x.t < Math.min(pick.visual.t, pick.object.t))[0] || stills.find((x) => far(x.t)) || stills[0]).t;   // opening shot: another moment
+  const tl = meta.title.toLowerCase();
+  const chl = String(meta.channel || "").toLowerCase();
+  const chn = normTxt(meta.channel), names = brandNames(job.input);
+  const namesProduct = (k) => !job.terms?.length || job.terms.some((t) => { const n = ` ${normTxt(k)} `; return n.includes(` ${t} `) || n.includes(` ${t}s `) || n.includes(` ${t}es `) || normTxt(k).includes(t.length >= 5 ? t.slice(0, -1) : `${t} `); });
+  pick.keywords = (pick.keywords || []).filter((k) => k && tl.includes(k.toLowerCase()) && !chl.includes(k.toLowerCase().trim()) && !(chn && ` ${normTxt(k)} `.includes(` ${chn} `))
+    && !mentionsBrand(k, names) && namesProduct(k)).slice(0, 3);   // exact title words naming the product; never the channel or the brand
+  if (!manual && !pick.keywords.length) { sayC("  rejected: no exact title keywords"); return null; }
+  for (const k of ["visual", "object"]) pick[k].box = [0.2, 0.2, 0.6, 0.6];
+  let q = searchQuery(meta.title, meta.channel), boxesPending = false;
+  if (fast) boxesPending = !manual && !job.aiDown;   // automatic run: boxes + the final full-frame check after capture
+  else {
+    if (!manual && !job.aiDown) { sayC("  AI is placing both boxes…"); await placeBoxes(job, pick, { visual: pick.visual.still, object: pick.object.still }); }
+    // the search query must show this video on the first screen
+    for (const tryQ of [pick.query || q, q]) {
+      try { const r = await ytJson(["searchjson", tryQ, "3"]); if (r.some((x) => x.id === cand.id)) { q = tryQ; break; } } catch {}
+    }
+  }
+  const q0 = searchQuery(meta.title, meta.channel);
+  return { stills, q0, proposal: { video: { id: cand.id, title: meta.title, channel: meta.channel, views: meta.views, length: L }, pick, query: q, boxesPending,
+    manual: manual || !!job.aiDown, frames: stills.map((s) => s.t), icons: ICONS } };
 }
 
 class RecheckFailed extends Error {}
@@ -839,8 +878,11 @@ http.createServer(async (req, res) => {
     if (u.pathname === "/api/status") return send(res, 200, { local, queue: waiting, hasKey: provider() !== "none", provider: provider(), youtube: youtubeKey() ? (Date.now() > ytApiDisabledUntil ? "api" : "browser (API paused)") : "browser", keyFromEnv: !!(process.env.ANTHROPIC_API_KEY || process.env.GEMINI_API_KEY), ffmpeg: !!FF || !IS_WIN, hosted: !IS_WIN, outDir: OUT_ROOT });
     if (req.method === "POST" && u.pathname === "/api/settings") { if (!local) return send(res, 403, { error: "Settings can only be changed on the computer running the app." }); const b = await body(req); const s = loadSettings(); if (b.apiKey) s.apiKey = b.apiKey.trim(); if (b.geminiKey) s.geminiKey = b.geminiKey.trim(); if (b.youtubeKey) { s.youtubeKey = b.youtubeKey.trim(); ytApiDisabledUntil = 0; } if (b.provider) s.provider = b.provider; fs.writeFileSync(SETTINGS, JSON.stringify(s)); return send(res, 200, { ok: true, provider: provider() }); }
     if (req.method === "POST" && u.pathname === "/api/ads") {   // runs in the background (share links cut requests at ~100 s)
-      const b = await body(req); const id = "a" + Date.now().toString(36); adJobs[id] = { status: "running" };
-      Promise.all([findAds(b), wikiLogo(b.brand).catch(() => null)]).then(([ads, logo]) => { adJobs[id] = { status: "done", logo, ads: ads.map((a) => ({ ...a, logo: avatarCache.get(a.channelId) || null })) }; }).catch((e) => { adJobs[id] = { status: "failed", error: e.message }; });
+      const b = await body(req);
+      const k = BRANDS && findBrand(BRANDS, b.brand || "", b.product || ""), why = bannedReason(k, b.product || "");
+      if (why) return send(res, 400, { error: `This product can't be advertised: ${why}` });
+      const id = "a" + Date.now().toString(36); adJobs[id] = { status: "running" };
+      Promise.all([findAds(b), k?.logo?.png ? { url: k.logo.png, source: "Wikimedia (MediaKart brand knowledge)" } : wikiLogo(b.brand).catch(() => null)]).then(([ads, logo]) => { adJobs[id] = { status: "done", logo, ads: ads.map((a) => ({ ...a, logo: avatarCache.get(a.channelId) || null })) }; }).catch((e) => { adJobs[id] = { status: "failed", error: e.message }; });
       return send(res, 200, { id });
     }
     const am = u.pathname.match(/^\/api\/ads\/(\w+)$/);
@@ -858,6 +900,8 @@ http.createServer(async (req, res) => {
       const b = await body(req);
       const adId = vidOf(b.adId || b.adUrl); if (!adId) return send(res, 400, { error: "Pick an ad or paste a YouTube link." });
       if (!String(b.brand || "").trim()) return send(res, 400, { error: "Type the brand name." });
+      { const k = BRANDS && findBrand(BRANDS, b.brand, `${b.product || ""} ${b.adTitle || ""}`), why = bannedReason(k, b.product || "", b.adTitle || "");
+        if (why) return send(res, 400, { error: `This product can't be advertised: ${why}` }); }
       const d0 = new Date(), z = (n) => String(n).padStart(2, "0"); const stamp = `${d0.getFullYear()}${z(d0.getMonth() + 1)}${z(d0.getDate())}-${z(d0.getHours())}${z(d0.getMinutes())}`;   // local time
       const work = path.join(OUT_ROOT, slug(b.brand), stamp); fs.mkdirSync(path.join(work, "assets"), { recursive: true });
       const assets = path.join(work, "assets"), upExt = (/^data:image\/(\w+)/.exec(b.logo || "") || [, "png"])[1].replace("jpeg", "jpg");
@@ -869,6 +913,7 @@ http.createServer(async (req, res) => {
         if (m.size && m.size[0] / m.size[1] < 1.5) return send(res, 400, { error: `This ad is vertical (${m.size[0]}×${m.size[1]}) — a mobile/Shorts ad. Pick a 16:9 TV / CTV commercial.` });
       } catch {}
       if (!logoFile && b.logoUrl) logoFile = await downloadLogo(b.logoUrl, assets).catch(() => null);
+      if (!logoFile) { const k = brandOf({ brand: b.brand, product: b.product, adTitle }); if (k?.logo?.png) logoFile = await downloadLogo(k.logo.png, assets).catch(() => null); }   // the logo file checked in the brand research
       if (!logoFile) { const w = await wikiLogo(b.brand).catch(() => null); if (w) logoFile = await downloadLogo(w.url, assets).catch(() => null); }
       if (!logoFile) logoFile = await downloadLogo(await channelLogo(adChannelId), assets).catch(() => null);
       if (!logoFile) return send(res, 400, { error: `Couldn't find ${b.brand}'s logo online. Use “Upload one” next to the logo to add it.` });

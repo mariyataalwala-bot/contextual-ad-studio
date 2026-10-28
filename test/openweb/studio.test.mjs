@@ -308,8 +308,8 @@ test("brand knowledge: 50 brands, valid; a typed brand or a sub-brand in the pro
   const oppo = findBrand(c, "OPPO", "Reno");
   assert.ok(oppo.family.includes("OnePlus") && !oppo.competitors.includes("OnePlus"), "a sister brand is never a rival");
   const sprite = findBrand(c, "Sprite", "lemon lime");
-  assert.ok(sprite.family.includes("Thums Up") && sprite.competitors.includes("7UP") && sprite.domains.includes("coca-colaindia.com"));
-  assert.match(brandBrief(sprite), /Competitors: .*7UP.*Same company \(not competitors\): .*Thums Up/);
+  assert.ok(sprite.family.includes("Thums Up") && sprite.competitors.includes("7UP") && sprite.domains.includes("coca-cola.com/in/en/brands/sprite"));
+  assert.match(brandBrief(sprite), /Competitors: .*7UP.*Same company \(never competitors\): .*Thums Up/);
 });
 
 test("design fonts: fetched once from Google Fonts into a local cache, then served from local files", async () => {
