@@ -41,7 +41,11 @@ button:disabled{opacity:.45;cursor:default}.ghost{background:#fff;color:var(--p)
 .fill:after{content:"";position:absolute;inset:0;background:linear-gradient(100deg,transparent 20%,rgba(255,255,255,.45) 50%,transparent 80%);animation:sh 1.6s linear infinite}
 @keyframes sh{from{transform:translateX(-100%)}to{transform:translateX(100%)}}
 .steps{display:flex;gap:8px;margin-top:16px;flex-wrap:wrap}.steps span{font-size:12px;font-weight:600;padding:6px 11px;border-radius:99px;background:#F0F0F7;color:var(--mute)}
-.steps span.on{background:#EEF5FF;color:#0B6FF0}.steps span.ok{background:#E8F7E7;color:var(--ok)}
+.steps span.on{background:#EEF5FF;color:#0B6FF0}.steps span.ok{background:#E8F7E7;color:var(--ok)}.steps span.bad{background:#FDECEC;color:var(--bad)}
+/* a stopped run: the bar stops where it ended and turns red — never a frozen "in progress" */
+#prog.stopped .fill{background:var(--bad)}#prog.stopped .fill:after{display:none}#prog.stopped .pct{background:none;color:var(--bad)}
+.need{border-radius:14px;outline:2px solid var(--bad);outline-offset:6px}
+.up{display:flex;gap:10px;align-items:center;margin-top:8px;font-size:12.5px;color:var(--mute)}.up input{width:auto;padding:6px;font-size:12.5px}
 .log{margin-top:14px;font:12px/1.6 ui-monospace,Consolas,monospace;color:#555;max-height:150px;overflow:auto;background:#FAFAFD;border:1px solid var(--line);border-radius:12px;padding:10px 12px;white-space:pre-wrap}
 /* result */
 .res{display:grid;grid-template-columns:330px 1fr;gap:26px;align-items:start}
@@ -73,7 +77,8 @@ button:disabled{opacity:.45;cursor:default}.ghost{background:#fff;color:var(--p)
   </div>
   <div class="row2" id="clientRow" hidden><label class="drop"><input type="file" id="cfile" accept="image/png,image/jpeg,image/gif,image/webp,video/mp4,video/webm"><div><b>Upload the ready ad</b><div class="s" id="cname">PNG, JPG, GIF, WebP, MP4 or WebM · up to 40 MB · shown exactly as supplied</div></div><span id="cprev"></span></label></div>
   <div class="row2" id="makeRow2"><div><label for="style">Ad style</label><select id="style"><option value="">Auto — best fit for the brand</option><option value="bold">Bold — everyday brands &amp; sales</option><option value="luxe">Luxe — jewellery &amp; beauty</option><option value="sport">Sport — footwear &amp; fitness</option><option value="fresh">Fresh — food &amp; drinks</option><option value="tech">Tech — phones &amp; gadgets</option><option value="journey">Journey — travel &amp; services</option></select></div></div>
-  <div class="row2" id="makeRow"><div><label for="pimg">Product photo link (optional)</label><input type="text" id="pimg" placeholder="Paste a link to the exact product photo to skip the search" autocomplete="off"></div></div>
+  <div class="row2" id="makeRow"><div><label for="pimg">Product photo (optional)</label><input type="text" id="pimg" placeholder="Paste a link to the exact product photo to skip the search" autocomplete="off">
+    <div class="up">or upload it: <input type="file" id="pfile" accept="image/png,image/jpeg,image/webp"><span id="pname"></span></div></div></div>
   <div class="bar"><button id="go">Generate ad</button><span class="s" id="hint">Ready in about a minute.</span></div>
   <div class="how">
     <div><b>1 · Product</b>Finds the official product photo and cuts it out cleanly</div>
@@ -101,23 +106,39 @@ const ORDER = ["search", "understand", "assets", "articles", "images", "match", 
 let shown = 0, target = 0, tick;
 function setPct(p) { target = p; if (!tick) tick = setInterval(() => { if (shown < target) shown += Math.max(0.4, (target - shown) / 8); else if (shown < Math.min(99, target + 6)) shown += 0.05; /* creeps a little while a step runs */ $("pct").textContent = Math.floor(Math.min(shown, 100)) + "%"; $("fill").style.width = Math.min(shown, 100) + "%"; }, 120); }
 function setStage(st) { const i = ORDER.indexOf(st); for (const s of $("steps").children) { const k = ORDER.indexOf(s.dataset.k); s.className = k < i || st === "done" ? "ok" : k === i ? "on" : ""; } }
+// the run ended without an ad: the bar stops where it was, the step it stopped at turns red, and what to do next is shown
+function stopped(msg, needsInput) {
+  clearInterval(tick); tick = null; $("prog").classList.add("stopped"); $("pct").textContent = "Stopped";
+  for (const s of $("steps").children) if (s.className === "on") s.className = "bad";
+  $("log").innerHTML += `\n<span class="err">${esc(msg)}</span>`; $("log").scrollTop = 1e9;
+  if (needsInput === "product_image") { $("makeRow").classList.add("need"); $("hint").innerHTML = `<span class="err">Add the product photo above (upload or link), then press Generate ad again.</span>`; $("makeRow").scrollIntoView({ behavior: "smooth", block: "center" }); }
+  else $("hint").innerHTML = `<span class="err">Stopped — adjust and press Generate ad to try again.</span>`;
+}
 async function go() {
   const brand = $("brand").value.trim(), product = $("product").value.trim(), offer = $("offer").value.trim(), productImage = $("pimg").value.trim(), style = $("style").value;
+  $("prog").classList.remove("stopped"); $("makeRow").classList.remove("need"); $("hint").textContent = "Ready in about a minute.";
   if (!brand || !product) { $("hint").innerHTML = `<span class="err">Enter a brand and a product.</span>`; return; }
   const useClient = document.querySelector('input[name="src"]:checked').value === "client";
   if (useClient && !clientAd) { $("hint").innerHTML = `<span class="err">Upload the ad file first.</span>`; return; }
   $("go").disabled = true; $("out").hidden = true; $("prog").hidden = false; shown = 0; setPct(1); setStage("search"); $("log").textContent = "";
-  let id; try { id = (await api("/studio/start", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(useClient ? { brand, product, clientAd } : { brand, product, offer, productImage, style }) })).id; }
-  catch (e) { $("log").innerHTML = `<span class="err">${esc(e.message)}</span>`; $("go").disabled = false; return; }
+  let id; try { id = (await api("/studio/start", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(useClient ? { brand, product, clientAd } : { brand, product, offer, productImage, style, productUpload }) })).id; }
+  catch (e) { stopped(e.message); $("go").disabled = false; return; }
   for (;;) {
     await new Promise((r) => setTimeout(r, 1200));
-    let j; try { j = await api("/job/" + id); } catch (e) { $("log").innerHTML += `\n<span class="err">${esc(e.message)}</span>`; break; }
+    let j; try { j = await api("/job/" + id); } catch (e) { stopped("Lost touch with the run: " + e.message); break; }
     setPct(j.pct || 1); setStage(j.status === "done" ? "done" : j.stage); $("log").textContent = j.log.join("\n"); $("log").scrollTop = 1e9;
     if (j.status === "done") { setPct(100); showResult(j.dir, j.result); if (j.outcome === "partial") $("log").innerHTML += `\n<span class="err">Partial context: ${esc(j.result?.statusWhy || "")}</span>`; break; }
-    if (j.status === "failed") { $("log").innerHTML += `\n<span class="err">${{ no_match: "No match", needs_review: "Needs review" }[j.outcome] || "Failed"}: ${esc(j.error)}</span>`; break; }
+    if (j.status === "failed") { stopped(`${{ no_match: "No match", needs_review: "Needs review" }[j.outcome] || "Failed"}: ${j.error}`, j.needsInput); break; }
   }
   $("go").disabled = false; loadGallery();
 }
+// the product photo uploaded by the user: read in the browser and sent with the request (it is checked like any other)
+let productUpload = null;
+$("pfile").addEventListener("change", () => {
+  const f = $("pfile").files[0]; productUpload = null; $("pname").textContent = ""; if (!f) return;
+  if (f.size > 40e6) { $("pname").innerHTML = `<span class="err">larger than 40 MB</span>`; return; }
+  const rd = new FileReader(); rd.onload = () => { productUpload = { name: f.name, data: rd.result }; $("pname").textContent = f.name; $("makeRow").classList.remove("need"); }; rd.readAsDataURL(f);
+});
 // the client's own ad: read in the browser and sent with the request (videos: their length decides how long the mock holds)
 let clientAd = null;
 for (const el of document.querySelectorAll('input[name="src"]')) el.addEventListener("change", () => { const c = document.querySelector('input[name="src"]:checked').value === "client";

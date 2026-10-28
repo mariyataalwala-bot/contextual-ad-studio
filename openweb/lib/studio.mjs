@@ -13,7 +13,7 @@ import { makeReader, withTimeout } from "./reader.mjs";
 import { EXTRACT_VERSION } from "./extract.mjs";
 import { renderMock, ASSET_URL } from "./mock.mjs";
 import { stripHtml, fitStrip, STRIP_VERSION, STYLES, styleFontsUrl, styleFontFaces } from "./strip.mjs";
-import { norm } from "./text.mjs";
+import { norm, sha256 } from "./text.mjs";
 import { findBrand, brandBrief, bannedReason, namesBrand } from "./brands.mjs";
 
 // Why a run must not start (a product that may not be advertised, e.g. infant formula under India's IMS Act), or null
@@ -147,6 +147,8 @@ export function rivalMatcher(names) {
 
 const VERIFY_SCHEMA = { type: "object", properties: {
   ok: { type: "boolean" }, problem: { type: "string", description: "what is wrong with the product PNG, empty if ok" },
+  kind: { type: "string", enum: ["cutout", "product_on_background", "lifestyle", "promo_banner", "irrelevant"], description: "what the product picture is" },
+  picture_problem: { type: "boolean", description: "true when the problem is in the original picture itself (wrong product, banner or price text, people, other brands), false when only the cut-out went wrong" },
   logo_ok: { type: "boolean" }, logo_problem: { type: "string" },
 }, required: ["ok", "problem"] };
 
@@ -171,6 +173,65 @@ export async function styleFonts(style, dir, fetchImpl = globalThis.fetch) {
   const files = {};
   css = css.replace(/url\((gf-[\w-]+\.woff2)\)/g, (_, name) => { files[name] = path.join(dir, name); return `url(${ASSET_URL}${name})`; });
   return { css, files };
+}
+
+// A site for another country (the brand's own Estonian or French site, a UK shop): its pictures show that market's
+// product, not the one sold in India. Generic endings (.com, .io, .co …) are not judged by their ending.
+export const foreignSite = (host) => /\.(?:(?:co|com|org|net|gov|ac)\.)?(?:ee|fr|de|uk|us|au|ca|nz|sg|ae|sa|qa|om|kw|bh|jp|cn|kr|it|es|nl|be|ch|se|no|dk|fi|pl|pt|ie|at|cz|hu|ro|gr|br|mx|ar|cl|za|ng|ke|eg|my|ph|id|th|vn|tr|ru|ua|pk|bd|lk|np|hk|tw|il)$/i.test(String(host || ""));
+
+// ---------- product pictures ----------
+// Every product picture found online is classified by the AI: a clean cut-out, the product on a background (a table,
+// a plate, a shop photo), a lifestyle photo, a promotional banner (headline, price or offer text) or irrelevant. Only
+// pictures that show exactly this product are tried, best kind first; banners and irrelevant pictures never are.
+// Lifestyle photos only for food, drinks and services, where the ad shows them as a scene behind the copy.
+export const PICTURE_KINDS = ["cutout", "product_on_background", "lifestyle", "promo_banner", "irrelevant"];
+const PICTURE_GUIDE = "cutout (the product alone on a transparent or plain white/single-colour background), product_on_background (the product clearly the main subject on a table, plate, surface or simple setting), lifestyle (a scene where the product is used or served, people or several props around it), promo_banner (any headline, offer, price or campaign text over the picture, an ad or web banner), irrelevant (not this product)";
+const KIND_ORDER = { cutout: 0, product_on_background: 1, lifestyle: 2 };
+/** @param {any} pick the AI's answer @param {any[]} thumbs P pictures ({ n, url, … }) @returns {any[]} pictures to try, best first */
+export function productCandidates(pick, thumbs, { lifestyleOk = false, max = 6 } = {}) {
+  const ranked = [...new Set([pick.packshot, ...(pick.packshot_ranked || [])])].filter(Boolean);
+  const pos = (n) => { const i = ranked.indexOf(n); return i < 0 ? 99 : i; };
+  const ok = (k) => k in KIND_ORDER && (k !== "lifestyle" || lifestyleOk);
+  const list = Array.isArray(pick.pictures) && pick.pictures.length
+    ? pick.pictures.filter((p) => p.exact && ok(p.kind)).sort((a, b) => KIND_ORDER[a.kind] - KIND_ORDER[b.kind] || pos(a.n) - pos(b.n)).map((p) => ({ n: p.n, kind: p.kind }))
+    : ranked.map((n) => ({ n, kind: "product_on_background" }));   // an answer without classes: the AI's own ranking
+  const seen = new Set(), out = [];
+  for (const { n, kind } of list) {
+    const x = thumbs.find((t) => t.n === n);
+    if (!x || seen.has(x.url)) continue;   // the same address twice is tried once
+    seen.add(x.url); out.push({ ...x, kind });
+  }
+  return out.slice(0, max);
+}
+
+/**
+ * Tries product pictures in order until one passes the final check — at most maxTries checks in all, never the same address
+ * or the same file (bytes) twice. A banner or an unrelated picture goes straight to the next one; any other picture whose
+ * cut-out is rejected gets its original photo checked once. Lifestyle pictures
+ * are never cut out. Pictures that could not be downloaded are skipped and noted.
+ * @param {{ x: any, f: string|null, via?: string, hash?: string }[]} fetched
+ * @param {{ prepare: (got: any, mode: "auto"|"photo", i: number) => Promise<any>, check: (got: any, c: any) => Promise<any>, maxTries?: number, outOfTime?: () => boolean }} o
+ */
+export async function tryProductPictures(fetched, { prepare, check, maxTries = 6, outOfTime = () => false }) {
+  const checks = [], seenUrl = new Set(), seenFile = new Set();
+  for (const [i, got] of fetched.entries()) {
+    if (checks.filter((c) => c.method).length >= maxTries) { checks.push({ picture: got.x.url, skipped: `not tried: the limit of ${maxTries} checks was reached` }); continue; }
+    if (outOfTime()) { checks.push({ picture: got.x.url, skipped: "not tried: the time for this step was used up" }); continue; }
+    if (!got.f) { checks.push({ picture: got.x.url, skipped: "could not be downloaded (the address did not return a picture)" }); continue; }
+    if (seenUrl.has(got.x.url) || (got.hash && seenFile.has(got.hash))) { checks.push({ picture: got.x.url, skipped: "the same picture was already checked" }); continue; }
+    seenUrl.add(got.x.url); if (got.hash) seenFile.add(got.hash);
+    for (const mode of /** @type {("auto"|"photo")[]} */ (got.x.kind === "lifestyle" ? ["photo"] : ["auto", "photo"])) {
+      if (checks.filter((c) => c.method).length >= maxTries) break;
+      const c = await prepare(got, mode, i);
+      const v = await check(got, c);
+      checks.push({ picture: got.x.url, kind: v.kind || got.x.kind || null, method: c.method, ok: !!v.ok, problem: v.problem || "", preview: c.preview || null });
+      if (v.ok) return { got, c, v, checks };
+      // a banner or an unrelated picture stays wrong whatever is done to it: next picture; anything else rejected as a
+      // cut-out gets one more check as its original photo (the cut-out may be what damaged it)
+      if (c.method === "photo" || v.kind === "promo_banner" || v.kind === "irrelevant") break;
+    }
+  }
+  return { got: null, c: null, v: null, checks };
 }
 
 // The first topic word (or phrase) found in a headline / URL, by word stem ("walking" finds "walk", "recipes" finds
@@ -201,7 +262,9 @@ const TOPIC_SCHEMA = { type: "object", properties: { words: { type: "array", ite
 // ---------- AI prompts (versioned: STUDIO_PROMPTS) ----------
 const PICK_SCHEMA = { type: "object", properties: {
   packshot: { type: "integer", description: "number of the best product picture, 0 if none is acceptable" },
-  packshot_ranked: { type: "array", items: { type: "integer" }, description: "every acceptable product picture, best first (up to 4)" },
+  packshot_ranked: { type: "array", items: { type: "integer" }, description: "every acceptable product picture, best first (up to 6)" },
+  pictures: { type: "array", description: "every P picture, classified", items: { type: "object", properties: {
+    n: { type: "integer" }, kind: { type: "string", enum: PICTURE_KINDS }, exact: { type: "boolean", description: "it shows exactly this product (brand, variant, current Indian pack)" } }, required: ["n", "kind", "exact"] } },
   packshot_why: { type: "string", description: "what the chosen picture shows (brand, exact variant, pack design, market) and why the others were rejected" },
   product_name: { type: "string" },
   is_service: { type: "boolean", description: "true for a service / app / place (travel, stays, delivery, banking) rather than a physical product" },
@@ -211,7 +274,7 @@ const PICK_SCHEMA = { type: "object", properties: {
   accent_colour: { type: "string", description: "a second brand colour as #rrggbb that contrasts with brand_colour and with the product's pack" },
   style: { type: "string", enum: STYLES, description: "the ad design that suits this brand and product" },
   motif: { type: "string", enum: ["none", "bubbles", "steam", "sparkle", "speed", "flight", "pin"] },
-}, required: ["style", "motif", "accent_colour", "packshot", "packshot_ranked", "packshot_why", "product_name", "is_service", "logo", "logo_why", "brand_colour"] };
+}, required: ["style", "motif", "accent_colour", "packshot", "packshot_ranked", "pictures", "packshot_why", "product_name", "is_service", "logo", "logo_why", "brand_colour"] };
 
 const PLAN_SCHEMA = (ctas) => ({ type: "object", properties: {
   category: { type: "string" },
@@ -251,7 +314,7 @@ export const words = (s, n) => {
 
 /**
  * @param {{ brand: string, product: string, offer?: string, productImage?: string, style?: string, brands?: any, clientAd?: { file: string, type: "image"|"video", name?: string, seconds?: number }|null, workDir: string, indexDir?: string, studio: any, cfg: any, store: any,
- *   ask: Function, fetchImpl?: any, py: (args: string[]) => Promise<string>, ffmpeg: (args: string[]) => Promise<any>, chromium?: any, firecrawl?: { key: string }|null,
+ *   ask: Function, fetchImpl?: any, py: (args: string[]) => Promise<string>, ffmpeg: (args: string[]) => Promise<any>, chromium?: any, firecrawl?: { key: string }|null, productFile?: string|null,
  *   signal?: AbortSignal, say?: (pct: number, stage: string, msg?: string) => void }} o
  */
 export async function makeInImage(o) {
@@ -266,7 +329,7 @@ export async function makeInImage(o) {
   // every AI step must leave time for the rest (the recording needs ~30 s): when Gemini is overloaded the run stops
   // with a clear message inside the 2-minute budget instead of waiting on busy models
   const timed = (p, reserveMs) => { let t; const left = studio.budgetSeconds * 1000 - (Date.now() - t0) - reserveMs;
-    return Promise.race([p, new Promise((_, no) => { t = setTimeout(() => no(new Error("The AI (Gemini) is overloaded right now and did not answer in time. Try again in a minute.")), Math.max(8000, left)); })]).finally(() => clearTimeout(t)); };
+    return Promise.race([p, new Promise((_, no) => { t = setTimeout(() => no(new Error(left < 20000 ? "This ad ran out of time waiting for the AI (Gemini), which is slow or overloaded right now. Try again in a minute." : "The AI (Gemini) is overloaded right now and did not answer in time. Try again in a minute.")), Math.max(8000, left)); })]).finally(() => clearTimeout(t)); };
   /** @type {Record<string, any>} */
   const result = { version: studio.version, prompts: STUDIO_PROMPTS, strip: STRIP_VERSION, brand, product, offer: offer || null, mock: true,
     label: "MOCK — not a live placement. Nothing was served.", createdAt: new Date().toISOString() };
@@ -311,7 +374,7 @@ export async function makeInImage(o) {
     // the product as sold in India: the brand's own sites first, then Indian shops, then the rest; shops abroad never
     // (a US 20 fl oz Sprite bottle or a German page is not the product Indian readers buy)
     const shop = (list, h) => list.some((d) => h === d || h.endsWith("." + d));
-    const where = (h) => shop(studio.product.foreignShops, h) ? -1 : official(h) ? 3 : shop(studio.product.indianShops, h) || /\.in$/.test(h) ? 2 : 0;
+    const where = (h) => shop(studio.product.foreignShops, h) || foreignSite(h) ? -1 : official(h) ? 3 : shop(studio.product.indianShops, h) || /\.in$/.test(h) ? 2 : 0;
     const seen = new Set(), products = [];
     const ranked = [...web, ...webIn, ...webClear].map((x, i) => ({ x, i, w: where(x.host) })).filter((r) => r.w >= 0).sort((a, b) => b.w - a.w || a.i - b.i).map((r) => r.x);
     for (const x of ranked) if (!seen.has(x.url) && x.thumb) { seen.add(x.url); products.push(x); }
@@ -342,7 +405,8 @@ export async function makeInImage(o) {
     const pickP = client ? Promise.resolve({ packshot: 0, packshot_ranked: [], packshot_why: "client's own ad", product_name: product, is_service: false, logo: 0, logo_why: "", brand_colour: "", accent_colour: "", style: "bold", motif: "none" }) : ask(
       "You prepare assets for a display ad. You only choose among the pictures shown; you never describe a picture you were not shown.",
       `Brand: ${brand}\nProduct: ${product}\n${brief ? brief + "\n" : ""}\nP pictures are product photos found online, with the page they are on. L pictures are logo candidates.\n` +
-      `1. packshot: the number of the P picture that shows EXACTLY this product as sold in India today. Check, on the pack or item itself: the brand; the exact variant asked for (e.g. "Zero Sugar" vs regular, "Masala" vs another flavour, the model name or number, silver vs gold, size); the current design and logo (not an old pack); Indian packaging (not a US or European pack — fl oz labels, foreign-language text or foreign prices mean a foreign pack). Reject a picture that shows a different variant, a related product, an old design, a foreign pack, several different products, a person or model wearing or holding it, a promotional banner or poster with headline text, a collage or comparison chart, a big text/price overlay, a watermark, or the product cropped or blurred. Prefer the brand's own site and Indian shops, and a plain or transparent background. For a service (stays, flights, delivery, apps) pick the photo that best shows the experience. If no picture is exactly right, return 0 — never a near miss. packshot_ranked: every picture that passes all these checks, best first.\n` +
+      `1. packshot: the number of the P picture that shows EXACTLY this product as sold in India today. Check, on the pack or item itself: the brand; the exact variant asked for (e.g. "Zero Sugar" vs regular, "Masala" vs another flavour, the model name or number, silver vs gold, size); the current design and logo (not an old pack); Indian packaging (not a US or European pack — fl oz labels, foreign-language text or foreign prices mean a foreign pack). Reject a picture that shows a different variant, a related product, an old design, a foreign pack, several different products, a person or model wearing or holding it, a promotional banner or poster with headline text, a collage or comparison chart, a big text/price overlay, a watermark, or the product cropped or blurred. A plain or transparent background is best, but the product on a table, plate or simple background is fine (the ad can show it as a photo). Prefer the brand's own site and Indian shops. For a service (stays, flights, delivery, apps) pick the photo that best shows the experience. If no picture is exactly right, return 0 — never a near miss. packshot_ranked: every picture that passes all these checks, best first.\n` +
+      `   pictures: classify EVERY P picture — kind: ${PICTURE_GUIDE}; exact: true only when it shows exactly this product as described above.\n` +
       `2. product_name: the product's name as written on its page (short).\n3. is_service.\n4. logo: the number of the L picture that is ${brand}'s real current logo on its own — the company that sells ${product}, not another organisation with a similar name. Never a picture with several logos (a logo history / evolution chart, a collage, a sheet of brands), a photo of a shop sign, or a logo inside a larger photo. If several are right, the newest version. 0 if none.\n5. brand_colour: ${brand}'s main brand colour as #rrggbb (as used in its ads and logo). accent_colour: a second colour from ${brand}'s identity that contrasts with brand_colour and with the chosen product's own colours (the product will stand on it).\n6. style — the ad design that suits ${brand} and this product: bold (FMCG, everyday goods, sales, snacks), luxe (jewellery, beauty, premium fashion, watches), sport (shoes, sportswear, fitness gear), fresh (drinks, food, groceries), tech (phones, electronics, gadgets, apps), journey (travel, stays, airlines, delivery and other services). motif: bubbles (fizzy or cold drinks), steam (hot food), sparkle (jewellery, beauty), speed (sport), flight (airlines, travel), pin (stays, places, delivery), none.`,
       PICK_SCHEMA, [...pThumbs.map((x) => ({ label: `P${x.n} — "${x.title}" on ${x.host}`, file: x.file })), ...lThumbs.map((x) => ({ label: `L${x.n} — "${x.title}" (${x.host})`, file: x.file }))], "medium");
     const planP = ask(
@@ -363,21 +427,28 @@ export async function makeInImage(o) {
     const motif = known?.motif || pick.motif || "none";
     if (!client) {
     say(30, "assets", "Preparing the product cut-out and the logo…");
-    const userPic = String(o.productImage || "").trim();
-    if (!pick.packshot && !userPic) throw new StudioStop("no_match", `None of the pictures found online is exactly ${brand} ${product} as sold in India (${pick.packshot_why}). Try the exact product name, or paste a link to the product photo.`);
-    // pictures to try, best first: the user's own photo link, else only pictures the AI accepted
-    let candidates = [...new Set([pick.packshot, ...(pick.packshot_ranked || [])])].map((n) => pThumbs.find((x) => x.n === n)).filter(Boolean).slice(0, 4);
-    if (userPic) {
-      let host = ""; try { host = new URL(userPic).host.replace(/^www\./, ""); } catch { throw new Error("The product photo link is not a web address (it should start with https://)."); }
-      candidates = [{ url: userPic, page: userPic, host, title: "photo link given by the user", n: -1, user: true }];
+    const userPic = String(o.productImage || "").trim(), userFile = o.productFile || null;
+    const ASK_PHOTO = "Upload the product photo or paste a link to it, then press Generate again.";
+    // pictures to try, best first: the user's own photo (uploaded file or link), else only pictures the AI classified as
+    // exactly this product — never a banner or an unrelated picture
+    const lifestyleOk = !!pick.is_service || style === "fresh" || style === "journey";
+    let candidates = productCandidates(pick, pThumbs, { lifestyleOk });
+    if (userFile) candidates = [{ url: "upload:" + path.basename(userFile), page: null, host: "uploaded file", title: "photo uploaded by the user", n: -1, user: true, kind: "product_on_background" }];
+    else if (userPic) {
+      let host = ""; try { host = new URL(userPic).host.replace(/^www\./, ""); } catch { throw new StudioStop("failed", "The product photo link is not a web address (it should start with https://)."); }
+      candidates = [{ url: userPic, page: userPic, host, title: "photo link given by the user", n: -1, user: true, kind: "product_on_background" }];
     }
+    result.productCandidates = candidates.map((x) => ({ url: x.url, kind: x.kind, site: x.host }));
     // full-size files fetched together; a shop that refuses → Bing's enlarged copy of the same picture (source page kept)
-    const fetched = await Promise.all(candidates.map(async (x, i) => {
+    const download = (list, from) => Promise.all(list.map(async (x, k) => {
+      const i = from + k;
+      if (userFile) return { x, f: userFile, idx: i, via: "the file you uploaded", hash: sha256(fs.readFileSync(userFile).toString("base64")) };
       let f = await downloadImage(x.url, path.join(assets, `product_src${i}`), { fetchImpl, fs }).catch(() => null), via = x.user ? "the link you gave" : "the picture's own site";
       if (!f && !x.user && bingLarge(x.thumb, 900)) { f = await downloadImage(bingLarge(x.thumb, 900), path.join(assets, `product_src${i}b`), { fetchImpl, fs }).catch(() => null); via = "Bing's copy (the site refused the download)"; }
-      return f && { x, f, via };
+      return { x, f, idx: i, via, hash: f ? sha256(fs.readFileSync(f).toString("base64")) : null };
     }));
-    if (!fetched.some(Boolean)) throw new Error(userPic ? "The product photo link could not be downloaded as a JPEG, PNG or WebP picture." : "The chosen product pictures could not be downloaded from their sites.");
+    const fetched = await download(candidates, 0);
+    if ((userPic || userFile) && !fetched.some((g) => g.f)) throw Object.assign(new StudioStop("failed", "The product photo link could not be downloaded as a JPEG, PNG or WebP picture. " + ASK_PHOTO), { needsInput: "product_image" });
 
     // the logo file (checked together with the first product PNG)
     let logoInfo = null;
@@ -392,38 +463,68 @@ export async function makeInImage(o) {
         if (lg) { logoFile = path.join(assets, "logo_clean.png"); Object.assign(logoInfo, { kind: lg.kind, ink: lg.ink, light: lg.light, keyed: lg.keyed }); } }
     }
 
-    // every finished PNG is checked by AI before it goes into the ad: the exact product, whole and undamaged, nothing
-    // else in it (no banner text, model, other products, leftover background); the logo complete and legible.
-    // A failed product PNG → the original photo of the same picture (when the cut-out was the problem) → the next picture.
+    // every finished product picture is checked by AI before it goes into the ad (a stage of its own — the article checks
+    // come later): exactly this product, whole and undamaged, as the main subject; no banner / price text, models or other
+    // brands' products. A background is fine when the original photo is used — the design shows it as a photo or scene.
+    // The logo is checked with the first product picture.
     const checkDir = path.join(workDir, "checks"); fs.mkdirSync(checkDir, { recursive: true });
-    const checks = [];
-    let cut = null, prodSrc = null, via = "", logoChecked = !logoFile;
-    for (const [i, got] of fetched.entries()) {
-      if (!got) continue;
-      for (const mode of ["auto", "photo"]) {
-        if (mode === "photo" && checks.at(-1)?.method === "photo") break;   // the first try was already the original photo
-        const out = path.join(assets, "product.png");
+    let logoChecked = !logoFile;
+    const maxChecks = studio.product.maxChecks || 6;
+    const tryOpts = {
+      maxTries: maxChecks,
+      outOfTime: () => Date.now() - t0 > (studio.budgetSeconds - 68) * 1000,   // leave the articles, the match and the recording their time
+      prepare: async (/** @type {any} */ got, /** @type {"auto"|"photo"} */ mode) => {
+        const i = got.idx, out = path.join(assets, "product.png");
         const c = JSON.parse((await py(["cutout.py", "product", got.f, out, ...(mode === "photo" ? ["--photo"] : [])])).trim().split("\n").pop());
         const pv = path.join(checkDir, `product_${i}_${mode}.jpg`); await py(["cutout.py", "preview", out, pv]);
-        const imgs = [{ label: "PRODUCT PNG to check (shown on a grey checkerboard: checkerboard = transparent)", file: pv }];
+        say(30 + Math.min(6, i), "assets", `Checking product picture ${i + 1} (${(got.x.kind || "photo").replace(/_/g, " ")}, ${c.method === "photo" ? "original photo" : "cut-out"}) from ${got.x.host}…`);
+        return { ...c, previewFile: pv, preview: path.relative(workDir, pv).replace(/\\/g, "/") };
+      },
+      check: async (/** @type {any} */ got, /** @type {any} */ c) => {
+        const imgs = [{ label: "PRODUCT PICTURE to check (shown on a grey checkerboard: checkerboard = transparent)", file: c.previewFile }];
         if (got.x.file) imgs.push({ label: `Reference: the search thumbnail it came from ("${got.x.title}" on ${got.x.host})`, file: got.x.file });
         let lpv = null; if (!logoChecked) { lpv = path.join(checkDir, "logo.jpg"); await py(["cutout.py", "preview", logoFile, lpv]); imgs.push({ label: "LOGO PNG to check", file: lpv }); }
         const v = await timed(ask("You check the finished pictures of a display ad before it is published. Judge only what you see.",
           `Ad for ${brand} — ${pick.product_name || product} (asked for: "${product}"), as sold in India.\n` +
-          `PRODUCT PNG: ok only if it shows exactly this product (right brand, the variant asked for, current pack) — complete, not cut off or damaged, and nothing else: no people or models, no banner or headline text, no other products, no price stickers, no leftover background blocks${c.method === "photo" ? " (it is the original photo: a plain background is fine)" : ""}.` +
+          (c.method === "photo" ? `PRODUCT PICTURE — the original photo, shown in the ad as a photo. ALLOWED and never a reason to reject: a background, table or surface, cloth or napkin, plate, board, serving dish, garnish or simple props around the product${got.x.kind === "lifestyle" ? ", and a lifestyle scene where the product is clearly the hero" : ""}.\n` : "PRODUCT PICTURE — a cut-out: no leftover background blocks, nothing damaged or removed by the cutting.\n") +
+          `ok only if exactly this product (right brand, the variant asked for, current pack) is clearly the main subject, complete, not cut off or damaged. ` +
+          `Never ok: banner, headline, offer or price text over the picture; people or models as the focus; other brands' products; a watermark; a collage.\n` +
+          `kind: what the picture is. picture_problem: true when the problem is in the original picture itself, false when only the cut-out went wrong.` +
           (lpv ? `\nLOGO PNG: logo_ok only if it is ${brand}'s own logo, complete and legible, and nothing else (no other logos, no photo around it).` : ""),
-          VERIFY_SCHEMA, imgs, "medium"), 50000).catch((e) => { if (/overloaded/.test(e.message)) throw e; return { ok: false, problem: "the check could not run: " + e.message, logo_ok: false }; });
-        checks.push({ picture: got.x.url, method: c.method, ok: !!v.ok, problem: v.problem || "", preview: path.relative(workDir, pv).replace(/\\/g, "/") });
+          VERIFY_SCHEMA, imgs, "medium"), 50000).catch((e) => { if (/overloaded/.test(e.message)) throw e; return { ok: false, problem: "the check could not run: " + e.message, picture_problem: true, logo_ok: false }; });
         if (lpv) { logoChecked = true; if (!v.logo_ok) { result.logoRejected = { ...logoInfo, why: v.logo_problem || "the logo check failed" }; logoFile = null; logoInfo = null; } }
-        if (v.ok) { cut = c; prodSrc = got.x; via = got.via; break; }
-        if (c.method === "photo" || pick.is_service) break;   // the photo itself is wrong: next picture
+        return v;
+      },
+    };
+    let tried = await tryProductPictures(fetched, tryOpts);
+    // nothing usable among the first pictures (a brand site full of offer banners): one more round on the next pictures
+    // found online — classified the same way, never the same address again, within the same limit of checks and time
+    const used = () => tried.checks.filter((c) => c.method).length;
+    if (!tried.got && !userPic && !userFile && products.length > pThumbs.length && used() < maxChecks && Date.now() - t0 < (studio.budgetSeconds - 78) * 1000) {
+      say(34, "assets", "No usable product photo among the first pictures — looking at more pictures found online…");
+      const more = (await thumbs(products.slice(10), "q", 10)).map((x) => ({ ...x, n: x.n + 100 }));
+      const cls = more.length ? await timed(ask("You sort product pictures for a display ad. You only judge the pictures shown.",
+        `Brand: ${brand}\nProduct: ${product}\n${brief ? brief + "\n" : ""}Classify EVERY picture — kind: ${PICTURE_GUIDE}; exact: true only when it shows exactly this product (the brand, the variant asked for, the current Indian pack — not a foreign pack, an old design or another variant).`,
+        { type: "object", properties: { pictures: PICK_SCHEMA.properties.pictures }, required: ["pictures"] },
+        more.map((x) => ({ label: `P${x.n} — "${x.title}" on ${x.host}`, file: x.file })), "medium"), 50000).catch(() => ({ pictures: [] })) : { pictures: [] };
+      const seen = new Set(candidates.map((x) => x.url));
+      const next = productCandidates({ pictures: cls.pictures || [] }, more, { lifestyleOk }).filter((x) => !seen.has(x.url));
+      result.productCandidates.push(...next.map((x) => ({ url: x.url, kind: x.kind, site: x.host, round: 2 })));
+      if (next.length) {
+        const second = await tryProductPictures(await download(next, candidates.length), { ...tryOpts, maxTries: maxChecks - used() });
+        tried = { ...second, checks: [...tried.checks, ...second.checks] };
       }
-      if (cut) break;
     }
-    result.pngChecks = checks;
-    if (!cut) throw new StudioStop("no_match", `No product picture passed the final check (${checks.map((c) => c.problem).filter(Boolean).slice(0, 3).join("; ")}). Paste a link to the exact product photo to use it instead.`);
-    productMode = pick.is_service && cut.method === "photo" ? "scene" : cut.method;
-    result.productInfo = { name: pick.product_name, picture: { url: prodSrc.url, page: prodSrc.page, site: prodSrc.host, title: prodSrc.title, official: official(prodSrc.host), chosenBecause: prodSrc.user ? "given by the user" : pick.packshot_why, aiChoice: prodSrc.n === pick.packshot, downloadedFrom: via }, cutout: cut.method, layout: productMode, checked: true };
+    result.pngChecks = tried.checks;
+    if (!tried.got) {
+      const n = used(), why = tried.checks.map((c) => c.problem || c.skipped).filter(Boolean).slice(0, 3).join("; ");
+      throw Object.assign(new StudioStop("no_match", n
+        ? `No product picture passed the final check after ${n} tries (${why}). ${ASK_PHOTO}`
+        : `None of the pictures found online is exactly ${brand} ${product} as sold in India — they were offer banners, other products or other variants${why ? ` (${why})` : ""}. ${ASK_PHOTO}`), { needsInput: "product_image" });
+    }
+    const cut = tried.c, prodSrc = tried.got.x, via = tried.got.via;
+    productMode = (pick.is_service || prodSrc.kind === "lifestyle") && cut.method === "photo" ? "scene" : cut.method;
+    result.productInfo = { name: pick.product_name, picture: { url: prodSrc.url, page: prodSrc.page, site: prodSrc.host, title: prodSrc.title, official: official(prodSrc.host), chosenBecause: prodSrc.user ? "given by the user" : pick.packshot_why, aiChoice: prodSrc.n === pick.packshot, kind: tried.v.kind || prodSrc.kind || null, downloadedFrom: via }, cutout: cut.method, layout: productMode, checked: true };
     let colour = known?.colours.primary || (/^#[0-9a-f]{6}$/i.test(pick.brand_colour || "") ? pick.brand_colour : null);
     if (!colour && logoFile) colour = JSON.parse((await py(["cutout.py", "colour", logoFile])).trim()).hex;
     result.brandLook = { logo: logoInfo || { note: result.logoRejected ? "The logo found online failed the check — the brand name is shown as text." : "No logo was confirmed online — the brand name is shown as text." }, colour: colour || "#1d2b53", accent: known?.colours.accent || (/^#[0-9a-f]{6}$/i.test(pick.accent_colour || "") ? pick.accent_colour : null), colourFrom: known?.colours.primary ? "MediaKart brand knowledge" : pick.brand_colour ? "AI (brand colour)" : logoFile ? "logo pixels" : "default" };
@@ -567,7 +668,7 @@ export async function makeInImage(o) {
     return result;
   } catch (e) {   // a stopped run keeps what it found and why it stopped, for review
     const status = /** @type {any} */ (e).status || "failed";
-    try { fs.writeFileSync(path.join(workDir, "result.json"), JSON.stringify({ ...result, status, error: e.message, timing }, null, 1)); } catch { /* the error itself is what matters */ }
+    try { fs.writeFileSync(path.join(workDir, "result.json"), JSON.stringify({ ...result, status, needsInput: /** @type {any} */ (e).needsInput || null, error: e.message, timing }, null, 1)); } catch { /* the error itself is what matters */ }
     throw Object.assign(e, { status });
   }
 }

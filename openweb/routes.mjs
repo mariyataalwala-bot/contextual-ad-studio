@@ -101,6 +101,9 @@ export function createOpenWeb({ dataDir, ask = null, provider = () => "none", ff
     const style = STYLES.includes(b.style) ? b.style : null;
     const cc = b.clientAd ? clientCreative(b.clientAd.data) : null;
     if (cc?.error) return { code: 400, body: { error: cc.error } };
+    // the product photo uploaded by the user (when none found online passed): checked like any other product picture
+    const pu = b.productUpload ? clientCreative(b.productUpload.data) : null;
+    if (pu && (pu.error || pu.type !== "image" || pu.ext === "gif")) return { code: 400, body: { error: "The product photo must be a PNG, JPEG or WebP picture (up to 40 MB)." } };
     if (!ask || provider() === "none") return { code: 400, body: { error: "The studio needs the AI key (Settings on the computer running the app)." } };
     if (!py || !ffmpeg) return { code: 503, body: { error: "Python and ffmpeg are needed on the computer running the app." } };
     if (studioBusy && jobs[studioBusy]?.status === "running") return { code: 409, body: { error: "An ad is already being made — please wait for it to finish.", id: studioBusy } };
@@ -109,15 +112,17 @@ export function createOpenWeb({ dataDir, ask = null, provider = () => "none", ff
     const workDir = path.join(studioRoot, rel); fs.mkdirSync(path.join(workDir, "assets"), { recursive: true });
     let clientAd = null;
     if (cc) { const file = path.join(workDir, "assets", "client_ad." + cc.ext); fs.writeFileSync(file, cc.buf); clientAd = { file, type: cc.type, name: String(b.clientAd.name || "").slice(0, 120), seconds: +b.clientAd.seconds || null }; }
+    let productFile = null;
+    if (pu && !cc) { productFile = path.join(workDir, "assets", "product_upload." + pu.ext); fs.writeFileSync(productFile, pu.buf); }
     const j = job("studio"); Object.assign(j, { pct: 1, stage: "start", brand, product, dir: rel.replace(/\\/g, "/"), outcome: "running" }); studioBusy = j.id;
     const say = (pct, stage, msg) => { j.pct = Math.max(j.pct, pct); j.stage = stage; if (msg) log(j, msg); };
     // status stays "done" / "failed" for the page; outcome is how it ended: success · partial · needs_review · no_match · failed
     const end = (status, outcome, error) => { if (j.status !== "running") return false; Object.assign(j, { status, outcome, tEnd: Date.now() }); if (error) j.error = error; if (studioBusy === j.id) studioBusy = null; return true; };
     const ctl = new AbortController(), limitS = studio.budgetSeconds + 75;
     const dog = setTimeout(() => { ctl.abort(); if (end("failed", "failed", `Stopped: the run took longer than ${limitS} s (last step: ${j.stage}). Nothing was placed.`)) log(j, j.error); }, limitS * 1000);
-    makeInImage({ brand, product, offer, productImage, style, clientAd, brands, workDir, indexDir: studioRoot, studio, cfg, store, ask, fetchImpl, py, ffmpeg, chromium, firecrawl: firecrawl(), signal: ctl.signal, say })
+    makeInImage({ brand, product, offer, productImage, style, clientAd, brands, workDir, indexDir: studioRoot, studio, cfg, store, ask, fetchImpl, py, ffmpeg, chromium, firecrawl: firecrawl(), signal: ctl.signal, say, productFile })
       .then((r) => { if (end("done", r.status || "success")) { j.result = r; j.pct = 100; log(j, `Ad ready in ${r.seconds} s (${j.outcome}${r.status === "partial" ? ": " + r.statusWhy : ""}).`); } })
-      .catch((e) => { if (end("failed", e.status || "failed", e.message)) log(j, `Stopped (${j.outcome}): ` + e.message); try { fs.writeFileSync(path.join(workDir, "error.txt"), e.stack || e.message); } catch { /* best effort */ } })
+      .catch((e) => { if (end("failed", e.status || "failed", e.message)) { j.needsInput = e.needsInput || null; log(j, `Stopped (${j.outcome}): ` + e.message); } try { fs.writeFileSync(path.join(workDir, "error.txt"), e.stack || e.message); } catch { /* best effort */ } })
       .finally(() => clearTimeout(dog));
     return { code: 200, body: { id: j.id } };
   }

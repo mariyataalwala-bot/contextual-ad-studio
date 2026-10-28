@@ -377,6 +377,7 @@
  "listMax": 240,
  "budgetSeconds": 115,
  "product": {
+  "maxChecks": 5,
   "market": "en-IN",
   "indianShops": [
    "amazon.in",
