@@ -9,6 +9,8 @@ import { imageSearch, brandHost, downloadImage } from "./websearch.mjs";
 import { makeFetcher } from "./fetcher.mjs";
 import { parseFeed, notAnArticle } from "./feeds.mjs";
 import { analyseUrl } from "./pipeline.mjs";
+import { makeReader, withTimeout } from "./reader.mjs";
+import { EXTRACT_VERSION } from "./extract.mjs";
 import { renderMock, ASSET_URL } from "./mock.mjs";
 import { stripHtml, fitStrip, STRIP_VERSION, STYLES, styleFontsUrl, styleFontFaces } from "./strip.mjs";
 import { norm } from "./text.mjs";
@@ -19,6 +21,16 @@ export function studioRefusal(brands, brand, product) {
   const k = brands ? findBrand(brands, brand, product) : null;
   const why = bannedReason(k, product, brand);
   return why ? `${k.name}: ${why}` : null;
+}
+
+// How a run ended (result.json "status", the job's "outcome"): success · partial (made, but the chosen article could only
+// be read in part — the checks passed on what could be read) · needs_review (a person must decide: fitting articles whose
+// text could not be read well enough for the brand-safety check are listed, never placed) · no_match (nothing fits — an
+// honest "no" rather than a loose fit) · failed (something broke, or the run went over its time limit)
+export const STATUSES = ["success", "partial", "needs_review", "no_match", "failed"];
+export class StudioStop extends Error {
+  /** @param {string} status one of STATUSES @param {string} message */
+  constructor(status, message) { super(message); this.status = status; }
 }
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
@@ -119,7 +131,8 @@ export function usedArticles(root, brand) {
       let r; try { r = JSON.parse(fs.readFileSync(path.join(root, b, t, "result.json"), "utf8")); } catch { continue; }
       const url = r?.placement?.article?.url;
       if (!url || r.error || String(r.brand).trim().toLowerCase() === me) continue;
-      used.set(urlKey(url), `${r.brand} · ${typeof r.product === "string" ? r.product : r.product?.name || ""}`);
+      const who = `${r.brand} · ${typeof r.product === "string" ? r.product : r.product?.name || ""}`;
+      for (const u of [url, r.placement.article.canonical]) if (u) used.set(urlKey(u), who);
     }
   }
   return used;
@@ -238,12 +251,14 @@ export const words = (s, n) => {
 
 /**
  * @param {{ brand: string, product: string, offer?: string, productImage?: string, style?: string, brands?: any, clientAd?: { file: string, type: "image"|"video", name?: string, seconds?: number }|null, workDir: string, indexDir?: string, studio: any, cfg: any, store: any,
- *   ask: Function, fetchImpl?: any, py: (args: string[]) => Promise<string>, ffmpeg: (args: string[]) => Promise<any>, chromium?: any,
- *   say?: (pct: number, stage: string, msg?: string) => void }} o
+ *   ask: Function, fetchImpl?: any, py: (args: string[]) => Promise<string>, ffmpeg: (args: string[]) => Promise<any>, chromium?: any, firecrawl?: { key: string }|null,
+ *   signal?: AbortSignal, say?: (pct: number, stage: string, msg?: string) => void }} o
  */
 export async function makeInImage(o) {
   const { brand, product, studio, cfg, store, ask, py, ffmpeg, workDir } = o;
-  const fetchImpl = o.fetchImpl || globalThis.fetch, say = o.say || (() => {});
+  const fetchImpl = o.fetchImpl || globalThis.fetch;
+  // every progress step first checks the app's time limit, so a stopped run ends at its next step instead of running on
+  const say = (pct, stage, msg) => { if (o.signal?.aborted) throw new StudioStop("failed", "Stopped: the run went over its time limit."); (o.say || (() => {}))(pct, stage, msg); };
   const offer = String(o.offer || "").trim();
   const cand = path.join(workDir, "candidates"); fs.mkdirSync(cand, { recursive: true });
   const fetcher = makeFetcher({ fetchImpl, gapMs: 1000 }), feeds = feedFetcher(fetchImpl);   // a handful of article pages, a second apart per site
@@ -282,7 +297,7 @@ export async function makeInImage(o) {
       sectionItems(studio, feeds),
       Promise.all((studio.sitemaps || []).map((sm) => sitemapIndex(sm, feeds, path.join(o.indexDir || path.join(workDir, "..", ".."), "_index", sm.id + ".json")).catch(() => []))).then((x) => x.flat()),
     ]);
-    const topic = await topicP;
+    const topic = await timed(topicP, 95000).catch(() => ({ words: [], competitors: [] }));   // a slow answer never holds the run
     const seenUrl = new Set(feedItems.map((x) => x.url));
     const taken = usedArticles(o.indexDir || path.join(workDir, "..", ".."), brand);
     const topicWords = [...new Set([...(topic.words || []), ...(known?.topics || [])])];
@@ -305,7 +320,7 @@ export async function makeInImage(o) {
     // the PNG check still apply to it)
     const researched = known?.logo?.png ? [{ url: known.logo.png, thumb: known.logo.png, page: known.logo.file || known.logo.png, host: "upload.wikimedia.org", title: `${known.name} official logo (MediaKart brand knowledge)` }] : [];
     const logos = [...researched, ...webLogos.filter((x) => x.thumb).slice(0, 5), ...commons.slice(0, 3)].slice(0, 8);
-    if (!client && !products.length) throw new Error(`No pictures of “${brand} ${product}” were found online. Check the spelling, or add a word (e.g. the product type).`);
+    if (!client && !products.length) throw new StudioStop("no_match", `No pictures of “${brand} ${product}” were found online. Check the spelling, or add a word (e.g. the product type).`);
     if (!all.length) throw new Error("None of the media-plan publisher feeds answered just now. Try again in a minute.");
     say(12, "search", `${client ? "Client's ad: " + (client.name || "uploaded file") + " · " : `${products.length} product picture(s), ${logos.length} logo candidate(s), `}${items.length} recent articles from ${new Set(items.map((i) => i.section)).size} sections (${items.filter((x) => hits.has(x.url)).length} of them matched by topic: ${(topic.words || []).slice(0, 6).join(", ")}…).`);
 
@@ -349,7 +364,7 @@ export async function makeInImage(o) {
     if (!client) {
     say(30, "assets", "Preparing the product cut-out and the logo…");
     const userPic = String(o.productImage || "").trim();
-    if (!pick.packshot && !userPic) throw new Error(`None of the pictures found online is exactly ${brand} ${product} as sold in India (${pick.packshot_why}). Try the exact product name, or paste a link to the product photo.`);
+    if (!pick.packshot && !userPic) throw new StudioStop("no_match", `None of the pictures found online is exactly ${brand} ${product} as sold in India (${pick.packshot_why}). Try the exact product name, or paste a link to the product photo.`);
     // pictures to try, best first: the user's own photo link, else only pictures the AI accepted
     let candidates = [...new Set([pick.packshot, ...(pick.packshot_ranked || [])])].map((n) => pThumbs.find((x) => x.n === n)).filter(Boolean).slice(0, 4);
     if (userPic) {
@@ -406,7 +421,7 @@ export async function makeInImage(o) {
       if (cut) break;
     }
     result.pngChecks = checks;
-    if (!cut) throw new Error(`No product picture passed the final check (${checks.map((c) => c.problem).filter(Boolean).slice(0, 3).join("; ")}). Paste a link to the exact product photo to use it instead.`);
+    if (!cut) throw new StudioStop("no_match", `No product picture passed the final check (${checks.map((c) => c.problem).filter(Boolean).slice(0, 3).join("; ")}). Paste a link to the exact product photo to use it instead.`);
     productMode = pick.is_service && cut.method === "photo" ? "scene" : cut.method;
     result.productInfo = { name: pick.product_name, picture: { url: prodSrc.url, page: prodSrc.page, site: prodSrc.host, title: prodSrc.title, official: official(prodSrc.host), chosenBecause: prodSrc.user ? "given by the user" : pick.packshot_why, aiChoice: prodSrc.n === pick.packshot, downloadedFrom: via }, cutout: cut.method, layout: productMode, checked: true };
     let colour = known?.colours.primary || (/^#[0-9a-f]{6}$/i.test(pick.brand_colour || "") ? pick.brand_colour : null);
@@ -430,19 +445,29 @@ export async function makeInImage(o) {
     const picked = (plan.shortlist || []).map((s) => ({ ...items[s.n - 1], why: s.why })).filter((x) => x.url);
     result.rivalHeadlinesDropped = picked.filter((x) => rivals(x.title)).map((x) => ({ url: x.url, title: x.title, names: rivals(x.title) }));
     const short = picked.filter((x) => !rivals(x.title)).slice(0, studio.fetchArticles);
-    if (!short.length) throw new Error(`No recent article on the media-plan publishers is a good context for ${brand} ${product} right now.`);
+    if (!short.length) throw new StudioStop("no_match", `No recent article on the media-plan publishers is a good context for ${brand} ${product} right now.`);
     say(38, "articles", `Reading ${short.length} shortlisted articles…`);
     const secOf = new Map([...studio.sections, ...(studio.sitemaps || [])].map((s) => [s.id, s]));
+    const reader = makeReader({ fetcher, py, firecrawl: o.firecrawl || null, fetchImpl, timeoutMs: 25000, tmpDir: path.join(store.root, "tmp", "read") });
+    const stored = store.listArticles();
     const got = await Promise.all(short.map(async (s) => {
-      const old = store.listArticles().find((a) => a.url === s.url && !a.error && a.images && !a.images.some((im) => im.status === "unavailable") && "free" in a && Date.now() - Date.parse(a.fetchedAt) < 6 * 3600e3);
-      const a = old || await analyseUrl({ url: s.url, publisher: secOf.get(s.section), fetcher, cfg, store, ask: null, fetchImpl, tmpDir: path.join(store.root, "tmp", "img") });
+      const old = stored.find((a) => a.url === s.url && !a.error && a.images && !a.images.some((im) => im.status === "unavailable") && "free" in a && a.extraction?.version === EXTRACT_VERSION && Date.now() - Date.parse(a.fetchedAt) < 6 * 3600e3);
+      const a = old || await withTimeout(analyseUrl({ url: s.url, publisher: secOf.get(s.section), fetcher, cfg, store, ask: null, fetchImpl, tmpDir: path.join(store.root, "tmp", "img"), reader, imageTimeoutMs: 8000 }), 35000, "Reading the article")
+        .catch((e) => ({ url: s.url, error: { code: e.code || "ERROR", message: String(e.message).slice(0, 200) } }));
       return { s, a };
     }));
     lap("articles");
     const rejected = [], images = /** @type {any[]} */ ([]);
+    const review = [];   // fitting articles whose text could not be read well enough to check brand safety: for a person, never placed
     for (const { s, a } of got) {
-      if (a.error) { rejected.push({ url: s.url, title: s.title, why: `could not be read (${a.error.code})` }); continue; }
+      if (a.error) { rejected.push({ url: s.url, title: s.title, why: `could not be read (${a.error.code}${a.error.code === "TIMEOUT" ? ": " + a.error.message : ""})` }); continue; }
       if (a.free === false) { rejected.push({ url: s.url, title: s.title, why: "subscription article (the page marks it isAccessibleForFree: false)" }); continue; }
+      const ex = a.extraction || { status: "complete", method: a.source, notes: [] };
+      if (ex.status === "none" || ex.status === "headline_only") {
+        const why = `only the headline could be read (${ex.method}) — brand safety can't be checked without the article text`;
+        review.push({ url: s.url, title: a.headline || s.title, why: s.why, problem: why }); rejected.push({ url: s.url, title: s.title, why }); continue;
+      }
+      if (a.canonical && taken.has(urlKey(a.canonical))) { rejected.push({ url: s.url, title: s.title, why: `the same article (${a.canonical}) already carries another brand's ad: ${taken.get(urlKey(a.canonical))}` }); continue; }
       // page safety (word lists, safety policy): only pages where nothing was flagged; the AI check below sees the text too
       if (a.safety.state === "unsafe" || a.safety.reasons.some((r) => r !== "SAFETY_AI_UNAVAILABLE" && r !== "SAFETY_CLEAR")) { rejected.push({ url: s.url, title: s.title, why: `page safety: ${a.safety.reasons.join(", ")}`, evidence: a.safety.evidence?.slice(0, 3) }); continue; }
       const usable = (a.images || []).filter((im) => im.status === "ok" && im.width >= studio.image.minWidth && im.width / im.height >= studio.image.minAspect && im.width / im.height <= studio.image.maxAspect).slice(0, studio.image.perArticle);
@@ -451,7 +476,9 @@ export async function makeInImage(o) {
     }
     const rank = new Map(); for (const c of images) { const n = (rank.get(c.a.id) || 0); c.nth = n; rank.set(c.a.id, n + 1); }
     const pool = images.sort((x, y) => x.nth - y.nth).slice(0, studio.image.maxCandidates);
-    if (!pool.length) throw new Error(`The shortlisted articles have no usable pictures (${rejected.map((r) => r.why).join("; ")}).`);
+    result.reviewArticles = review;
+    const forReview = review.length ? ` ${review.length} fitting article(s) could not be read well enough for the brand-safety check — listed for review, not placed.` : "";
+    if (!pool.length) throw new StudioStop(review.length ? "needs_review" : "no_match", `The shortlisted articles have no usable pictures (${rejected.map((r) => r.why).join("; ")}).${forReview}`);
     say(52, "images", `Checking ${pool.length} article picture(s)…`);
     await Promise.all(pool.map(async (c, i) => {   // small JPEG copies for the AI check
       const raw = await downloadImage(c.im.finalUrl || c.im.src, path.join(cand, `a${i + 1}_src`), { fetchImpl, fs }).catch(() => null);
@@ -468,7 +495,7 @@ export async function makeInImage(o) {
       `You place contextual in-image ads. ${client ? "The client's own ad (shown as AD) will be laid over the lower part of the chosen picture." : "A branded strip will cover the bottom 46% of the chosen picture."} You judge only what the article text and the pictures shown actually contain.`,
       `${brief ? brief + "\n" : ""}Ad: ${brand} — ${pick.product_name || product} (${plan.category}). ${client ? "The ad is the client's own creative (picture AD)." : `Strip copy: "${copy.headline}" / "${copy.subline}".`}\nCompetitors: ${[...new Set([...(known?.competitors || []), ...(plan.competitors || [])])].join(", ") || "-"}\nAvoid: ${(plan.avoid || []).join(", ") || "-"}\n\n` +
       // the article (first ~1,400 characters) and the paragraphs right around each picture: what a reader sees next to the ad
-      shown.map((c) => `[${c.k}] Article: "${c.a.headline}"\n   Article text: ${norm(c.a.body || "").slice(0, 1400)}\n   Picture alt/caption: ${c.im.alt || c.im.caption || "-"}\n   Text just above the picture: ${norm(c.im.context?.before || "").slice(-450) || "-"}\n   Text just below the picture: ${norm(c.im.context?.after || "").slice(0, 450) || "-"}`).join("\n") +
+      shown.map((c) => `[${c.k}] Article: "${c.a.headline}"\n   Article text${c.a.extraction?.status === "partial" ? " (only part of the article could be read — judge only this)" : ""}: ${norm(c.a.body || "").slice(0, 1400)}\n   Picture alt/caption: ${c.im.alt || c.im.caption || "-"}\n   Text just above the picture: ${norm(c.im.context?.before || "").slice(-450) || "-"}\n   Text just below the picture: ${norm(c.im.context?.after || "").slice(0, 450) || "-"}`).join("\n") +
       `\n\nFor every picture k give: context_fit (0-10: 9-10 only when the article is about this product's category or the main thing it is bought for; 6-8 closely related; 5 or less when the link is loose or indirect — e.g. a phone on a road-trip or travel story, shoes on a motorbike trip, noodles on a dal recipe), image_fit (0-10, does the picture's scene suit the product — the right setting or activity), safe (false if the article or picture involves anything in Avoid, tragedy, crime, illness, a negative view of this kind of product (health warnings, "unhealthy", calories, sodium, additives, junk, addiction, safety problems — anywhere in the article text, not only the headline), a competitor's product or logo (an article that reviews, launches, prices or reports on a specific product from another company in the same or a neighbouring category counts — for a phone that includes other tablets, smartwatches, earbuds and laptops), a recognisable celebrity or politician whose face next to the ad could look like an endorsement, or children as the focus for an adult product), safe_why, strip_ok, why (one sentence).`,
       FINAL_SCHEMA, [...(adRef ? [{ label: "AD — the client's own creative (for reference; do not score it)", file: adRef }] : []), ...shown.map((c) => ({ label: `Picture [${c.k}] (from article ${c.a.headline.slice(0, 70)})`, file: c.file }))], "high"), 32000);
     lap("ai_match");
@@ -483,7 +510,7 @@ export async function makeInImage(o) {
     const ok = scored.filter((c) => c.v.safe && c.v.strip_ok && c.score >= studio.minScore && c.v.context_fit >= studio.minContext);
     result.candidates = scored.map((c) => ({ article: c.a.headline, url: c.a.url, image: c.im.finalUrl || c.im.src, ...c.v, score: +c.score.toFixed(1) }));
     result.rejectedArticles = rejected;
-    if (!ok.length) throw new Error(`No article picture passed all three checks right now (best: “${scored[0]?.a.headline}” — ${scored[0]?.v.why || ""} ${scored[0]?.v.safe ? "" : scored[0]?.v.safe_why || ""}).`);
+    if (!ok.length) throw new StudioStop(review.length ? "needs_review" : "no_match", `No article picture passed all three checks right now (best: “${scored[0]?.a.headline}” — ${scored[0]?.v.why || ""} ${scored[0]?.v.safe ? "" : scored[0]?.v.safe_why || ""}).${forReview}`);
 
     // 6) the creative on the chosen picture, recorded on a phone
     const FONTS = path.join(HERE, "..", "..", "pipeline", "template", "fonts");
@@ -519,7 +546,8 @@ export async function makeInImage(o) {
     if (!out) throw new Error("The article page would not render the mock: " + (result.renderProblems || []).map((p) => p.error).join("; "));
     const sec = secOf.get(chosen.s.section) || {};
     result.placement = {
-      article: { url: chosen.a.url, headline: chosen.a.headline, publisher: sec.name, published: chosen.a.published || chosen.s.published || null, fetchedAt: chosen.a.fetchedAt, contentHash: chosen.a.contentHash },
+      article: { url: chosen.a.url, canonical: chosen.a.canonical || null, headline: chosen.a.headline, publisher: sec.name, published: chosen.a.published || chosen.s.published || null, fetchedAt: chosen.a.fetchedAt, contentHash: chosen.a.contentHash,
+        extraction: chosen.a.extraction || null },
       image: { url: chosen.im.finalUrl || chosen.im.src, width: chosen.im.width, height: chosen.im.height, alt: chosen.im.alt || null, caption: chosen.im.caption || null, lead: !!chosen.im.lead },
       inventory: { section: sec.id, mediaPlan: sec.formats?.["in-image"] },
       slot: out.slot,
@@ -530,12 +558,16 @@ export async function makeInImage(o) {
       ],
     };
     result.files = { video: path.basename(out.mp4 || ""), still: path.basename(out.png), creative: client ? "assets/" + path.basename(client.file) : "creative.html", product: client ? null : "assets/product.png", logo: logoFile ? "assets/" + path.basename(logoFile) : null };
+    const ex = chosen.a.extraction;
+    result.status = ex?.status === "partial" ? "partial" : "success";
+    result.statusWhy = result.status === "partial" ? `Made from partial context: ${ex.notes.join("; ") || `only ${ex.chars} characters of the article could be read`}. Every check passed on the text that could be read.` : "Every check passed on the article text.";
     result.timing = timing; result.seconds = timing.render;
     fs.writeFileSync(path.join(workDir, "result.json"), JSON.stringify(result, null, 1));
     say(100, "done", "Done.");
     return result;
   } catch (e) {   // a stopped run keeps what it found and why it stopped, for review
-    try { fs.writeFileSync(path.join(workDir, "result.json"), JSON.stringify({ ...result, error: e.message, timing }, null, 1)); } catch { /* the error itself is what matters */ }
-    throw e;
+    const status = /** @type {any} */ (e).status || "failed";
+    try { fs.writeFileSync(path.join(workDir, "result.json"), JSON.stringify({ ...result, status, error: e.message, timing }, null, 1)); } catch { /* the error itself is what matters */ }
+    throw Object.assign(e, { status });
   }
 }

@@ -150,7 +150,7 @@ async function askClaude(system, text, schema, images, effort) {
     output_config: { effort, format: { type: "json_schema", schema } },
     system,
     messages: [{ role: "user", content }],
-  });
+  }, { timeout: 120000, maxRetries: 1 });   // a slow answer fails the step instead of holding the job
   if (res.stop_reason === "refusal") throw new Error("Claude declined this step: " + (res.stop_details?.explanation || "refusal"));
   const t = res.content.find((b) => b.type === "text");
   if (!t) throw new Error("No answer from Claude (stop: " + res.stop_reason + ")");
@@ -158,7 +158,7 @@ async function askClaude(system, text, schema, images, effort) {
 }
 
 // ---------- process helpers ----------
-function run(cmd, args, { log, cwd, env, timeout } = {}) {
+function run(cmd, args, { log, cwd, env, timeout = 10 * 60e3 } = {}) {   // no step legitimately runs 10 minutes
   return new Promise((resolve, reject) => {
     const p = spawn(cmd, args, { env: env ? { ...ENV, ...env } : ENV, cwd: cwd || APP, windowsHide: true });
     let out = "", err = "";
@@ -169,7 +169,7 @@ function run(cmd, args, { log, cwd, env, timeout } = {}) {
   });
 }
 const yt = (args, opts) => run("node", [path.join(PIPE, "scripts", "yt.js"), ...args], opts);
-const ytBrowserJson = async (args) => { const s = (await yt(args)).trim(); const i = [s.indexOf("["), s.indexOf("{")].filter((x) => x >= 0); return JSON.parse(s.slice(Math.min(...i))); };
+const ytBrowserJson = async (args) => { const s = (await yt(args, { timeout: 120000 })).trim(); const i = [s.indexOf("["), s.indexOf("{")].filter((x) => x >= 0); return JSON.parse(s.slice(Math.min(...i))); };
 
 // ---------- YouTube Data API v3 (official): search + video details without a browser ----------
 // Key from Google Cloud Console (APIs & Services → enable "YouTube Data API v3" → Credentials → API key).
@@ -319,6 +319,7 @@ const say = (job, msg) => {
   const m = MILESTONES.find(([re]) => re.test(msg));
   if (m) { let [, a, b, dur, stage] = m; if (job.hdOnly && stage >= 3) { if (stage === 3) [a, b] = [2, 92]; else [a, b] = [92, 99]; } setBand(job, a, b, dur, stage); }
 };
+const outcomeOf = (job) => job.status === "done" ? "success" : job.status === "approve" ? "needs_review" : job.status === "failed" ? (/^No (video|more candidates) passed/.test(job.step || "") ? "no_match" : "failed") : job.status;
 const progressOf = (job) => ({ pct: Math.round(pctOf(job)), stage: job.status === "done" ? 5 : job.prog.stage, hdOnly: !!job.hdOnly, preview: !!job.input?.preview,
   elapsed: Math.round(((job.status === "running" ? Date.now() : job.tEnd || Date.now()) - job.t0) / 1000) });
 
@@ -434,7 +435,7 @@ function keepHome(dir, pj) { if (homeFresh() || !pj.home || !fs.existsSync(path.
 // home / results / watch pages for a video; ok = the video shows on the first screen of results for this query
 async function capturePages(id, query, dir) {
   fs.mkdirSync(dir, { recursive: true }); useHome(dir);
-  await yt(["pages", id, query, dir, ""]).catch(() => {});
+  await yt(["pages", id, query, dir, ""], { timeout: 120000 }).catch(() => {});
   const pj = JSON.parse(fs.readFileSync(path.join(dir, "pages.json"), "utf8")); keepHome(dir, pj);
   const tg = pj.results.findIndex((r) => r.target);
   return tg >= 0 && pj.results[tg].thumb[1] <= 760;
@@ -842,7 +843,8 @@ function saveData(dataUrl, file) { const m = /^data:[^;]+;base64,(.*)$/.exec(dat
 
 // Open Web contextual placement (openweb/): its own routes and data folder; if its config is broken only that tab is off
 let openweb = null, openwebError = "";
-try { openweb = createOpenWeb({ dataDir: path.join(OUT_ROOT, "openweb"), ask, provider, ffmpeg: (args) => run("ffmpeg", args), embed: embedTexts,
+try { openweb = createOpenWeb({ dataDir: path.join(OUT_ROOT, "openweb"), ask, provider, ffmpeg: (args) => run("ffmpeg", args, { timeout: 120000 }), embed: embedTexts,
+  firecrawlKey: () => loadSettings().firecrawlKey || process.env.FIRECRAWL_API_KEY || null,
   py: (args) => run(PY, [path.join(PIPE, "scripts", args[0]), ...args.slice(1)], { timeout: 120000 }) }); }
 catch (e) { openwebError = e.message; console.error("Open Web disabled:", e.message); }
 
@@ -963,7 +965,7 @@ http.createServer(async (req, res) => {
     if (jm && jobs[jm[1]]) {
       const job = jobs[jm[1]], act = jm[3];
       if (job.status !== "running" && !job.tEnd) job.tEnd = Date.now(); else if (job.status === "running") job.tEnd = 0;
-      if (!act) return send(res, 200, { ...progressOf(job), kind: job.kind, hasHD: !!job.hdOutput, status: job.status, step: job.step, log: job.log.slice(-40), proposal: job.proposal && { ...job.proposal, pick: { ...job.proposal.pick, visual: { ...job.proposal.pick.visual, still: undefined }, object: { ...job.proposal.pick.object, still: undefined } } }, output: job.output });
+      if (!act) return send(res, 200, { ...progressOf(job), kind: job.kind, hasHD: !!job.hdOutput, status: job.status, outcome: outcomeOf(job), step: job.step, log: job.log.slice(-40), proposal: job.proposal && { ...job.proposal, pick: { ...job.proposal.pick, visual: { ...job.proposal.pick.visual, still: undefined }, object: { ...job.proposal.pick.object, still: undefined } } }, output: job.output });
       if (act === "grab" && req.method === "POST") {   // manual mode: capture an exact moment the user typed
         const t = +(await body(req)).t, P = job.proposal;
         if (!P || !(t >= 0) || t > P.video.length) return send(res, 400, { error: "Enter a time inside the video (0 – " + mmss(Math.floor(P?.video.length || 0)) + ")." });

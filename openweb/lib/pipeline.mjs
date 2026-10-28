@@ -3,7 +3,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { parseFeed, notAnArticle } from "./feeds.mjs";
-import { extractArticle } from "./extract.mjs";
+import { makeReader } from "./reader.mjs";
 import { lexicalFeatures, aiFeatures } from "./analyse.mjs";
 import { pageSafety } from "./safety.mjs";
 import { recommend, rankRecs, recKey } from "./rank.mjs";
@@ -40,12 +40,12 @@ async function leadImageFile(url, dir, fetchImpl) {
 }
 
 /** @returns {Promise<Record<string, any>>} the stored article record */
-export async function analyseUrl({ url, publisher, fetcher, cfg, store, ask, fetchImpl = globalThis.fetch, tmpDir = null, gray9x8 = null }) {
+// reader: makeReader(...) with the app's Trafilatura / Firecrawl set up (one is made from the fetcher when not given)
+export async function analyseUrl({ url, publisher, fetcher, cfg, store, ask, fetchImpl = globalThis.fetch, tmpDir = null, gray9x8 = null, reader = null, imageTimeoutMs = 15000 }) {
   const id = articleId(url), fetchedAt = new Date().toISOString();
   let rec;
   try {
-    const { text: html, finalUrl } = await fetcher.get(url);
-    const a = extractArticle(html, finalUrl);
+    const { html, finalUrl, article: a } = await (reader || makeReader({ fetcher, fetchImpl })).read(url);
     const contentHash = sha256(`${a.headline}\n${a.body}`);
     const lexical = lexicalFeatures(a, cfg);
     let imageFile = null;
@@ -54,7 +54,7 @@ export async function analyseUrl({ url, publisher, fetcher, cfg, store, ask, fet
     const features = { lexical, ai };
     // in-article images (for in-image placements): extracted from the same HTML, then only those images are fetched
     const ex = extractImages(html, finalUrl, a);
-    await fetchImages(ex.images, { fetchImpl, allowed: fetcher.allowed || (async () => true), gray9x8, tmpDir: tmpDir && path.join(tmpDir, "..", "imghash"), fs, path });
+    await fetchImages(ex.images, { fetchImpl, allowed: fetcher.allowed || (async () => true), gray9x8, tmpDir: tmpDir && path.join(tmpDir, "..", "imghash"), fs, path, timeoutMs: imageTimeoutMs });
     for (const im of ex.images) store.saveImage(im, id);
     const images = ex.images.map((im) => ({ id: im.id, index: im.index, lead: im.lead, status: im.status, width: im.width || null, height: im.height || null, dupOf: im.dupOf || null }));
     rec = { id, url, publisherId: publisher.id, fetchedAt, contentHash, ...a, features, safety: pageSafety(a, features, cfg.safety), images, imagesInfo: { window: ex.window, skipped: ex.skipped },

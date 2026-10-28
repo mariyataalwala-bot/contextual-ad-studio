@@ -15,6 +15,7 @@ import { ensureVectors } from "./lib/semantic.mjs";
 import { loadStudioConfig, makeInImage, studioRefusal, sectionItems, feedFetcher, sitemapIndex } from "./lib/studio.mjs";
 import { STYLES } from "./lib/strip.mjs";
 import { loadBrands } from "./lib/brands.mjs";
+import { makeReader } from "./lib/reader.mjs";
 
 // A creative file the client supplies, sent from the page as a data: URL. Its type is read from the file's own bytes
 // (not from the name): PNG, JPEG, GIF, WebP pictures; MP4, WebM videos. At most 40 MB.
@@ -39,9 +40,9 @@ const countBy = (list, key) => { const m = {}; for (const x of list) m[key(x)] =
 const FILE_TYPES = { ".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".gif": "image/gif", ".webp": "image/webp", ".mp4": "video/mp4", ".webm": "video/webm", ".mov": "video/quicktime", ".json": "application/json" };
 
 /**
- * @param {{ dataDir: string, configDir?: string, ask?: Function|null, provider?: () => string, ffmpeg?: ((args: string[]) => Promise<any>)|null, fetchImpl?: any, chromium?: any, embed?: ((texts: string[], task: string, dims: number) => Promise<number[][]>)|null, py?: ((args: string[]) => Promise<string>)|null, studioDir?: string|null }} opts
+ * @param {{ dataDir: string, configDir?: string, ask?: Function|null, provider?: () => string, ffmpeg?: ((args: string[]) => Promise<any>)|null, fetchImpl?: any, chromium?: any, embed?: ((texts: string[], task: string, dims: number) => Promise<number[][]>)|null, py?: ((args: string[]) => Promise<string>)|null, studioDir?: string|null, firecrawlKey?: () => string|null|undefined }} opts
  */
-export function createOpenWeb({ dataDir, ask = null, provider = () => "none", ffmpeg = null, fetchImpl = globalThis.fetch, chromium = null, configDir, embed = null, py = null, studioDir = null }) {
+export function createOpenWeb({ dataDir, ask = null, provider = () => "none", ffmpeg = null, fetchImpl = globalThis.fetch, chromium = null, configDir, embed = null, py = null, studioDir = null, firecrawlKey = () => null }) {
   const cfg = loadConfig(configDir);
   const studio = loadStudioConfig(configDir);
   const brands = loadBrands(configDir);
@@ -52,6 +53,8 @@ export function createOpenWeb({ dataDir, ask = null, provider = () => "none", ff
   const jobs = {}; let busy = null;
   const job = (kind) => { const id = kind[0] + Date.now().toString(36) + Math.random().toString(36).slice(2, 5); jobs[id] = { id, kind, status: "running", log: [], t0: Date.now() }; return jobs[id]; };
   const log = (j, m) => j.log.push(new Date().toLocaleTimeString() + "  " + m);
+  // Firecrawl renders JavaScript-built pages only when a key is set (settings.json "firecrawlKey" or FIRECRAWL_API_KEY)
+  const firecrawl = () => { const key = firecrawlKey(); return key ? { key } : null; };
 
   const findRec = (key) => { for (const a of store.getRecommendations()?.results || []) { const r = a.recommendations.find((x) => x.key === key); if (r) return r; } return null; };
   const pubOf = (a) => pubs.get(a.publisherId);
@@ -70,6 +73,7 @@ export function createOpenWeb({ dataDir, ask = null, provider = () => "none", ff
     try { return new Uint8Array(fs.readFileSync(raw)); } finally { try { fs.unlinkSync(raw); } catch { /* temp file */ } } } : null;
   async function ingest(j, { publisherIds, limit }) {
     const fetcher = makeFetcher({ fetchImpl });
+    const reader = makeReader({ fetcher, py, firecrawl: firecrawl(), fetchImpl, tmpDir: path.join(store.root, "tmp", "read") });
     for (const pid of publisherIds) {
       const p = pubs.get(pid); if (!p) { log(j, `Unknown publisher ${pid}`); continue; }
       log(j, `${p.name}: reading feed…`);
@@ -77,8 +81,8 @@ export function createOpenWeb({ dataDir, ask = null, provider = () => "none", ff
       for (const e of d.errors) log(j, `  feed problem (${e.code}): ${e.message}`);
       log(j, `  ${d.articles.length} article(s) to analyse`);
       for (const it of d.articles) {
-        const a = await analyseUrl({ url: it.url, publisher: p, fetcher, cfg, store, ask, fetchImpl, tmpDir: path.join(store.root, "tmp", "img"), gray9x8 });
-        log(j, a.error ? `  ✗ ${it.url} — ${a.error.code}: ${a.error.message}` : `  ✓ ${a.headline.slice(0, 80)} — ${a.images.filter((x) => x.status === "ok").length}/${a.images.length} image(s) usable — safety ${a.safety.verdict} (${a.safety.state}), AI ${a.features.ai.status}${a.features.ai.dropped.length ? `, ${a.features.ai.dropped.length} unverified AI claim(s) dropped` : ""}`);
+        const a = await analyseUrl({ url: it.url, publisher: p, fetcher, cfg, store, ask, fetchImpl, tmpDir: path.join(store.root, "tmp", "img"), gray9x8, reader });
+        log(j, a.error ? `  ✗ ${it.url} — ${a.error.code}: ${a.error.message}` : `  ✓ ${a.headline.slice(0, 80)} — text ${a.extraction.status} (${a.extraction.method}) — ${a.images.filter((x) => x.status === "ok").length}/${a.images.length} image(s) usable — safety ${a.safety.verdict} (${a.safety.state}), AI ${a.features.ai.status}${a.features.ai.dropped.length ? `, ${a.features.ai.dropped.length} unverified AI claim(s) dropped` : ""}`);
       }
     }
     const sv = await ensureVectors({ store, cfg, embed });
@@ -105,12 +109,16 @@ export function createOpenWeb({ dataDir, ask = null, provider = () => "none", ff
     const workDir = path.join(studioRoot, rel); fs.mkdirSync(path.join(workDir, "assets"), { recursive: true });
     let clientAd = null;
     if (cc) { const file = path.join(workDir, "assets", "client_ad." + cc.ext); fs.writeFileSync(file, cc.buf); clientAd = { file, type: cc.type, name: String(b.clientAd.name || "").slice(0, 120), seconds: +b.clientAd.seconds || null }; }
-    const j = job("studio"); Object.assign(j, { pct: 1, stage: "start", brand, product, dir: rel.replace(/\\/g, "/") }); studioBusy = j.id;
+    const j = job("studio"); Object.assign(j, { pct: 1, stage: "start", brand, product, dir: rel.replace(/\\/g, "/"), outcome: "running" }); studioBusy = j.id;
     const say = (pct, stage, msg) => { j.pct = Math.max(j.pct, pct); j.stage = stage; if (msg) log(j, msg); };
-    makeInImage({ brand, product, offer, productImage, style, clientAd, brands, workDir, indexDir: studioRoot, studio, cfg, store, ask, fetchImpl, py, ffmpeg, chromium, say })
-      .then((r) => { j.result = r; j.status = "done"; j.pct = 100; log(j, `Ad ready in ${r.seconds} s.`); })
-      .catch((e) => { j.status = "failed"; j.error = e.message; log(j, "Stopped: " + e.message); try { fs.writeFileSync(path.join(workDir, "error.txt"), e.stack || e.message); } catch { /* best effort */ } })
-      .finally(() => { j.tEnd = Date.now(); if (studioBusy === j.id) studioBusy = null; });
+    // status stays "done" / "failed" for the page; outcome is how it ended: success · partial · needs_review · no_match · failed
+    const end = (status, outcome, error) => { if (j.status !== "running") return false; Object.assign(j, { status, outcome, tEnd: Date.now() }); if (error) j.error = error; if (studioBusy === j.id) studioBusy = null; return true; };
+    const ctl = new AbortController(), limitS = studio.budgetSeconds + 75;
+    const dog = setTimeout(() => { ctl.abort(); if (end("failed", "failed", `Stopped: the run took longer than ${limitS} s (last step: ${j.stage}). Nothing was placed.`)) log(j, j.error); }, limitS * 1000);
+    makeInImage({ brand, product, offer, productImage, style, clientAd, brands, workDir, indexDir: studioRoot, studio, cfg, store, ask, fetchImpl, py, ffmpeg, chromium, firecrawl: firecrawl(), signal: ctl.signal, say })
+      .then((r) => { if (end("done", r.status || "success")) { j.result = r; j.pct = 100; log(j, `Ad ready in ${r.seconds} s (${j.outcome}${r.status === "partial" ? ": " + r.statusWhy : ""}).`); } })
+      .catch((e) => { if (end("failed", e.status || "failed", e.message)) log(j, `Stopped (${j.outcome}): ` + e.message); try { fs.writeFileSync(path.join(workDir, "error.txt"), e.stack || e.message); } catch { /* best effort */ } })
+      .finally(() => clearTimeout(dog));
     return { code: 200, body: { id: j.id } };
   }
 

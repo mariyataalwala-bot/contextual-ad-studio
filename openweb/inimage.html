@@ -113,8 +113,8 @@ async function go() {
     await new Promise((r) => setTimeout(r, 1200));
     let j; try { j = await api("/job/" + id); } catch (e) { $("log").innerHTML += `\n<span class="err">${esc(e.message)}</span>`; break; }
     setPct(j.pct || 1); setStage(j.status === "done" ? "done" : j.stage); $("log").textContent = j.log.join("\n"); $("log").scrollTop = 1e9;
-    if (j.status === "done") { setPct(100); showResult(j.dir, j.result); break; }
-    if (j.status === "failed") { $("log").innerHTML += `\n<span class="err">${esc(j.error)}</span>`; break; }
+    if (j.status === "done") { setPct(100); showResult(j.dir, j.result); if (j.outcome === "partial") $("log").innerHTML += `\n<span class="err">Partial context: ${esc(j.result?.statusWhy || "")}</span>`; break; }
+    if (j.status === "failed") { $("log").innerHTML += `\n<span class="err">${{ no_match: "No match", needs_review: "Needs review" }[j.outcome] || "Failed"}: ${esc(j.error)}</span>`; break; }
   }
   $("go").disabled = false; loadGallery();
 }

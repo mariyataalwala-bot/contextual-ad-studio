@@ -35,6 +35,11 @@ MANUAL MODE (when the free AI quota is used up)
 
 NEEDS: Node.js, Python, ffmpeg (winget install Gyan.FFmpeg), internet.
 AI: free Gemini key (a few videos a day) or a Claude key; YouTube Data API key optional.
+Article reading (Open Web / In-Image), optional:
+- Trafilatura for clean article text when a page's own metadata has none:
+  python -m pip install trafilatura==2.3.1
+- Firecrawl for pages built by JavaScript: put "firecrawlKey" in settings.json
+  (or set FIRECRAWL_API_KEY). Never used for pages a publisher refuses or paywalls.
 
 Notes
 - Videos are captured from the YouTube player as screenshots and recorded audio;
