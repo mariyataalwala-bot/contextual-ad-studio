@@ -10,3 +10,7 @@ _proposal_*.json
 logs_server.txt
 _gtest.mjs
 __pycache__/
+server-log.txt
+share-err.txt
+share-log.txt
+_server.log

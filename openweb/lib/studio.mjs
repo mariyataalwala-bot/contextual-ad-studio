@@ -271,7 +271,7 @@ export async function makeInImage(o) {
   const result = { version: studio.version, prompts: STUDIO_PROMPTS, strip: STRIP_VERSION, brand, product, offer: offer || null, mock: true,
     label: "MOCK — not a live placement. Nothing was served.", createdAt: new Date().toISOString() };
 
-  // what MediaKart knows about this brand (brands.v1.json): official sites, colours, design, rivals, sister brands
+  // what MediaKart knows about this brand (brands.v2.json): official sites, colours, design, rivals, sister brands
   const known = o.brands ? findBrand(o.brands, brand, product) : null, brief = brandBrief(known);
   const refusal = studioRefusal(o.brands, brand, product);
   if (refusal) throw new Error(refusal);

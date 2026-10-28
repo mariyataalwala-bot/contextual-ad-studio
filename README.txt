@@ -16,7 +16,7 @@ HOW TO USE
 5. The app searches YouTube for a premium video where all three checks genuinely
    match the product, and shows you the Visual / Keywords / Object moments.
    Click "Approve", or "Try another video".
-6. About 10 minutes later, the video is ready to watch and download.
+6. A 720p preview is ready in about 1–2 minutes (full HD on request).
    It is saved in  D:\contextual-ads\<brand>\<brand>-contextual-ad.mp4
    along with TIMING.md (sources and reasons).
 
@@ -50,7 +50,7 @@ OPEN WEB TAB (existing creatives on relevant articles)
 Click "Open Web →" at the top right (or open http://localhost:4777/openweb).
 Recommendation and mock previews only: nothing is served, and no ad server, SSP,
 DSP or brand-safety vendor is connected.
-1. Inventory: the pilot publishers (config/publishers.v1.json) and the formats each
+1. Inventory: the pilot publishers (config/publishers.v2.json) and the formats each
    one sells, each checked against your media plan (D:\Media Plan Automation).
    "Refresh showcase catalogue" imports showcase.mediakart.co.in for reference.
 2. Put source creative files (MP4, WebM, PNG, JPG, GIF) in
@@ -67,7 +67,21 @@ DSP or brand-safety vendor is connected.
    Excluded pages can't be approved.
 6. "Make mock" opens the real article in a phone-sized browser and places your
    creative in the slot. It saves PNG (+ optional MP4) and a JSON record to
-   D:\contextual-ads\openweb\mocks\. Every mock is watermarked MOCK.
+   D:\contextual-ads\openweb\mocks\.
+IN-IMAGE STUDIO (http://localhost:4777/inimage)
+Type a brand and product (or upload the client's own ad). The studio finds the exact
+Indian product picture and logo, builds the ad in a design that suits the brand, picks
+a directly relevant, brand-safe article picture on a media-plan publisher (one brand
+per article) and records it on a phone, in under 2 minutes. Brand knowledge for the 50
+pitched brands is in openweb\configrands.v2.json. Every run ends with a status:
+success, partial, needs_review, no_match or failed — and saves result.json with the
+reasons in D:\contextual-ads\inimage\<brand>\<time>\.
+
+HOSTED ON RENDER (https://contextual-ad-studio.onrender.com)
+Every push to main deploys automatically (render.yaml + Dockerfile). Set
+GEMINI_API_KEY and APP_PASSWORD in the Render dashboard (Environment); without
+APP_PASSWORD the hosted app stays locked. Files made there are lost on redeploy.
+
 Policies, taxonomy and scoring are versioned files in openweb\config\. If you change
 one, raise its version; stored articles are re-checked automatically.
 Developer checks: npm test · npm run typecheck · npm run lint
