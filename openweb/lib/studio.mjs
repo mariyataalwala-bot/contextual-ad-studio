@@ -12,7 +12,14 @@ import { analyseUrl } from "./pipeline.mjs";
 import { renderMock, ASSET_URL } from "./mock.mjs";
 import { stripHtml, fitStrip, STRIP_VERSION, STYLES, styleFontsUrl, styleFontFaces } from "./strip.mjs";
 import { norm } from "./text.mjs";
-import { findBrand, brandBrief } from "./brands.mjs";
+import { findBrand, brandBrief, bannedReason, namesBrand } from "./brands.mjs";
+
+// Why a run must not start (a product that may not be advertised, e.g. infant formula under India's IMS Act), or null
+export function studioRefusal(brands, brand, product) {
+  const k = brands ? findBrand(brands, brand, product) : null;
+  const why = bannedReason(k, product, brand);
+  return why ? `${k.name}: ${why}` : null;
+}
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 export const STUDIO_PROMPTS = "inimage-prompts.v1";
@@ -241,6 +248,11 @@ export async function makeInImage(o) {
 
   // what MediaKart knows about this brand (brands.v1.json): official sites, colours, design, rivals, sister brands
   const known = o.brands ? findBrand(o.brands, brand, product) : null, brief = brandBrief(known);
+  const refusal = studioRefusal(o.brands, brand, product);
+  if (refusal) throw new Error(refusal);
+  // "the brand's own news": its names, sub-brands and sister brands; an everyday-word name (Yatra, Galaxy, boAt …)
+  // counts only next to one of its product words (so "Char Dham Yatra" stories stay available to Yatra)
+  const ownNews = (t) => known ? namesBrand(known, t) : !!rivalMatcher([brand])(t);
   if (known) result.brandProfile = { id: known.id, name: known.name, sub: known.sub, category: known.category };
   const official = (h) => brandHost(h, brand) || (known?.domains || []).some((d) => { const x = d.replace(/^www\./, ""); return h === x || h.endsWith("." + x); });
   const client = o.clientAd || null;   // the client's own creative (image or video file): placed as it is, nothing is generated
@@ -266,7 +278,7 @@ export async function makeInImage(o) {
     const topicWords = [...new Set([...(topic.words || []), ...(known?.topics || [])])];
     const all = [...feedItems, ...matchSlugs(older.filter((x) => !seenUrl.has(x.url)), topicWords)];
     // speed and focus: rival headlines out before any AI reads the list, topic matches first, at most studio.listMax lines
-    const early = rivalMatcher([...(topic.competitors || []), ...(known?.competitors || []), ...(known?.family || []), brand]), hits = new Set(matchSlugs(all, topicWords, 1e9).map((x) => x.url));
+    const early0 = rivalMatcher([...(topic.competitors || []), ...(known?.competitors || [])]), early = (t) => early0(t) || (ownNews(t) ? ["the brand itself"] : null), hits = new Set(matchSlugs(all, topicWords, 1e9).map((x) => x.url));
     const items = all.filter((x) => !taken.has(urlKey(x.url)) && !early(x.title)).sort((a, b) => Number(hits.has(b.url)) - Number(hits.has(a.url))).slice(0, studio.listMax);
     result.articlesTakenByOtherBrands = all.filter((x) => taken.has(urlKey(x.url))).map((x) => ({ url: x.url, title: x.title, usedBy: taken.get(urlKey(x.url)) }));
     result.topicWords = topicWords;
@@ -395,7 +407,7 @@ export async function makeInImage(o) {
 
     // 4) shortlisted articles → fetched, safety-checked, their in-article images listed
     // a hard rule, not left to the AI: a headline naming a rival (or the brand itself) is never used
-    const rivals = rivalMatcher([...(plan.competitors || []), ...(known?.competitors || []), ...(known?.family || []), brand]);
+    const rivals0 = rivalMatcher([...(plan.competitors || []), ...(known?.competitors || [])]), rivals = (t) => rivals0(t) || (ownNews(t) ? ["the brand itself"] : null);
     const picked = (plan.shortlist || []).map((s) => ({ ...items[s.n - 1], why: s.why })).filter((x) => x.url);
     result.rivalHeadlinesDropped = picked.filter((x) => rivals(x.title)).map((x) => ({ url: x.url, title: x.title, names: rivals(x.title) }));
     const short = picked.filter((x) => !rivals(x.title)).slice(0, studio.fetchArticles);

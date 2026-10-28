@@ -12,7 +12,7 @@ import { normaliseCampaign, todayIST } from "./lib/campaigns.mjs";
 import { loadMediaPlan, loadShowcase, refreshShowcase, creativeFiles, checkPublisherSources } from "./lib/inventory.mjs";
 import { renderMock, MockError } from "./lib/mock.mjs";
 import { ensureVectors } from "./lib/semantic.mjs";
-import { loadStudioConfig, makeInImage, sectionItems, feedFetcher, sitemapIndex } from "./lib/studio.mjs";
+import { loadStudioConfig, makeInImage, studioRefusal, sectionItems, feedFetcher, sitemapIndex } from "./lib/studio.mjs";
 import { STYLES } from "./lib/strip.mjs";
 import { loadBrands } from "./lib/brands.mjs";
 
@@ -92,6 +92,8 @@ export function createOpenWeb({ dataDir, ask = null, provider = () => "none", ff
     const brand = String(b.brand || "").trim().slice(0, 60), product = String(b.product || "").trim().slice(0, 100), offer = String(b.offer || "").trim().slice(0, 60), productImage = String(b.productImage || "").trim().slice(0, 2000);
     if (!brand || !product) return { code: 400, body: { error: "Type the brand and the product." } };
     if (productImage && !/^https:\/\//i.test(productImage)) return { code: 400, body: { error: "The product photo link must start with https://" } };
+    const refusal = studioRefusal(brands, brand, product);
+    if (refusal) return { code: 400, body: { error: refusal } };
     const style = STYLES.includes(b.style) ? b.style : null;
     const cc = b.clientAd ? clientCreative(b.clientAd.data) : null;
     if (cc?.error) return { code: 400, body: { error: cc.error } };

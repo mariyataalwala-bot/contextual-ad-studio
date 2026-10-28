@@ -11,7 +11,7 @@ import { execFileSync } from "node:child_process";
 import { parseBingImages, brandHost } from "../../openweb/lib/websearch.mjs";
 import { stripHtml, fitStrip, luminance, STYLES, logoMode } from "../../openweb/lib/strip.mjs";
 import { clientCreative } from "../../openweb/routes.mjs";
-import { slugTitle, matchSlugs, sitemapIndex, loadStudioConfig, withRealName, usedArticles, rivalMatcher, styleFonts } from "../../openweb/lib/studio.mjs";
+import { slugTitle, matchSlugs, sitemapIndex, loadStudioConfig, withRealName, usedArticles, rivalMatcher, styleFonts, studioRefusal } from "../../openweb/lib/studio.mjs";
 import { renderMock, ASSET_URL } from "../../openweb/lib/mock.mjs";
 import { loadMediaPlan, checkPublisherSources } from "../../openweb/lib/inventory.mjs";
 import { extractArticle } from "../../openweb/lib/extract.mjs";
@@ -327,4 +327,11 @@ test("client's own ad: the supplied file is placed over the chosen picture with 
   const out = await renderMock({ articleUrl: base + "/a", leadImage: base + "/walk.png", format: "in-image", outBase: path.join(dir, "client"), creativeFile: f, holdMs: 300, strict: true });
   assert.equal(out.slot.how, "the chosen article image"); assert.ok(out.slot.y > 300);
   await assert.rejects(renderMock({ articleUrl: base + "/wall", leadImage: base + "/walk.png", format: "in-image", outBase: path.join(dir, "client2"), creativeFile: f, holdMs: 300, strict: true }), (/** @type {any} */ e) => e.code === "PAYWALL");
+});
+
+test("products that may not be advertised are refused before any work starts (infant formula and infant food — IMS Act)", () => {
+  const c = loadBrands();
+  for (const [b, p] of [["Nestle", "NAN Pro infant formula"], ["Nestle", "Cerelac"], ["Cerelac", "wheat apple"]]) assert.match(studioRefusal(c, b, p) || "", /IMS Act/, `${b} / ${p}`);
+  assert.equal(studioRefusal(c, "Nestle", "Maggi noodles"), null);
+  assert.equal(studioRefusal(c, "GIVA", "earrings"), null, "brands not on the list are not blocked");
 });
