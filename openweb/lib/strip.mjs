@@ -114,7 +114,7 @@ function design(style, o, t) {
 .hd,.sb{font-family:'Baloo 2',Poppins,system-ui;font-weight:800;line-height:1.02;letter-spacing:0}
 .sb{font-weight:600}
 .cta{background:${light ? "#13231a" : "#ffffff"};color:${light ? "#ffffff" : contrast(c, "#ffffff") >= 3 ? c : "#13231a"};border-radius:5cqw;font:800 2.9cqw/1.15 'Baloo 2',Poppins,system-ui}
-.sp{position:absolute;right:5cqw;bottom:2.2cqw;width:25cqw;height:25cqw;border-radius:50%;background:radial-gradient(circle at 38% 32%,${mix(splash, "#ffffff", 0.4)},${splash} 62%,transparent 64%);opacity:.92;transform:scale(0);z-index:1}
+.sp{position:absolute;right:5cqw;bottom:2.2cqw;width:25cqw;height:25cqw;border-radius:50%;background:${luminance(splash) > 0.8 ? "radial-gradient(circle,rgba(255,255,255,.42) 0%,rgba(255,255,255,.18) 45%,transparent 70%)" : `radial-gradient(circle at 38% 32%,${mix(splash, "#ffffff", 0.4)},${splash} 62%,transparent 64%)`};opacity:.92;transform:scale(0);z-index:1}
 .p{z-index:2;transform:translateY(70%) scale(.6)}
 .bb{position:absolute;border-radius:50%;border:.3cqw solid rgba(255,255,255,.75);background:rgba(255,255,255,.18);opacity:0;z-index:3}
 .stm{position:absolute;width:1.1cqw;height:8cqw;border-radius:2cqw;background:linear-gradient(transparent,rgba(255,255,255,.55),transparent);filter:blur(.6cqw);opacity:0;z-index:3}

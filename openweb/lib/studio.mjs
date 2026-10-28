@@ -291,12 +291,19 @@ export async function makeInImage(o) {
     const ranked = [...web, ...webIn, ...webClear].map((x, i) => ({ x, i, w: where(x.host) })).filter((r) => r.w >= 0).sort((a, b) => b.w - a.w || a.i - b.i).map((r) => r.x);
     for (const x of ranked) if (!seen.has(x.url) && x.thumb) { seen.add(x.url); products.push(x); }
     result.productSearch = { found: web.length + webIn.length + webClear.length, kept: products.length, foreignShopsLeftOut: [...web, ...webIn, ...webClear].filter((x) => where(x.host) < 0).length };
-    const logos = [...webLogos.filter((x) => x.thumb).slice(0, 5), ...commons.slice(0, 3)].slice(0, 8);
+    // the official logo file found in the brand research comes first; the web results stay as fallbacks (the AI pick and
+    // the PNG check still apply to it)
+    const researched = known?.logo?.png ? [{ url: known.logo.png, thumb: known.logo.png, page: known.logo.file || known.logo.png, host: "upload.wikimedia.org", title: `${known.name} official logo (MediaKart brand knowledge)` }] : [];
+    const logos = [...researched, ...webLogos.filter((x) => x.thumb).slice(0, 5), ...commons.slice(0, 3)].slice(0, 8);
     if (!client && !products.length) throw new Error(`No pictures of “${brand} ${product}” were found online. Check the spelling, or add a word (e.g. the product type).`);
     if (!all.length) throw new Error("None of the media-plan publisher feeds answered just now. Try again in a minute.");
     say(12, "search", `${client ? "Client's ad: " + (client.name || "uploaded file") + " · " : `${products.length} product picture(s), ${logos.length} logo candidate(s), `}${items.length} recent articles from ${new Set(items.map((i) => i.section)).size} sections (${items.filter((x) => hits.has(x.url)).length} of them matched by topic: ${(topic.words || []).slice(0, 6).join(", ")}…).`);
 
-    const thumbs = async (list, pre, n = 8) => (await Promise.all(list.slice(0, n).map(async (x, i) => { const f = await downloadImage(x.thumb, path.join(cand, `${pre}${i + 1}`), { fetchImpl, fs }).catch(() => null); return f && /\.(jpg|png)$/.test(f) ? { ...x, file: f, n: i + 1 } : null; }))).filter(Boolean);
+    // small copies for the AI (JPEG / PNG only: a WebP — Wikimedia serves logos that way — is converted, not dropped)
+    const thumbs = async (list, pre, n = 8) => (await Promise.all(list.slice(0, n).map(async (x, i) => {
+      let f = await downloadImage(x.thumb, path.join(cand, `${pre}${i + 1}`), { fetchImpl, fs }).catch(() => null);
+      if (f && f.endsWith(".webp")) { const png = f.replace(/\.webp$/, ".png"); f = await ffmpeg(["-loglevel", "error", "-y", "-i", f, png]).then(() => png, () => null); }
+      return f && /\.(jpg|png)$/.test(f) ? { ...x, file: f, n: i + 1 } : null; }))).filter(Boolean);
     let [pThumbs, lThumbs] = client ? [[], []] : await Promise.all([thumbs(products, "p", 10), thumbs(logos, "l")]);
     // the image host sometimes refuses a burst of parallel requests: one calmer retry, a few at a time
     const calm = async (list, pre, n) => { const out = []; for (let i = 0; i < Math.min(n, list.length); i += 3) out.push(...await thumbs(list.slice(i, i + 3).map((x, j) => ({ ...x, _i: i + j })), pre + "r" + i + "_", 3)); return out.map((x, k) => ({ ...x, n: k + 1 })); };
