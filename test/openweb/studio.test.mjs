@@ -180,6 +180,9 @@ before(async () => {
     const later = (js) => page().replace("</body>", `<script>new MutationObserver((m, o) => { const u = document.getElementById("mk-slot"); if (u && u.hasAttribute("data-go")) { o.disconnect(); setTimeout(() => { ${js} }, 50); } }).observe(document.body, { subtree: true, attributes: true, attributeFilter: ["data-go"] });</script></body>`);
     const html = { "/a": page(), "/desktop": page({ viewport: false }), "/wall": page({ wall: true }), "/sized": page().replace("/walk.png", "/images/w-412,imgid-abc,imgname-walk.png"),
       "/late-wall": later(`const d = document.createElement("div"); d.textContent = "This archive story requires a subscription"; document.body.append(d);`),
+      // Mid-day style: the photo's container flips over like a card (rotateY 180°, back face hidden) as it scrolls in
+      "/flip": later(`const f = document.querySelector("figure"); f.style.transition = "transform .3s"; f.style.transformStyle = "preserve-3d"; f.querySelector("img").style.backfaceVisibility = "hidden"; f.style.transform = "rotateY(180deg)";`),
+      "/pic-removed": later(`document.querySelector("figure img").style.setProperty("display", "none", "important");`),
       "/blanked": later(`for (const el of document.querySelectorAll("p, figure, h1, img")) el.style.display = "none";`) }[req.url];
     if (html) { res.writeHead(200, { "Content-Type": "text/html" }); return res.end(html); }
     res.writeHead(404); res.end();
@@ -219,6 +222,15 @@ test("HTML creative: a page without a phone layout, or behind a subscription wal
 });
 
 /* global document */
+test("HTML creative: a publisher effect that flips the photo away (Mid-day) is held still — the photo and the ad stay on screen", { timeout: 90000 }, async () => {
+  const out = await renderMock(opts("/flip", "/walk.png", { holdMs: 1200 }));
+  assert.equal(out.slot.how, "the chosen article image");
+});
+
+test("HTML creative: the photo removed by the page during the recording → no video (NOT_VISIBLE)", { timeout: 90000 }, async () => {
+  await assert.rejects(renderMock(opts("/pic-removed", "/walk.png")), (/** @type {any} */ e) => e.code === "NOT_VISIBLE");
+});
+
 test("HTML creative: a wall that appears, or an article that is blanked, during the recording → no mock", { timeout: 90000 }, async () => {
   await assert.rejects(renderMock(opts("/late-wall", "/walk.png")), (/** @type {any} */ e) => e.code === "PAYWALL");
   await assert.rejects(renderMock(opts("/blanked", "/walk.png")), (/** @type {any} */ e) => e.code === "NOT_VISIBLE");

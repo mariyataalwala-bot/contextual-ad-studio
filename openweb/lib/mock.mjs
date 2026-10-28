@@ -17,7 +17,9 @@ export const ASSET_URL = "https://mk-mock.invalid/asset/";   // pictures and fon
 // publisher ads keep loading late.
 export function tidyPage() {
   const vw = innerWidth, vh = innerHeight;
-  const ADS = 'iframe, ins.adsbygoogle, [id^="div-gpt-ad"], [id*="google_ads"], [class*="ad-slot"], [class*="adslot"], [class*="ad-container"], [class*="advert"], [class~="ads"], [class^="ads-"], [class*=" ads-"], [class$="-ads"], [class*="-ads "], [id^="ads-"], [id*="-ads-"], [id*="_ads_"]';   // "ads" as its own word only (not "heads-", "threads-")
+  const ADS = 'iframe, ins.adsbygoogle, [id^="div-gpt-ad"], [id*="google_ads"], [class*="ad-slot"], [class*="adslot"], [class*="ad-container"], [class*="advert"], [class~="ads"], [class^="ads-"], [class*=" ads-"], [class$="-ads"], [class*="-ads "], [id^="ads-"], [id*="-ads-"], [id*="_ads_"]' +
+    // outstream video ad players from ad networks (Unibots, Adgebra, VDO.AI, Primis, Aniview, Connatix, EX.CO, Playwire)
+    ', [id*="unibots"], [id^="div-ub-"], #ubVideo, [class*="unibots"], [id*="adgebra"], [class*="adgebra"], [id*="vdo_ai"], [id*="vdo-ai"], [class*="vdo_ai"], [id*="primis"], [class*="primis"], [id*="aniview"], [class*="aniview"], [id*="connatix"], [class*="connatix"], [id*="ex_co"], [class*="exco"], [id*="playwire"]';   // "ads" as its own word only (not "heads-", "threads-")
   for (const el of /** @type {NodeListOf<HTMLElement>} */ (document.querySelectorAll(ADS))) if (!el.closest("#mk-slot") && !el.querySelector("#mk-slot")) el.style.setProperty("display", "none", "important");
   for (const el of /** @type {NodeListOf<HTMLElement>} */ (document.querySelectorAll("body *"))) {
     if (el.closest("#mk-slot") || el.querySelector("#mk-slot")) continue;   // never our own unit or its overlay
@@ -66,6 +68,11 @@ export function placeInPage({ format, src, isVideo, leadImage, html = null, stri
     if (strict && !exact) return { error: "SLOT_NOT_FOUND: the chosen picture is not rendered on the page" };
     const img = exact || imgs.sort((a, b) => a.getBoundingClientRect().top - b.getBoundingClientRect().top)[0];
     if (!img) return { error: "SLOT_NOT_FOUND: no lead image is rendered on the page" };
+    // publishers animate article photos as they scroll in (Mid-day flips them over like a card, others slide or fade
+    // them): the chosen picture and its containers are held still, so the photo — and the ad on it — stay put
+    if (!document.getElementById("mk-hold")) { const st = document.createElement("style"); st.id = "mk-hold"; st.textContent = "[data-mk-hold]{transform:none!important;transition:none!important;animation:none!important;backface-visibility:visible!important;opacity:1!important;visibility:visible!important;filter:none!important;translate:none!important;rotate:none!important;scale:none!important}"; document.head.append(st); }
+    img.setAttribute("data-mk-pic", "");   // the chosen photo, found again by the checks after recording
+    for (let x = /** @type {HTMLElement} */ (img), d = 0; x && x !== document.body && d < 8; x = x.parentElement, d++) x.setAttribute("data-mk-hold", "");
     // anchored to the image's own block container, so it stays on the image if the page shifts (late ads, lazy images)
     let host = img.parentElement; while (host.parentElement && getComputedStyle(host).display === "inline") host = host.parentElement;
     if (getComputedStyle(host).position === "static") host.style.position = "relative";
@@ -186,6 +193,12 @@ export async function renderMock({ articleUrl, leadImage, creativeFile = null, c
       const seen = await page.evaluate(() => {
         const u = document.getElementById("mk-slot"), r = u?.getBoundingClientRect();
         if (!u || !r.width || r.bottom < 0 || r.top > innerHeight || !u.checkVisibility({ opacityProperty: true, visibilityProperty: true })) return "the unit is not visible on the page";
+        // the article picture itself must still be there at full size, not flipped, slid or faded away by the page
+        const pic = /** @type {HTMLElement|null} */ (document.querySelector("img[data-mk-pic]"));
+        if (pic) { const pr = pic.getBoundingClientRect();
+          if (pr.width < r.width * 0.9 || pr.height < r.height * 0.9 || !pic.checkVisibility({ opacityProperty: true, visibilityProperty: true })) return "the article picture was moved or hidden by the page";
+          for (let x = /** @type {HTMLElement|null} */ (pic); x && x !== document.body; x = x.parentElement) {   // turned over or mirrored (a flip keeps the same width)
+            const t = getComputedStyle(x).transform; if (t && t !== "none") { const m = new DOMMatrix(t); if (m.a < 0.9 || Math.abs(m.b) > 0.15) return "the article picture was turned over by the page"; } } }
         const hit = document.elementFromPoint(r.left + r.width / 2, Math.max(1, Math.min(innerHeight - 2, r.top + r.height * 0.3)));
         if (!hit || !u.parentElement.contains(hit)) return "something on the page covers the picture";
         if (/requires a subscription|subscriber-only stor|subscribe to (continue|read)|to continue reading/i.test(document.body.innerText)) return "wall";
