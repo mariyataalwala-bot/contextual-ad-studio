@@ -3,17 +3,17 @@
 <title>In-Image Studio</title>
 <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&display=swap" rel="stylesheet">
 <style>
-:root{--p:#5C63DC;--m:#B000CC;--ink:#14152B;--mute:#6B6F80;--line:#E6E7EF;--bg:#F5F5FB;--ok:#1FA81A;--bad:#D33;
-  --grad:linear-gradient(135deg,#5C63DC 0%,#8B3FE8 55%,#B000CC 100%);--sh:0 1px 2px rgba(20,21,43,.04),0 8px 28px rgba(20,21,43,.06);--r:20px}
+:root{--p:#0B6FF0;--m:#E8337F;--ink:#14152B;--mute:#6B6F80;--line:#E6E7EF;--bg:#F6F8FB;--ok:#1FA81A;--bad:#D33;
+  --grad:linear-gradient(135deg,#0B6FF0 0%,#1E63E9 55%,#E8337F 100%);--sh:0 1px 2px rgba(20,21,43,.04),0 8px 28px rgba(20,21,43,.06);--r:20px}
 *{box-sizing:border-box}
 body{margin:0;font-family:Poppins,system-ui,sans-serif;color:var(--ink);background:var(--bg);min-height:100vh;
-  background-image:radial-gradient(900px 420px at 85% -120px,rgba(176,0,204,.10),transparent 70%),radial-gradient(800px 420px at 0% -160px,rgba(92,99,220,.14),transparent 70%);background-repeat:no-repeat}
+  background-image:radial-gradient(900px 420px at 85% -120px,rgba(232,51,127,.10),transparent 70%),radial-gradient(800px 420px at 0% -160px,rgba(11,111,240,.14),transparent 70%);background-repeat:no-repeat}
 a{color:var(--p)}
 header{position:sticky;top:0;z-index:20;backdrop-filter:saturate(1.4) blur(12px);background:rgba(255,255,255,.78);border-bottom:1px solid var(--line)}
 .hin{max-width:1120px;margin:0 auto;display:flex;align-items:center;gap:12px;padding:14px 20px;flex-wrap:wrap}
-.logo{width:42px;height:42px;border-radius:13px;background:radial-gradient(circle at 35% 30%,#E59BFF 0,#9B2BE0 40%,#4A0A8C 78%,#23004D);display:grid;place-items:center;color:#fff;font-size:20px;box-shadow:0 6px 18px rgba(155,43,224,.35)}
+.logo{width:42px;height:42px;border-radius:13px;background:radial-gradient(circle at 35% 30%,#E59BFF 0,#9B2BE0 40%,#4A0A8C 78%,#23004D);display:grid;place-items:center;color:#fff;font-size:20px;box-shadow:0 6px 18px rgba(11,111,240,.35)}
 h1{font-size:19px;margin:0;font-weight:700;letter-spacing:-.01em}header small{color:var(--mute);font-size:12.5px}.sp{flex:1}
-.navlink{font-size:13.5px;font-weight:600;text-decoration:none;padding:9px 14px;border-radius:12px;border:1.5px solid rgba(92,99,220,.35);background:#fff;white-space:nowrap}
+.navlink{font-size:13.5px;font-weight:600;text-decoration:none;padding:9px 14px;border-radius:12px;border:1.5px solid rgba(11,111,240,.35);background:#fff;white-space:nowrap}
 main{max-width:1120px;margin:22px auto 60px;padding:0 20px;display:grid;gap:18px}
 .card{background:#fff;border:1px solid var(--line);border-radius:var(--r);padding:26px;box-shadow:var(--sh)}
 .ch{display:flex;align-items:flex-start;gap:14px;margin-bottom:18px}
@@ -21,27 +21,27 @@ main{max-width:1120px;margin:22px auto 60px;padding:0 20px;display:grid;gap:18px
 .card h2{margin:2px 0;font-size:18px;font-weight:700}.s{color:var(--mute);font-size:13.5px}
 .row{display:grid;grid-template-columns:1fr 1.4fr 1fr;gap:14px}
 .src{display:flex;gap:10px;flex-wrap:wrap;margin:0 0 16px}.src label{display:flex;align-items:center;gap:8px;margin:0;padding:10px 14px;border:1.5px solid var(--line);border-radius:12px;cursor:pointer;font-size:13.5px;font-weight:600;background:#FBFBFE}
-.src input{accent-color:var(--p)}.src label:has(input:checked){border-color:var(--p);background:#F4F4FF}
+.src input{accent-color:var(--p)}.src label:has(input:checked){border-color:var(--p);background:#F5F9FF}
 select{width:100%;font:inherit;font-size:14.5px;padding:12px 14px;border:1.5px solid var(--line);border-radius:12px;background:#FBFBFE;color:var(--ink)}
 .drop{display:flex;align-items:center;gap:14px;padding:14px 16px;border:1.5px dashed #C9CBE0;border-radius:14px;background:#FBFBFE;cursor:pointer;position:relative}
 .drop input{position:absolute;inset:0;opacity:0;cursor:pointer}.drop b{font-size:13.5px}.drop img,.drop video{height:64px;border-radius:8px;border:1px solid var(--line);margin-left:auto}.row2{display:grid;grid-template-columns:1fr;gap:14px;margin-top:14px}
 label{display:block;font-size:12.5px;font-weight:600;margin:0 0 7px;color:#3A3C52}
 input{width:100%;font:inherit;font-size:14.5px;padding:12px 14px;border:1.5px solid var(--line);border-radius:12px;background:#FBFBFE;color:var(--ink)}
-input:focus{outline:none;border-color:var(--p);background:#fff;box-shadow:0 0 0 4px rgba(92,99,220,.13)}
-button,.btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;font:inherit;font-size:14.5px;border:0;border-radius:12px;padding:12px 22px;font-weight:600;cursor:pointer;background:var(--grad);color:#fff;box-shadow:0 6px 18px rgba(123,77,255,.28);text-decoration:none}
-button:disabled{opacity:.45;cursor:default}.ghost{background:#fff;color:var(--p);border:1.5px solid rgba(92,99,220,.45);box-shadow:none}
+input:focus{outline:none;border-color:var(--p);background:#fff;box-shadow:0 0 0 4px rgba(11,111,240,.13)}
+button,.btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;font:inherit;font-size:14.5px;border:0;border-radius:12px;padding:12px 22px;font-weight:600;cursor:pointer;background:var(--grad);color:#fff;box-shadow:0 6px 18px rgba(11,95,224,.28);text-decoration:none}
+button:disabled{opacity:.45;cursor:default}.ghost{background:#fff;color:var(--p);border:1.5px solid rgba(11,111,240,.45);box-shadow:none}
 .bar{display:flex;gap:12px;flex-wrap:wrap;margin-top:18px;align-items:center}
 .how{display:grid;grid-template-columns:repeat(5,1fr);gap:10px;margin-top:18px}
 .how div{border:1px solid var(--line);border-radius:14px;padding:12px;font-size:12.5px;color:var(--mute);background:#FBFBFE}.how b{display:block;color:var(--ink);font-size:13px;margin-bottom:2px}
 /* progress */
 .pbox{display:flex;align-items:center;gap:18px}
 .pct{font-size:44px;font-weight:700;letter-spacing:-.03em;background:var(--grad);-webkit-background-clip:text;background-clip:text;color:transparent;min-width:120px}
-.track{flex:1;height:12px;border-radius:99px;background:#ECEDF5;overflow:hidden;position:relative}
+.track{flex:1;height:12px;border-radius:99px;background:#EDF0F5;overflow:hidden;position:relative}
 .fill{height:100%;width:0;border-radius:99px;background:var(--grad);transition:width .6s cubic-bezier(.2,.8,.3,1);position:relative;overflow:hidden}
 .fill:after{content:"";position:absolute;inset:0;background:linear-gradient(100deg,transparent 20%,rgba(255,255,255,.45) 50%,transparent 80%);animation:sh 1.6s linear infinite}
 @keyframes sh{from{transform:translateX(-100%)}to{transform:translateX(100%)}}
 .steps{display:flex;gap:8px;margin-top:16px;flex-wrap:wrap}.steps span{font-size:12px;font-weight:600;padding:6px 11px;border-radius:99px;background:#F0F0F7;color:var(--mute)}
-.steps span.on{background:#ECEBFF;color:#5B4FE0}.steps span.ok{background:#E8F7E7;color:var(--ok)}
+.steps span.on{background:#EEF5FF;color:#0B6FF0}.steps span.ok{background:#E8F7E7;color:var(--ok)}
 .log{margin-top:14px;font:12px/1.6 ui-monospace,Consolas,monospace;color:#555;max-height:150px;overflow:auto;background:#FAFAFD;border:1px solid var(--line);border-radius:12px;padding:10px 12px;white-space:pre-wrap}
 /* result */
 .res{display:grid;grid-template-columns:330px 1fr;gap:26px;align-items:start}
@@ -58,37 +58,40 @@ button:disabled{opacity:.45;cursor:default}.ghost{background:#fff;color:var(--p)
 .gal a{display:block;text-decoration:none;color:var(--ink);border:1px solid var(--line);border-radius:14px;overflow:hidden;background:#fff}
 .gal img{width:100%;height:180px;object-fit:cover;object-position:center 40%;display:block;background:#eee}.gal div{padding:9px 11px;font-size:12px}.gal b{display:block;font-size:13px}
 @media(max-width:820px){.row,.res,.how{grid-template-columns:1fr}.phone{max-width:330px;margin:auto}}
-</style></head><body>
-<header><div class="hin"><div class="logo">✦</div><div><h1>In-Image Studio</h1><small>Mediakart · type a brand and product, get the in-image ad placed on a relevant article</small></div><div class="sp"></div><a class="navlink" href="/openweb">Open Web</a><a class="navlink" href="/">← YouTube studio</a></div></header>
+</style>
+<link href="https://fonts.googleapis.com/css2?family=Funnel+Display:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/brand/mediakart.css"></head><body>
+<header><div class="hin"><a class="mk-brand" href="/" title="MediaKart"><img src="/brand/mediakart-logo.png" alt="MediaKart"></a><span class="mk-div"></span><div class="mk-prod"><b>In-Image Studio</b><small>Contextual in-image ads, placed on the right article</small></div><div class="sp"></div><nav class="mk-nav"><a href="/"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2.5" y="5" width="19" height="14" rx="4"/><path d="M10 9.5v5l4.5-2.5z" fill="currentColor"/></svg><span>YouTube</span></a><a href="/inimage" class="on"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="3"/><path d="M3 14h18"/><circle cx="8.5" cy="9" r="1.6"/></svg><span>In-Image</span></a><a href="/openweb"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3c2.6 2.8 2.6 15.2 0 18M12 3c-2.6 2.8-2.6 15.2 0 18"/></svg><span>Open Web</span></a></nav></div></header>
 <main>
 <section class="card">
-  <div class="ch"><div class="num">1</div><div><h2>Brand and product</h2><p class="s">The product photo, logo and copy are found and written automatically; the article comes from the media-plan in-image publishers.</p></div></div>
-  <div class="src"><label><input type="radio" name="src" value="make" checked> Make the ad for me</label><label><input type="radio" name="src" value="client"> Use the client's own ad</label></div>
+  <div class="ch"><div class="num">1</div><div><h2>Create an in-image ad</h2><p class="s">Enter the brand and product. We find the product, design the ad and place it on a matching article from your publishers.</p></div></div>
+  <div class="src"><label><input type="radio" name="src" value="make" checked> Create</label><label><input type="radio" name="src" value="client"> Upload</label></div>
   <div class="row">
     <div><label for="brand">Brand</label><input type="text" id="brand" placeholder="e.g. Bata" autocomplete="off" list="brandList"><datalist id="brandList"></datalist></div>
     <div><label for="product">Product</label><input type="text" id="product" placeholder="e.g. Power running shoes" autocomplete="off"></div>
-    <div><label for="offer">Offer line (optional)</label><input type="text" id="offer" placeholder="shown exactly as typed" autocomplete="off"></div>
+    <div><label for="offer">Offer text (optional)</label><input type="text" id="offer" placeholder="e.g. Flat 20% off — shown as typed" autocomplete="off"></div>
   </div>
-  <div class="row2" id="clientRow" hidden><label class="drop"><input type="file" id="cfile" accept="image/png,image/jpeg,image/gif,image/webp,video/mp4,video/webm"><div><b>Choose the client's ad file</b><div class="s" id="cname">PNG, JPEG, GIF, WebP or MP4 / WebM video, up to 40 MB — placed as it is over the bottom of the chosen article picture</div></div><span id="cprev"></span></label></div>
-  <div class="row2" id="makeRow2"><div><label for="style">Design</label><select id="style"><option value="">Auto — suits the brand</option><option value="bold">Bold — FMCG, sales, snacks</option><option value="luxe">Luxe — jewellery, beauty, premium</option><option value="sport">Sport — shoes, sportswear, fitness</option><option value="fresh">Fresh — drinks, food</option><option value="tech">Tech — phones, electronics</option><option value="journey">Journey — travel, stays, services</option></select></div></div>
-  <div class="row2" id="makeRow"><div><label for="pimg">Exact product photo link (optional)</label><input type="text" id="pimg" placeholder="https://… a photo of the exact product from the brand's site — used as it is instead of searching" autocomplete="off"></div></div>
-  <div class="bar"><button id="go">Make the in-image mock</button><span class="s" id="hint">About a minute.</span></div>
+  <div class="row2" id="clientRow" hidden><label class="drop"><input type="file" id="cfile" accept="image/png,image/jpeg,image/gif,image/webp,video/mp4,video/webm"><div><b>Upload the ready ad</b><div class="s" id="cname">PNG, JPG, GIF, WebP, MP4 or WebM · up to 40 MB · shown exactly as supplied</div></div><span id="cprev"></span></label></div>
+  <div class="row2" id="makeRow2"><div><label for="style">Ad style</label><select id="style"><option value="">Auto — best fit for the brand</option><option value="bold">Bold — everyday brands &amp; sales</option><option value="luxe">Luxe — jewellery &amp; beauty</option><option value="sport">Sport — footwear &amp; fitness</option><option value="fresh">Fresh — food &amp; drinks</option><option value="tech">Tech — phones &amp; gadgets</option><option value="journey">Journey — travel &amp; services</option></select></div></div>
+  <div class="row2" id="makeRow"><div><label for="pimg">Product photo link (optional)</label><input type="text" id="pimg" placeholder="Paste a link to the exact product photo to skip the search" autocomplete="off"></div></div>
+  <div class="bar"><button id="go">Generate ad</button><span class="s" id="hint">Ready in about a minute.</span></div>
   <div class="how">
-    <div><b>1 · Product</b>Searched online; AI picks the official packshot and cuts it out</div>
-    <div><b>2 · Brand look</b>Logo from Wikimedia / the web, checked by AI; brand colour</div>
-    <div><b>3 · Copy</b>Short headline, product line and button — no invented offers</div>
-    <div><b>4 · Article</b>Recent articles from media-plan sections; AI checks context, image and safety</div>
-    <div><b>5 · Mock</b>The strip animates over the chosen picture on the real page, recorded on a phone</div>
+    <div><b>1 · Product</b>Finds the official product photo and cuts it out cleanly</div>
+    <div><b>2 · Brand</b>Picks up the logo and the brand colours</div>
+    <div><b>3 · Copy</b>Writes a short headline and call to action — no made-up offers</div>
+    <div><b>4 · Article</b>Finds a recent, brand-safe article that fits the product</div>
+    <div><b>5 · Preview</b>Records the ad live on the article, in phone view</div>
   </div>
 </section>
 <section class="card" id="prog" hidden>
   <div class="pbox"><div class="pct" id="pct">0%</div><div class="track"><div class="fill" id="fill"></div></div></div>
-  <div class="steps" id="steps"><span data-k="search">Search</span><span data-k="understand">AI picks</span><span data-k="assets">Assets</span><span data-k="articles">Articles</span><span data-k="images">Pictures</span><span data-k="match">Match</span><span data-k="render">Recording</span></div>
+  <div class="steps" id="steps"><span data-k="search">Searching</span><span data-k="understand">Planning</span><span data-k="assets">Building the ad</span><span data-k="articles">Reading articles</span><span data-k="images">Checking photos</span><span data-k="match">Matching</span><span data-k="render">Recording</span></div>
   <div class="log" id="log"></div>
 </section>
 <section class="card" id="out" hidden></section>
-<section class="card"><div class="ch"><div class="num">↺</div><div><h2>Earlier mocks</h2><p class="s">Every mock keeps its sources and AI reasons (result.json in its folder).</p></div></div><div class="gal" id="gal"><span class="s">None yet.</span></div></section>
+<section class="card"><div class="ch"><div class="num">↺</div><div><h2>Recent ads</h2><p class="s">Every ad keeps its sources and the reasons behind each choice.</p></div></div><div class="gal" id="gal"><span class="s">No ads yet — your first one will appear here.</span></div></section>
 </main>
+<footer class="mk-foot"><img src="/brand/mediakart-logo.png" alt="MediaKart"><span>Contextual Ad Studio · Previews for pitches only — nothing is served live.</span></footer>
 <script>
 const $ = (id) => document.getElementById(id);
 const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
@@ -100,9 +103,9 @@ function setPct(p) { target = p; if (!tick) tick = setInterval(() => { if (shown
 function setStage(st) { const i = ORDER.indexOf(st); for (const s of $("steps").children) { const k = ORDER.indexOf(s.dataset.k); s.className = k < i || st === "done" ? "ok" : k === i ? "on" : ""; } }
 async function go() {
   const brand = $("brand").value.trim(), product = $("product").value.trim(), offer = $("offer").value.trim(), productImage = $("pimg").value.trim(), style = $("style").value;
-  if (!brand || !product) { $("hint").innerHTML = `<span class="err">Type the brand and the product.</span>`; return; }
+  if (!brand || !product) { $("hint").innerHTML = `<span class="err">Enter a brand and a product.</span>`; return; }
   const useClient = document.querySelector('input[name="src"]:checked').value === "client";
-  if (useClient && !clientAd) { $("hint").innerHTML = `<span class="err">Choose the client's ad file.</span>`; return; }
+  if (useClient && !clientAd) { $("hint").innerHTML = `<span class="err">Upload the ad file first.</span>`; return; }
   $("go").disabled = true; $("out").hidden = true; $("prog").hidden = false; shown = 0; setPct(1); setStage("search"); $("log").textContent = "";
   let id; try { id = (await api("/studio/start", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(useClient ? { brand, product, clientAd } : { brand, product, offer, productImage, style }) })).id; }
   catch (e) { $("log").innerHTML = `<span class="err">${esc(e.message)}</span>`; $("go").disabled = false; return; }
@@ -118,7 +121,7 @@ async function go() {
 // the client's own ad: read in the browser and sent with the request (videos: their length decides how long the mock holds)
 let clientAd = null;
 for (const el of document.querySelectorAll('input[name="src"]')) el.addEventListener("change", () => { const c = document.querySelector('input[name="src"]:checked').value === "client";
-  $("clientRow").hidden = !c; $("makeRow").hidden = c; $("makeRow2").hidden = c; $("offer").disabled = c; });
+  $("clientRow").hidden = !c; $("makeRow").hidden = c; $("makeRow2").hidden = c; $("offer").disabled = c; $("offer").parentElement.hidden = c; });
 $("cfile").addEventListener("change", () => {
   const f = $("cfile").files[0]; clientAd = null; $("cprev").innerHTML = ""; if (!f) return;
   if (f.size > 40e6) { $("cname").innerHTML = `<span class="err">${esc(f.name)} is larger than 40 MB.</span>`; return; }
@@ -133,22 +136,22 @@ function showResult(dir, r) {
   const pl = r.placement, f = r.files, info = r.productInfo || (typeof r.product === "object" ? r.product : null), typed = typeof r.product === "string" ? r.product : info?.name;   // mocks made before productInfo kept the details under "product"
   const isClient = r.creative?.source === "client";
   $("out").hidden = false;
-  $("out").innerHTML = `<div class="ch"><div class="num">✓</div><div><h2>${esc(r.brand)} · ${esc(typed)} — placed in-image</h2><p class="s">Made in ${esc(r.seconds)} s · mock preview, not a live ad (nothing was served)</p></div></div>
+  $("out").innerHTML = `<div class="ch"><div class="num">✓</div><div><h2>${esc(r.brand)} · ${esc(typed)} — ready</h2><p class="s">Made in ${esc(r.seconds)} s · preview only, not a live ad</p></div></div>
   <div class="res"><div class="phone"><video src="${file(dir, f.video)}" autoplay muted loop playsinline controls></video></div>
   <div><div class="art"><span class="s">${esc(pl.article.publisher)}${pl.article.published ? " · " + new Date(pl.article.published).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" }) : ""}</span>
-    <b>${esc(pl.article.headline)}</b><a class="btn ghost" href="${esc(pl.article.url)}" target="_blank" rel="noopener" style="padding:8px 14px;font-size:13px">Open the article ↗</a>
-    <a class="btn" href="${file(dir, f.video, 1)}" style="padding:8px 14px;font-size:13px;margin-left:6px">Download MP4</a></div>
-    <h3 style="font-size:14px;margin:18px 0 4px">AI check list</h3>
+    <b>${esc(pl.article.headline)}</b><a class="btn ghost" href="${esc(pl.article.url)}" target="_blank" rel="noopener" style="padding:8px 14px;font-size:13px">View article ↗</a>
+    <a class="btn" href="${file(dir, f.video, 1)}" style="padding:8px 14px;font-size:13px;margin-left:6px">Download video</a></div>
+    <h3 style="font-size:14px;margin:18px 0 4px">Checks</h3>
     ${pl.checks.map((c) => `<div class="chk"><i>✓</i><div><b>${esc(c.name)}</b><div class="s" style="font-size:12.5px">${esc(c.detail)}</div></div></div>`).join("")}
-    <h3 style="font-size:14px;margin:18px 0 4px">The creative</h3>
-    <div class="kv">${isClient ? `<span>Ad</span><div>The client's own creative${r.creative.name ? ` (${esc(r.creative.name)})` : ""}, placed as supplied</div>` : `<span>Design</span><div>${esc(r.design?.style || "bold")}${r.design?.chosenBy ? ` · chosen by ${esc(r.design.chosenBy)}` : ""}</div>
+    <h3 style="font-size:14px;margin:18px 0 4px">About the ad</h3>
+    <div class="kv">${isClient ? `<span>Ad</span><div>Uploaded ad${r.creative.name ? ` (${esc(r.creative.name)})` : ""}, shown as supplied</div>` : `<span>Style</span><div>${esc(r.design?.style || "bold")}${r.design?.chosenBy ? ` · ${r.design.chosenBy === "you" ? "chosen by you" : "picked automatically"}` : ""}</div>
       <span>Copy</span><div><b>${esc(r.copy.headline)}</b> · ${esc(r.copy.subline)} · [${esc(r.copy.cta)}]${r.nameNote ? `<div class="s" style="font-size:12px">${esc(r.nameNote)}</div>` : ""}</div>
       <span>Product photo</span><div><a href="${esc(info.picture.page)}" target="_blank" rel="noopener">${esc(info.picture.site)}</a>${info.picture.official ? " (brand's own site)" : ""} · ${esc(info.cutout === "photo" ? "photo" : "cut out")}${info.checked ? " · checked" : ""}</div>
       <span>Logo</span><div>${r.brandLook.logo.page ? `<a href="${esc(r.brandLook.logo.page)}" target="_blank" rel="noopener">${esc(r.brandLook.logo.site)}</a>` : esc(r.brandLook.logo.note)}</div>`}
       <span>Picture used</span><div><a href="${esc(pl.image.url)}" target="_blank" rel="noopener">${esc(pl.image.width)}×${esc(pl.image.height)}</a>${pl.image.lead ? " · lead image" : ""}</div>
       <span>Inventory</span><div>${esc(pl.inventory.mediaPlan)}</div></div>
     <div class="assets">${f.product ? `<img src="${file(dir, f.product)}" alt="product">` : ""}${f.logo ? `<img src="${file(dir, f.logo)}" alt="logo">` : ""}<img src="${file(dir, f.still)}" alt="still" style="max-width:none"></div>
-    <div class="note">Other pictures considered: ${r.candidates.length} · articles left out: ${r.rejectedArticles.length}. Everything, with reasons and sources, is in result.json.</div></div></div>`;
+    <div class="note">Also considered: ${r.candidates.length} photos · ${r.rejectedArticles.length} articles skipped. Full details are saved with the ad (result.json).</div></div></div>`;
   $("out").scrollIntoView({ behavior: "smooth", block: "start" });
 }
 async function loadGallery() {

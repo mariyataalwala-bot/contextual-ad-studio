@@ -810,6 +810,9 @@ catch (e) { openwebError = e.message; console.error("Open Web disabled:", e.mess
 http.createServer(async (req, res) => {
   const u = new URL(req.url, "http://x");
   if (u.pathname === "/healthz") return send(res, 200, { ok: true });
+  // the MediaKart look shared by the studio pages: logo + stylesheet from assets/ (only these files)
+  const brandFile = { "/brand/mediakart-logo.png": ["mediakart-logo.png", "image/png"], "/brand/mediakart.css": ["mediakart.css", "text/css; charset=utf-8"] }[u.pathname];
+  if (brandFile) { res.writeHead(200, { "Content-Type": brandFile[1], "Cache-Control": "no-cache" }); return res.end(fs.readFileSync(path.join(APP, "assets", brandFile[0]))); }
   if (u.pathname === "/api/diag") {   // memory + can this server reach YouTube?
     const rd = (f) => { try { return fs.readFileSync(f, "utf8").trim(); } catch { return null; } };
     const t0 = Date.now(); let yt1 = null, err = null;

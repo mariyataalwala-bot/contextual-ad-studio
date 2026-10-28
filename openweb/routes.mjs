@@ -97,7 +97,7 @@ export function createOpenWeb({ dataDir, ask = null, provider = () => "none", ff
     if (cc?.error) return { code: 400, body: { error: cc.error } };
     if (!ask || provider() === "none") return { code: 400, body: { error: "The studio needs the AI key (Settings on the computer running the app)." } };
     if (!py || !ffmpeg) return { code: 503, body: { error: "Python and ffmpeg are needed on the computer running the app." } };
-    if (studioBusy && jobs[studioBusy]?.status === "running") return { code: 409, body: { error: "A mock is already being made — wait for it to finish.", id: studioBusy } };
+    if (studioBusy && jobs[studioBusy]?.status === "running") return { code: 409, body: { error: "An ad is already being made — please wait for it to finish.", id: studioBusy } };
     const d = new Date(), z = (n) => String(n).padStart(2, "0"), slug = (s) => s.toLowerCase().normalize("NFKD").replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 40) || "brand";
     const rel = path.join(slug(brand), `${d.getFullYear()}${z(d.getMonth() + 1)}${z(d.getDate())}-${z(d.getHours())}${z(d.getMinutes())}${z(d.getSeconds())}`);
     const workDir = path.join(studioRoot, rel); fs.mkdirSync(path.join(workDir, "assets"), { recursive: true });
@@ -106,7 +106,7 @@ export function createOpenWeb({ dataDir, ask = null, provider = () => "none", ff
     const j = job("studio"); Object.assign(j, { pct: 1, stage: "start", brand, product, dir: rel.replace(/\\/g, "/") }); studioBusy = j.id;
     const say = (pct, stage, msg) => { j.pct = Math.max(j.pct, pct); j.stage = stage; if (msg) log(j, msg); };
     makeInImage({ brand, product, offer, productImage, style, clientAd, brands, workDir, indexDir: studioRoot, studio, cfg, store, ask, fetchImpl, py, ffmpeg, chromium, say })
-      .then((r) => { j.result = r; j.status = "done"; j.pct = 100; log(j, `Mock ready in ${r.seconds} s.`); })
+      .then((r) => { j.result = r; j.status = "done"; j.pct = 100; log(j, `Ad ready in ${r.seconds} s.`); })
       .catch((e) => { j.status = "failed"; j.error = e.message; log(j, "Stopped: " + e.message); try { fs.writeFileSync(path.join(workDir, "error.txt"), e.stack || e.message); } catch { /* best effort */ } })
       .finally(() => { j.tEnd = Date.now(); if (studioBusy === j.id) studioBusy = null; });
     return { code: 200, body: { id: j.id } };

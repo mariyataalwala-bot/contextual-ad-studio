@@ -3,33 +3,33 @@
 <title>Open Web Contextual</title>
 <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&display=swap" rel="stylesheet">
 <style>
-:root{--p:#5C63DC;--m:#B000CC;--gd:#1FA81A;--ink:#14152B;--mute:#6B6F80;--line:#E6E7EF;--bg:#F5F5FB;--card:#fff;
-  --grad:linear-gradient(135deg,#5C63DC 0%,#8B3FE8 55%,#B000CC 100%);--sh:0 1px 2px rgba(20,21,43,.04),0 8px 28px rgba(20,21,43,.06);--r:20px;
+:root{--p:#0B6FF0;--m:#E8337F;--gd:#1FA81A;--ink:#14152B;--mute:#6B6F80;--line:#E6E7EF;--bg:#F6F8FB;--card:#fff;
+  --grad:linear-gradient(135deg,#0B6FF0 0%,#1E63E9 55%,#E8337F 100%);--sh:0 1px 2px rgba(20,21,43,.04),0 8px 28px rgba(20,21,43,.06);--r:20px;
   --ok:#177713;--okb:#F0FBEF;--rev:#8A5A00;--revb:#FFF6E0;--bad:#A11;--badb:#FFF0F0}
 *{box-sizing:border-box}
 body{margin:0;font-family:Poppins,system-ui,sans-serif;color:var(--ink);background:var(--bg);min-height:100vh;
-  background-image:radial-gradient(900px 420px at 85% -120px,rgba(176,0,204,.10),transparent 70%),radial-gradient(800px 420px at 0% -160px,rgba(92,99,220,.14),transparent 70%);background-repeat:no-repeat}
+  background-image:radial-gradient(900px 420px at 85% -120px,rgba(232,51,127,.10),transparent 70%),radial-gradient(800px 420px at 0% -160px,rgba(11,111,240,.14),transparent 70%);background-repeat:no-repeat}
 a{color:var(--p)}
 header{position:sticky;top:0;z-index:20;backdrop-filter:saturate(1.4) blur(12px);background:rgba(255,255,255,.78);border-bottom:1px solid var(--line)}
 .hin{max-width:1240px;margin:0 auto;display:flex;align-items:center;gap:14px;padding:14px 20px}
 .logo{width:42px;height:42px;border-radius:13px;background:radial-gradient(circle at 35% 30%,#E59BFF 0,#9B2BE0 40%,#4A0A8C 78%,#23004D);display:grid;place-items:center;color:#fff;font-size:20px;flex:none}
 h1{font-size:19px;margin:0;font-weight:700}header small{color:var(--mute);font-size:12.5px}.sp{flex:1}
-.navlink{font-size:13.5px;font-weight:600;text-decoration:none;padding:9px 14px;border-radius:12px;border:1.5px solid rgba(92,99,220,.35);background:#fff;white-space:nowrap}
+.navlink{font-size:13.5px;font-weight:600;text-decoration:none;padding:9px 14px;border-radius:12px;border:1.5px solid rgba(11,111,240,.35);background:#fff;white-space:nowrap}
 main{max-width:1240px;margin:18px auto 60px;padding:0 20px;display:grid;gap:18px}
 .card{background:var(--card);border:1px solid var(--line);border-radius:var(--r);padding:24px;box-shadow:var(--sh);min-width:0}
 .ch{display:flex;align-items:flex-start;gap:14px;margin-bottom:16px}
 .num{flex:none;display:grid;place-items:center;width:34px;height:34px;border-radius:11px;background:var(--grad);color:#fff;font-size:15px;font-weight:700}
 .card h2{margin:2px 0;font-size:18px;font-weight:700}.s{color:var(--mute);font-size:13px}.card p.s{margin:0}
 .note{background:#F3F2FF;border:1px solid #DCD9FF;border-radius:14px;padding:11px 16px;font-size:13px;line-height:1.5}
-button{display:inline-flex;align-items:center;justify-content:center;gap:8px;font:inherit;font-size:14px;border:0;border-radius:12px;padding:10px 18px;font-weight:600;cursor:pointer;background:var(--grad);color:#fff;box-shadow:0 6px 18px rgba(123,77,255,.25)}
-button.ghost{background:#fff;color:var(--p);border:1.5px solid rgba(92,99,220,.45);box-shadow:none}
+button{display:inline-flex;align-items:center;justify-content:center;gap:8px;font:inherit;font-size:14px;border:0;border-radius:12px;padding:10px 18px;font-weight:600;cursor:pointer;background:var(--grad);color:#fff;box-shadow:0 6px 18px rgba(11,95,224,.25)}
+button.ghost{background:#fff;color:var(--p);border:1.5px solid rgba(11,111,240,.45);box-shadow:none}
 button.sm{padding:6px 11px;font-size:12.5px;border-radius:9px}
 button:disabled{opacity:.45;cursor:default}
 .bar{display:flex;gap:10px;flex-wrap:wrap;margin-top:14px;align-items:center}
 label{display:block;font-size:12px;font-weight:600;margin:0 0 6px;color:#3A3C52}
 input[type=text],input[type=date],input[type=number],select,textarea{width:100%;font:inherit;font-size:14px;padding:10px 12px;border:1.5px solid var(--line);border-radius:11px;background:#FBFBFE;color:var(--ink)}
 textarea{min-height:64px;resize:vertical}
-input:focus,select:focus,textarea:focus{outline:none;border-color:var(--p);background:#fff;box-shadow:0 0 0 4px rgba(92,99,220,.13)}
+input:focus,select:focus,textarea:focus{outline:none;border-color:var(--p);background:#fff;box-shadow:0 0 0 4px rgba(11,111,240,.13)}
 .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:14px}
 .twocol{display:grid;grid-template-columns:1.1fr .9fr;gap:18px}
 .tbl{width:100%;border-collapse:collapse;font-size:13px}
@@ -60,11 +60,13 @@ input:focus,select:focus,textarea:focus{outline:none;border-color:var(--p);backg
 .crow{display:grid;grid-template-columns:1.2fr 1fr 1.4fr auto;gap:8px;margin-bottom:8px}
 .picked{margin-top:6px}
 .sugg{border:1px solid var(--line);border-radius:10px;max-height:160px;overflow:auto;margin-top:4px;background:#fff}
-.sugg div{padding:6px 10px;font-size:12.5px;cursor:pointer}.sugg div:hover{background:#F4F4FF}
+.sugg div{padding:6px 10px;font-size:12.5px;cursor:pointer}.sugg div:hover{background:#F5F9FF}
 @media (max-width:900px){.twocol{grid-template-columns:1fr}.crow{grid-template-columns:1fr 1fr}}
 @media (max-width:600px){.hin,main{padding-left:16px;padding-right:16px}.card{padding:18px 16px}header small{display:none}}
-</style></head><body>
-<header><div class="hin"><div class="logo">✦</div><div><h1>Open Web Contextual</h1><small>Mediakart · existing creatives on relevant articles</small></div><div class="sp"></div><a class="navlink" href="/inimage">In-Image studio</a> <a class="navlink" href="/">← YouTube studio</a></div></header>
+</style>
+<link href="https://fonts.googleapis.com/css2?family=Funnel+Display:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/brand/mediakart.css"></head><body>
+<header><div class="hin"><a class="mk-brand" href="/" title="MediaKart"><img src="/brand/mediakart-logo.png" alt="MediaKart"></a><span class="mk-div"></span><div class="mk-prod"><b>Open Web Contextual</b><small>Your creatives matched to the right publisher articles</small></div><div class="sp"></div><nav class="mk-nav"><a href="/"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2.5" y="5" width="19" height="14" rx="4"/><path d="M10 9.5v5l4.5-2.5z" fill="currentColor"/></svg><span>YouTube</span></a><a href="/inimage"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="3"/><path d="M3 14h18"/><circle cx="8.5" cy="9" r="1.6"/></svg><span>In-Image</span></a><a href="/openweb" class="on"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3c2.6 2.8 2.6 15.2 0 18M12 3c-2.6 2.8-2.6 15.2 0 18"/></svg><span>Open Web</span></a></nav></div></header>
 <main>
   <div class="note" id="statusNote">Loading…</div>
   <section class="card howto"><b>How it works</b>
@@ -131,6 +133,7 @@ input:focus,select:focus,textarea:focus{outline:none;border-color:var(--p);backg
     <div class="mocks" id="mocks"></div>
   </section>
 </main>
+<footer class="mk-foot"><img src="/brand/mediakart-logo.png" alt="MediaKart"><span>Contextual Ad Studio · Previews for pitches only — nothing is served live.</span></footer>
 
 <div class="drawer hide" id="drawer"><div class="panel" id="panel"></div></div>
 

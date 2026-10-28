@@ -63,7 +63,6 @@ function design(style, o, t) {
 .cta{background:transparent;color:${gold};border:.25cqw solid ${gold};border-radius:.6cqw;font:600 2.3cqw/1.2 Poppins,system-ui;letter-spacing:.16em;text-transform:uppercase;box-shadow:none}
 .cta:after{background:linear-gradient(100deg,transparent,rgba(255,240,200,.45),transparent)}
 .ring{right:-2cqw;width:40cqw;height:40cqw;margin-top:-20cqw;background:radial-gradient(circle,rgba(255,244,214,.38) 0%,rgba(255,244,214,.1) 50%,transparent 70%)}
-.p.photo:after{content:"";position:absolute;inset:4%;border-radius:50%;border:.16cqw solid ${gold};opacity:.55}
 .p.photo{right:6cqw}
 .sp{position:absolute;width:2.2cqw;height:2.2cqw;opacity:0;z-index:4;background:radial-gradient(circle,#fff 0 18%,transparent 19%),conic-gradient(from 45deg,transparent 0 10%,#fff6d8 12% 13%,transparent 15% 35%,#fff6d8 37% 38%,transparent 40% 60%,#fff6d8 62% 63%,transparent 65% 85%,#fff6d8 87% 88%,transparent 90%);filter:drop-shadow(0 0 .6cqw #ffe9a8)}
 :host([data-go]) .s{animation:upSoft .9s cubic-bezier(.25,.8,.25,1) forwards}

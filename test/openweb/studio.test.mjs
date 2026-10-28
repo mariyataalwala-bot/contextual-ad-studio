@@ -9,7 +9,7 @@ import http from "node:http";
 import zlib from "node:zlib";
 import { execFileSync } from "node:child_process";
 import { parseBingImages, brandHost } from "../../openweb/lib/websearch.mjs";
-import { stripHtml, fitStrip, luminance, STYLES } from "../../openweb/lib/strip.mjs";
+import { stripHtml, fitStrip, luminance, STYLES, logoMode } from "../../openweb/lib/strip.mjs";
 import { clientCreative } from "../../openweb/routes.mjs";
 import { slugTitle, matchSlugs, sitemapIndex, loadStudioConfig, withRealName, usedArticles, rivalMatcher, styleFonts } from "../../openweb/lib/studio.mjs";
 import { renderMock, ASSET_URL } from "../../openweb/lib/mock.mjs";
@@ -79,7 +79,7 @@ test("strip creative: copy is escaped, the layout follows the product picture, l
   assert.ok(!cut.includes("<script>alert") && cut.includes("&lt;script&gt;") && cut.includes("&quot;yes&quot;") && cut.includes(">&amp;<"));   // words are wrapped one by one for the rise
   assert.ok(cut.includes('class="p cut"') && !cut.includes('class="sc"'));
   assert.ok(cut.includes('class="lg lgt">Brand &lt;b&gt;'), "no logo → the brand name as text");
-  assert.ok(stripHtml({ ...base, productMode: "photo" }).includes('class="p card"'));
+  assert.ok(stripHtml({ ...base, productMode: "photo" }).includes('class="p photo"'));
   const scene = stripHtml({ ...base, productMode: "scene" });
   assert.ok(scene.includes('class="sc"') && !scene.includes('class="p '));
   assert.ok(luminance("#ffdf00") > 0.62 && stripHtml({ ...base, colour: "#ffdf00", productMode: "alpha" }).includes("color:#141414"));
@@ -87,6 +87,26 @@ test("strip creative: copy is escaped, the layout follows the product picture, l
   assert.ok(!stripHtml({ ...base, colour: "#e31b23", accent: "#e0201c", productMode: "alpha" }).includes('class="pn"'), "accent too close to the main colour → no panel");
   const one = stripHtml({ ...base, subline: "", productMode: "alpha" });
   assert.ok(!one.includes('class="sb"') && one.includes('class="tx one"'));
+});
+
+test("no white patches: in every design the logo sits on the ad itself and a product photo melts into a glow (no card)", () => {
+  for (const style of STYLES) for (const productMode of /** @type {("plain-bg"|"photo")[]} */ (["plain-bg", "photo"])) {
+    const html = stripHtml({ brand: "B", headline: "H", subline: "S", cta: "Shop now", colour: "#e31b23", accent: "#ffd400", productUrl: "https://a.test/p.png", productMode, logoUrl: "https://a.test/l.png", logoKind: "mark", logoInk: "#e31b23", style });
+    const lgRules = html.match(/\.lg[^{]*\{[^}]*\}/g).join(" ");
+    assert.ok(!/background:#fff/.test(lgRules), `${style}: the logo has no white pill`);
+    assert.ok(!/class="p card"/.test(html) && !/\.p\.card/.test(html), `${style}: no product card`);
+    assert.ok(/mix-blend-mode:multiply/.test(html), `${style}: a product photo blends into its glow`);
+  }
+});
+
+test("logo display: reversed (white / black) for a one-colour logo that would not stand out, colours kept when it does or when it has light parts, badges as they are, a frosted chip only as a last resort", () => {
+  assert.equal(logoMode({ kind: "mark", ink: "#cb2129", behind: "#e31b23", style: "bold" }), "white");          // red Bata logo on a red strip
+  assert.equal(logoMode({ kind: "mark", ink: "#111111", behind: "#ffd100", style: "bold" }), "colour");        // dark logo on yellow
+  assert.equal(logoMode({ kind: "mark", ink: "#ffd100", behind: "#ffe14d", style: "fresh" }), "black");        // yellow on yellow
+  assert.equal(logoMode({ kind: "mark", ink: "#e8e9e9", light: 0.36, behind: "#0f9a4a", style: "fresh" }), "colour");   // Sprite: white outline kept
+  assert.equal(logoMode({ kind: "badge", ink: "#e21f26", behind: "#ffd100", style: "fresh" }), "badge");       // Maggi's oval
+  assert.equal(logoMode({ kind: "photo", ink: "#888888", behind: "#222222", style: "bold" }), "chip");
+  assert.equal(logoMode({ kind: "mark", ink: "#4a0e2e", behind: "#2a0819", style: "luxe" }), "white");
 });
 
 test("topic matching over sitemap URLs: words taken from the URL, more matches rank first, then newer", () => {
@@ -253,6 +273,17 @@ test("cut-out: a product on a plain studio background comes out with a transpare
   // silver on white: the cut-out would eat the product and keep the background inside the hoop → the original photo
   draw('im = Image.new("RGB", (400, 400), (252, 252, 252)); dr = ImageDraw.Draw(im); dr.ellipse((100, 60, 300, 340), outline=(205, 205, 210), width=22); dr.ellipse((150, 300, 250, 330), fill=(225, 225, 228))', path.join(d, "silver.png"));
   assert.equal(pyJson([path.join(SCRIPTS, "cutout.py"), "product", path.join(d, "silver.png"), path.join(d, "out3.png")]).method, "photo");
+});
+
+test("logo keying: a logo on a white background becomes transparent everywhere, holes inside letters too; a filled multi-colour shape is a badge", { skip: !hasPy && "Python with cv2/PIL not installed" }, () => {
+  const d = fs.mkdtempSync(path.join(os.tmpdir(), "logok-"));
+  draw('im = Image.new("RGB", (400, 160), (255, 255, 255)); dr = ImageDraw.Draw(im); dr.ellipse((40, 30, 140, 130), outline=(200, 20, 30), width=18); dr.rectangle((170, 40, 360, 120), fill=(200, 20, 30))', path.join(d, "mark.png"));
+  const r = pyJson([path.join(SCRIPTS, "cutout.py"), "logo", path.join(d, "mark.png"), path.join(d, "mark_out.png")]);
+  assert.equal(r.kind, "mark"); assert.equal(r.keyed, true); assert.equal(r.colours, 1);
+  const hole = execFileSync(PY, ["-c", `from PIL import Image; im = Image.open(r"${path.join(d, "mark_out.png")}"); w, h = im.size; print(im.getpixel((int(w * 0.24), h // 2))[3])`]).toString().trim();
+  assert.equal(hole, "0", "the middle of the O is transparent, not white");
+  draw('im = Image.new("RGB", (300, 200), (255, 255, 255)); dr = ImageDraw.Draw(im); dr.ellipse((10, 10, 290, 190), fill=(225, 30, 38)); dr.rectangle((90, 80, 210, 120), fill=(255, 210, 0))', path.join(d, "badge.png"));
+  assert.equal(pyJson([path.join(SCRIPTS, "cutout.py"), "logo", path.join(d, "badge.png"), path.join(d, "badge_out.png")]).kind, "badge");
 });
 
 test("logo trim: a fake transparency checkerboard is cleaned and cropped to the logo", { skip: !hasPy && "Python with cv2/PIL not installed" }, () => {

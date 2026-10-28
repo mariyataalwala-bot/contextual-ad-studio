@@ -84,7 +84,53 @@ def preview(src, dst, size=640):
     bg.alpha_composite(a); bg.convert('RGB').save(dst, quality=90)
     print(json.dumps({'preview': dst}))
 
+def logo(src, dst):
+    """A logo ready to sit directly on the ad (no white patch behind it):
+    - a real transparent logo is kept; a logo on a flat background has that colour keyed out everywhere — also inside
+      letters (the holes of a, o, e) — with soft edges;
+    - kind: "badge" (a filled, multi-colour shape that carries its own background, e.g. Maggi's red oval — shown as is),
+      "mark" (ink on transparent — shown in colour, or all-white / all-black when it would not stand out),
+      "photo" (could not be separated — shown on a faint frosted chip);
+    - ink: the logo's main colour, for the contrast check."""
+    a = load_rgba(src).copy()
+    kind = 'mark'
+    real_alpha = (a[..., 3] < 20).mean() > 0.03
+    if not real_alpha:
+        rgb = a[..., :3].astype(np.float32)
+        border = np.concatenate([rgb[0], rgb[-1], rgb[:, 0], rgb[:, -1]])
+        med = np.median(border, axis=0)
+        if (np.abs(border - med).max(axis=1) < 18).mean() > 0.9:
+            d = np.abs(rgb - med).max(axis=2)
+            a[..., 3] = np.clip((d - 14) / (48 - 14) * 255, 0, 255).astype(np.uint8)   # soft key: 14 → clear, 48 → solid
+            # the key leaves a light fringe of background colour on the edges: pull edge pixels back towards the ink
+            edge = (a[..., 3] > 0) & (a[..., 3] < 255)
+            if edge.any():
+                k = (a[..., 3][edge].astype(np.float32) / 255)[:, None]
+                a[..., :3][edge] = np.clip((rgb[edge] - med * (1 - k)) / np.maximum(k, 0.2), 0, 255).astype(np.uint8)
+        else:
+            kind = 'photo'
+    out = trim(a, 0.02) if kind != 'photo' else a
+    vis = out[out[..., 3] > 200][:, :3].astype(np.float32)
+    ink, fill, second, colours = (30, 30, 30), 0.0, 0.0, 1
+    # light parts (a white outline, a white letter inside a coloured shape) vanish when the logo is shown all-white
+    light = float(((vis.min(axis=1) > 215) & (vis.max(axis=1) - vis.min(axis=1) < 30)).mean()) if len(vis) else 0.0
+    if len(vis) > 20:
+        k = min(3, len(vis))
+        _, lab, cen = cv2.kmeans(vis, k, None, (cv2.TERM_CRITERIA_EPS + cv2.TERM_CRITERIA_MAX_ITER, 20, 1.0), 2, cv2.KMEANS_PP_CENTERS)
+        counts = np.bincount(lab.ravel(), minlength=k); order = counts.argsort()[::-1]
+        ink = tuple(int(v) for v in cen[order[0]])
+        fill = (out[..., 3] > 200).mean()
+        second = counts[order[1]] / counts.sum() if k > 1 else 0
+        spread = np.abs(cen[order[0]] - cen[order[1]]).max() if k > 1 else 0
+        if kind == 'mark' and fill > 0.55 and second > 0.08 and spread > 60: kind = 'badge'
+        # distinct colours that matter (at least 10% of the logo and clearly different from the main one)
+        colours = 1 + sum(1 for j in order[1:] if counts[j] / counts.sum() >= 0.10 and np.abs(cen[j] - cen[order[0]]).max() > 60)
+    Image.fromarray(out).save(dst)
+    lum = (0.2126 * ink[0] + 0.7152 * ink[1] + 0.0722 * ink[2]) / 255
+    print(json.dumps({'kind': kind, 'ink': '#%02x%02x%02x' % ink, 'lum': round(float(lum), 3), 'fill': round(float(fill), 3), 'keyed': not real_alpha and kind != 'photo', 'colours': int(colours), 'light': round(light, 3), 'w': int(out.shape[1]), 'h': int(out.shape[0])}))
+
 if __name__ == '__main__':
     if sys.argv[1] == 'product': product(sys.argv[2], sys.argv[3], '--photo' in sys.argv[4:])
     elif sys.argv[1] == 'preview': preview(sys.argv[2], sys.argv[3])
+    elif sys.argv[1] == 'logo': logo(sys.argv[2], sys.argv[3])
     else: colour(sys.argv[2])
