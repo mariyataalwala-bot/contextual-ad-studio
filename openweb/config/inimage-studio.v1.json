@@ -277,9 +277,59 @@
    "Explore",
    "Learn more",
    "Try it now",
-   "Download app"
+   "Download app",
+   "Watch now",
+   "Book a test drive",
+   "Book a test ride",
+   "Apply now"
   ],
-  "noClaims": "No prices, discounts, offers, awards or health/performance claims unless the user typed them."
+  "noClaims": "No prices, discounts, offers, awards or health/performance claims unless the user typed them.",
+  "ctaRules": [
+   {
+    "match": "airline|flight|\\btrain|rail|\\bbus\\b|bus ticket|travel booking|online travel|hotel|\\bstays?\\b|holiday|vacation|\\btour",
+    "cta": "Book now"
+   },
+   {
+    "match": "food (and grocery )?delivery|grocery delivery|quick.?commerce|food delivery|restaurant",
+    "cta": "Order now"
+   },
+   {
+    "match": "streaming|\\bott\\b|video on demand",
+    "cta": "Watch now"
+   },
+   {
+    "match": "motorcycle|scooter|two.?wheeler|\\bbikes?\\b",
+    "cta": "Book a test ride"
+   },
+   {
+    "match": "\\bcars?\\b|\\bsuvs?\\b|sedan|hatchback|luxury car",
+    "cta": "Book a test drive"
+   },
+   {
+    "match": "assistant app|ai assistant|\\bapps?\\b",
+    "cta": "Try it now"
+   },
+   {
+    "match": "credit card|personal loan|home loan|\\bloans?\\b",
+    "cta": "Apply now"
+   },
+   {
+    "match": "insurance|mutual fund|investment",
+    "cta": "Learn more"
+   },
+   {
+    "match": "smartphone|\\bphones?\\b|laptop|\\bpcs?\\b|tablet|monitor|\\btvs?\\b|television|earbud|headphone|speaker|smartwatch|appliance|vacuum|air purifier|water heater|\\bfans?\\b|lighting|electrical|camera",
+    "cta": "Buy now"
+   },
+   {
+    "match": "jewell?ery|\\bwatch(es)?\\b|luggage|backpack|shoe|sneaker|footwear|sportswear|apparel|fashion|clothing|beauty|skin ?care|hair ?care|make-?up|cosmetic|fragrance|perfume|pet food|personal care|baby care|earrings?|\brings?\b|necklace|bracelet|pendant|bangle|mangalsutra|anklet|handbag|sunglasses|saree|kurta|t-?shirt|jeans|lipstick|serum|moisturi[sz]er|sunscreen|shampoo|conditioner",
+    "cta": "Shop now"
+   },
+   {
+    "match": "drink|soda|cola|juice|snack|chocolate|biscuit|noodle|food|\\btea\\b|coffee|confectionery|candy|staples|edible oil|dairy|beverage|insecticide|oral care|toothpaste|home care|detergent|supplement|ayurved|chyawanprash|health drink|wellness|vitamin|protein|pain relief|digestive",
+    "cta": "Buy now"
+   }
+  ]
  },
  "creative": {
   "layout": "bottom-strip",
@@ -320,7 +370,7 @@
   }
  ],
  "minScore": 7,
- "changes": "2026-10-27: added Mid-day Lifestyle and Asianet Newsable Technology / Lifestyle (both listed in Category Wise In-Image › Premium SiteList for Display); Asianet photo galleries (slideshows) are left out. Later the same day: an article that carries another brand's mock is not used again; only direct fits (context 8/10 or more) are placed. Speed: at most 6 articles read and 8 pictures checked, 240 headlines planned, a 115 s budget (a page is re-tried only while a full recording still fits). Product accuracy: Indian market search, Indian shops ranked, shops abroad left out, the exact variant / current Indian pack required, a pasted product photo link used as given, risky cut-outs shown as the original photo.",
+ "changes": "2026-10-27: added Mid-day Lifestyle and Asianet Newsable Technology / Lifestyle (both listed in Category Wise In-Image › Premium SiteList for Display); Asianet photo galleries (slideshows) are left out. Later the same day: an article that carries another brand's mock is not used again; only direct fits (context 8/10 or more) are placed. Speed: at most 6 articles read and 8 pictures checked, 240 headlines planned, a 115 s budget (a page is re-tried only while a full recording still fits). Product accuracy: Indian market search, Indian shops ranked, shops abroad left out, the exact variant / current Indian pack required, a pasted product photo link used as given, risky cut-outs shown as the original photo. 2026-10-28: the button follows what the brand sells (copy.ctaRules: Shop now / Buy now in most cases, Book now for travel, Order now for food delivery …); Explore only when no rule fits.",
  "minContext": 8,
  "oneAdvertiserPerArticle": true,
  "fetchArticles": 6,

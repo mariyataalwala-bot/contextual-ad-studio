@@ -11,7 +11,7 @@ import { execFileSync } from "node:child_process";
 import { parseBingImages, brandHost } from "../../openweb/lib/websearch.mjs";
 import { stripHtml, fitStrip, luminance, STYLES, logoMode } from "../../openweb/lib/strip.mjs";
 import { clientCreative } from "../../openweb/routes.mjs";
-import { slugTitle, matchSlugs, sitemapIndex, loadStudioConfig, withRealName, usedArticles, rivalMatcher, styleFonts, studioRefusal } from "../../openweb/lib/studio.mjs";
+import { slugTitle, matchSlugs, sitemapIndex, loadStudioConfig, withRealName, usedArticles, rivalMatcher, styleFonts, studioRefusal, ctaFor } from "../../openweb/lib/studio.mjs";
 import { renderMock, ASSET_URL } from "../../openweb/lib/mock.mjs";
 import { loadMediaPlan, checkPublisherSources } from "../../openweb/lib/inventory.mjs";
 import { extractArticle } from "../../openweb/lib/extract.mjs";
@@ -62,6 +62,24 @@ test("subscription articles are recognised from the page's own schema.org flag (
   assert.equal(extractArticle(page(false), "https://x.test/a").free, false);
   assert.equal(extractArticle(page("True"), "https://x.test/a").free, true);
   assert.equal(extractArticle(page(undefined), "https://x.test/a").free, null);
+});
+
+test("the button follows what the brand sells: Shop now / Buy now in most cases, Book now for travel, Order now for delivery …; Explore only when nothing fits", () => {
+  const st = loadStudioConfig(), b = loadBrands();
+  const cta = (brand, product, aiCategory = "", aiCta = "Explore") => ctaFor({ rules: st.copy.ctaRules, ctas: st.copy.ctas, known: findBrand(b, brand, product), product, aiCategory, aiCta }).cta;
+  assert.equal(cta("Bata", "Power running shoes"), "Shop now");
+  assert.equal(cta("GIVA", "silver earrings"), "Shop now");
+  assert.equal(cta("Tissot", "PRX watch"), "Shop now");
+  assert.equal(cta("Samsung", "Galaxy S26"), "Buy now");
+  assert.equal(cta("Motorola", "Edge 70", "Smartphones"), "Buy now");
+  assert.equal(cta("Sprite", "lemon lime drink"), "Buy now");
+  assert.equal(cta("IndiGo", "flights"), "Book now");
+  assert.equal(cta("Swiggy", "Instamart"), "Order now");
+  assert.equal(cta("Netflix", "subscription"), "Watch now");
+  assert.equal(cta("Maruti Suzuki", "Swift"), "Book a test drive");
+  assert.equal(cta("Hero MotoCorp", "Splendor"), "Book a test ride");
+  assert.equal(cta("Godrej Properties", "new homes", "Real estate"), "Explore", "nothing to buy in a click: the AI's Explore stands");
+  assert.ok(st.copy.ctaRules.every((r) => st.copy.ctas.includes(r.cta)), "every rule's button is in the allowed list");
 });
 
 test("the brand's own site is recognised by its host name, retailers are not", () => {

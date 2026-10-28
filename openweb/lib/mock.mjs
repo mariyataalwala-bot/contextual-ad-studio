@@ -1,7 +1,7 @@
 // Mock renderer: opens the real article in a headless phone browser, places the supplied source creative in the
 // matched slot (in-image over the lead image, in-scroll between paragraphs, interstitial, or a display box), and
 // saves a screenshot plus an optional short scroll video. Everything happens in our own browser only — nothing
-// is sent to the publisher or any ad server. Each mock carries a visible "MOCK" badge and a JSON sidecar.
+// is sent to the publisher or any ad server. Each mock keeps a JSON sidecar of its sources (no badge on the page itself).
 import fs from "node:fs";
 import path from "node:path";
 
@@ -18,15 +18,15 @@ export const ASSET_URL = "https://mk-mock.invalid/asset/";   // pictures and fon
 export function tidyPage() {
   const vw = innerWidth, vh = innerHeight;
   const ADS = 'iframe, ins.adsbygoogle, [id^="div-gpt-ad"], [id*="google_ads"], [class*="ad-slot"], [class*="adslot"], [class*="ad-container"], [class*="advert"], [class~="ads"], [class^="ads-"], [class*=" ads-"], [class$="-ads"], [class*="-ads "], [id^="ads-"], [id*="-ads-"], [id*="_ads_"]';   // "ads" as its own word only (not "heads-", "threads-")
-  for (const el of /** @type {NodeListOf<HTMLElement>} */ (document.querySelectorAll(ADS))) if (!el.closest("#mk-slot, #mk-mark") && !el.querySelector("#mk-slot")) el.style.setProperty("display", "none", "important");
+  for (const el of /** @type {NodeListOf<HTMLElement>} */ (document.querySelectorAll(ADS))) if (!el.closest("#mk-slot") && !el.querySelector("#mk-slot")) el.style.setProperty("display", "none", "important");
   for (const el of /** @type {NodeListOf<HTMLElement>} */ (document.querySelectorAll("body *"))) {
-    if (el.closest("#mk-slot, #mk-mark") || el.querySelector("#mk-slot")) continue;   // never our own unit or its overlay
+    if (el.closest("#mk-slot") || el.querySelector("#mk-slot")) continue;   // never our own unit or its overlay
     const cs = getComputedStyle(el); if (cs.position !== "fixed" && cs.position !== "sticky") continue;
     const r = el.getBoundingClientRect(); if (r.width * r.height > vw * vh * 0.2 || (r.top > vh * 0.6 && r.height > 40)) el.style.setProperty("display", "none", "important");
   }
   // the empty boxes left where the page's own ads were ("ADVERTISEMENT" label + reserved height) collapse too
   for (const el of /** @type {NodeListOf<HTMLElement>} */ (document.querySelectorAll("body div, body span, body p, body section, body aside"))) {
-    if (el.closest("#mk-slot, #mk-mark") || el.children.length > 3 || !/^\s*advertisement\s*$/i.test(el.textContent || "")) continue;
+    if (el.closest("#mk-slot") || el.children.length > 3 || !/^\s*advertisement\s*$/i.test(el.textContent || "")) continue;
     let box = el; while (box.parentElement && box.parentElement !== document.body && /^\s*advertisement\s*$/i.test(box.parentElement.textContent || "") && !box.parentElement.querySelector("img, #mk-slot")) box = box.parentElement;
     box.style.setProperty("display", "none", "important");
   }
@@ -88,9 +88,6 @@ export function placeInPage({ format, src, isVideo, leadImage, html = null, stri
     document.body.append(unit("position:fixed;inset:0;z-index:2147483000;background:rgba(0,0,0,.82);display:grid;place-items:center;margin:0", "position:relative;width:88vw;max-height:86vh;overflow:hidden;border-radius:10px"));
     slot = { x: 0, y: scrollY, w: vw, h: vh, how: "full-screen interstitial" };
   } else return { error: `SLOT_NOT_FOUND: no mock layout for format ${format}` };
-  const mark = document.createElement("mk-mark"); mark.id = "mk-mark"; mark.textContent = "MOCK · MediaKart · not a live ad";
-  mark.setAttribute("style", imp("display:block;position:fixed;left:8px;bottom:8px;z-index:2147483647;font:700 11px/1 system-ui,sans-serif;color:#fff;background:rgba(176,0,204,.88);padding:6px 9px;border-radius:6px;letter-spacing:.03em"));
-  document.body.append(mark);
   return slot;
 }
 

@@ -39,7 +39,7 @@ before(async () => {
 after(() => srv?.close());
 
 for (const format of ["in-image", "in-scroll", "interstitial", "display"]) {
-  test(`renders a ${format} mock with the MOCK badge`, { timeout: 90000 }, async () => {
+  test(`renders a ${format} mock (no watermark on the page)`, { timeout: 90000 }, async () => {
     const outBase = path.join(dir, "m_" + format);
     const out = await renderMock({ articleUrl: base + "/article", leadImage: base + "/lead.png", creativeFile: path.join(dir, "creative.png"), format, outBase });
     assert.ok(fs.statSync(out.png).size > 1000);

@@ -173,6 +173,16 @@ export function topicHit(text, topics) {
   return null;
 }
 
+// The button follows what the brand sells — rules in the studio config (copy.ctaRules), checked in order against the
+// brand's known category (brand knowledge) and the product, then the AI's category: Shop now / Buy now in most cases,
+// Book now for travel, Order now for food delivery, Watch now for streaming … Only when no rule fits does the AI's
+// choice stand (which may be "Explore"). Returns { cta, why }.
+export function ctaFor({ rules = [], ctas = [], known = null, product = "", aiCategory = "", aiCta = "" }) {
+  const tries = [known && [known.category, ...(known.products || []).slice(0, 3), product].join(" | "), [product, aiCategory].join(" | ")].filter(Boolean);
+  for (const t of tries) for (const r of rules) { const m = new RegExp(r.match, "i").exec(t); if (m) return { cta: r.cta, why: `"${m[0].trim()}" (${t.split(" | ")[0]}) → ${r.cta}` }; }
+  return { cta: ctas.includes(aiCta) ? aiCta : "Shop now", why: "no rule fits — the AI's choice" };
+}
+
 const TOPIC_SCHEMA = { type: "object", properties: { words: { type: "array", items: { type: "string" } }, competitors: { type: "array", items: { type: "string" } } }, required: ["words"] };
 
 // ---------- AI prompts (versioned: STUDIO_PROMPTS) ----------
@@ -407,6 +417,8 @@ export async function makeInImage(o) {
     const named = (t) => withRealName(t, typed, found, brand);
     if (found && found.toLowerCase() !== typed.toLowerCase()) result.nameNote = `Typed “${typed}”; the product found online is “${found}”.`;
     copy = { headline: words(named(plan.headline), studio.copy.maxHeadlineWords), subline: words(offer || named(plan.subline), offer ? 12 : studio.copy.maxSublineWords), cta: plan.cta };
+    const button = ctaFor({ rules: studio.copy.ctaRules, ctas: studio.copy.ctas, known, product, aiCategory: plan.category, aiCta: plan.cta });
+    copy.cta = button.cta; result.ctaWhy = button.why;
     result.copy = copy;
     result.design = { style, motif, chosenBy: STYLES.includes(o.style) ? "you" : STYLES.includes(known?.style) ? "brand knowledge" : "AI" };
     }
