@@ -73,7 +73,7 @@ Type a brand and product (or upload the client's own ad). The studio finds the e
 Indian product picture and logo, builds the ad in a design that suits the brand, picks
 a directly relevant, brand-safe article picture on a media-plan publisher (one brand
 per article) and records it on a phone, in under 2 minutes. Brand knowledge for the 50
-pitched brands is in openweb\configrands.v2.json. Every run ends with a status:
+pitched brands is in openweb\config\brands.v2.json. Every run ends with a status:
 success, partial, needs_review, no_match or failed — and saves result.json with the
 reasons in D:\contextual-ads\inimage\<brand>\<time>\.
 
