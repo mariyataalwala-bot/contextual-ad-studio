@@ -370,12 +370,13 @@
   }
  ],
  "minScore": 7,
- "changes": "2026-10-27: added Mid-day Lifestyle and Asianet Newsable Technology / Lifestyle (both listed in Category Wise In-Image › Premium SiteList for Display); Asianet photo galleries (slideshows) are left out. Later the same day: an article that carries another brand's mock is not used again; only direct fits (context 8/10 or more) are placed. Speed: at most 6 articles read and 8 pictures checked, 240 headlines planned, a 115 s budget (a page is re-tried only while a full recording still fits). Product accuracy: Indian market search, Indian shops ranked, shops abroad left out, the exact variant / current Indian pack required, a pasted product photo link used as given, risky cut-outs shown as the original photo. 2026-10-28: the button follows what the brand sells (copy.ctaRules: Shop now / Buy now in most cases, Book now for travel, Order now for food delivery …); Explore only when no rule fits. 2026-10-29: discovery (Firecrawl Search) for articles and verified brand campaigns.",
+ "changes": "2026-10-27: added Mid-day Lifestyle and Asianet Newsable Technology / Lifestyle (both listed in Category Wise In-Image › Premium SiteList for Display); Asianet photo galleries (slideshows) are left out. Later the same day: an article that carries another brand's mock is not used again; only direct fits (context 8/10 or more) are placed. Speed: at most 6 articles read and 8 pictures checked, 240 headlines planned, a 115 s budget (a page is re-tried only while a full recording still fits). Product accuracy: Indian market search, Indian shops ranked, shops abroad left out, the exact variant / current Indian pack required, a pasted product photo link used as given, risky cut-outs shown as the original photo. 2026-10-28: the button follows what the brand sells (copy.ctaRules: Shop now / Buy now in most cases, Book now for travel, Order now for food delivery …); Explore only when no rule fits. 2026-10-29: discovery (Firecrawl Search) for articles and verified brand campaigns. Later the same day: a second round of articles gets 40 s of its own (secondRoundExtraSeconds) — it was skipped when the product search used most of the budget, so a run ended with only 2 articles checked.",
  "minContext": 8,
  "oneAdvertiserPerArticle": true,
  "fetchArticles": 6,
  "listMax": 240,
  "budgetSeconds": 115,
+ "secondRoundExtraSeconds": 40,
  "product": {
   "maxChecks": 5,
   "market": "en-IN",

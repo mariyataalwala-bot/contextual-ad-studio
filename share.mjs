@@ -40,26 +40,51 @@ else {
   for (let i = 0; i < 20 && !(await up()); i++) await new Promise((r) => setTimeout(r, 500));
 }
 
-console.log("\nOpening the share link (takes ~10 seconds)…");
-const tunnel = spawn(cf, ["tunnel", "--no-autoupdate", "--url", "http://127.0.0.1:4777"], { cwd: APP, stdio: ["ignore", "pipe", "pipe"] });
-let shown = false;
-const onData = async (d) => {
-  const m = String(d).match(/https:\/\/[a-z0-9-]+\.trycloudflare\.com/);
-  if (!m || shown) return; shown = true;
-  fs.writeFileSync(path.join(APP, "share-link.txt"), m[0] + "\n");
-  console.log("Link created — waiting for it to go live on the internet (up to a minute)…");
-  for (let i = 0; i < 40; i++) {   // the new address takes a moment to resolve
-    try { const r = await fetch(m[0] + "/healthz"); if (r.ok) break; } catch {}
-    await new Promise((r) => setTimeout(r, 3000));
-  }
-  console.log("\n" + "=".repeat(66));
-  console.log("  SHARE THIS LINK WITH YOUR TEAM:\n\n    " + m[0]);
-  console.log("\n  They sign in with any username + the password you just chose.");
-  console.log("  Keep this window open while people use it. Close it to stop sharing.");
-  console.log("=".repeat(66) + "\n");
-  if (!process.env.SHARE_NO_OPEN) spawn("cmd", ["/c", "start", "", m[0]], { detached: true, windowsHide: true });
+// the tunnel is watched too: Cloudflare sometimes drops a free link (sleep, Wi-Fi change) while cloudflared keeps
+// running, so a link that stops answering is replaced with a fresh one and share-link.txt is updated
+let tunnel = null, link = null, firstLink = true, linkFails = 0, appFails = 0;
+const startTunnel = () => {
+  console.log("\nOpening the share link (takes ~10 seconds)…");
+  link = null; linkFails = 0;
+  const t = spawn(cf, ["tunnel", "--no-autoupdate", "--url", "http://127.0.0.1:4777"], { cwd: APP, stdio: ["ignore", "pipe", "pipe"] });
+  tunnel = t;
+  let shown = false;
+  const onData = async (d) => {
+    const m = String(d).match(/https:\/\/[a-z0-9-]+\.trycloudflare\.com/);
+    if (!m || shown) return; shown = true;
+    fs.writeFileSync(path.join(APP, "share-link.txt"), m[0] + "\n");
+    console.log("Link created — waiting for it to go live on the internet (up to a minute)…");
+    for (let i = 0; i < 40; i++) {   // the new address takes a moment to resolve
+      try { const r = await fetch(m[0] + "/healthz"); if (r.ok) break; } catch {}
+      await new Promise((r) => setTimeout(r, 3000));
+    }
+    if (tunnel !== t) return;
+    link = m[0];
+    console.log("\n" + "=".repeat(66));
+    console.log("  SHARE THIS LINK WITH YOUR TEAM:\n\n    " + m[0]);
+    console.log("\n  They sign in with any username + the password you just chose.");
+    console.log("  Keep this window open while people use it. Close it to stop sharing.");
+    console.log("=".repeat(66) + "\n");
+    if (firstLink && !process.env.SHARE_NO_OPEN) spawn("cmd", ["/c", "start", "", m[0]], { detached: true, windowsHide: true });
+    firstLink = false;
+  };
+  t.stdout.on("data", onData); t.stderr.on("data", onData);
+  t.on("exit", (c) => {
+    if (stopping || tunnel !== t) return;
+    console.log("Share link closed (" + c + ") — opening a new one…"); setTimeout(startTunnel, 3000);
+  });
 };
-tunnel.stdout.on("data", onData); tunnel.stderr.on("data", onData);
-const stop = () => { stopping = true; try { tunnel.kill(); } catch {} try { server?.kill(); } catch {} process.exit(0); };
+const restartTunnel = (why) => { console.log(why + " — replacing the share link…"); const t = tunnel; tunnel = null; try { t?.kill(); } catch {} startTunnel(); };
+startTunnel();
+setInterval(async () => {
+  if (stopping) return;
+  if (await up()) appFails = 0;
+  else if (++appFails >= 3 && !server) { appFails = 0; console.log("The app stopped — starting it again…"); startApp(); }
+  if (!link) return;
+  let ok = false;
+  try { ok = (await fetch(link + "/healthz", { signal: AbortSignal.timeout(15000) })).ok; } catch {}
+  linkFails = ok ? 0 : linkFails + 1;
+  if (linkFails >= 3) restartTunnel("The share link stopped answering");
+}, 60000);
+const stop = () => { stopping = true; try { tunnel?.kill(); } catch {} try { server?.kill(); } catch {} process.exit(0); };
 process.on("SIGINT", stop); process.on("SIGTERM", stop);
-tunnel.on("exit", (c) => { console.log("Share link closed (" + c + ")."); stop(); });

@@ -359,10 +359,13 @@ export async function makeInImage(o) {
   const offer = String(o.offer || "").trim();
   const cand = path.join(workDir, "candidates"); fs.mkdirSync(cand, { recursive: true });
   const fetcher = makeFetcher({ fetchImpl, gapMs: 1000 }), feeds = feedFetcher(fetchImpl);   // a handful of article pages, a second apart per site
-  const t0 = Date.now(), timing = {}; const lap = (k) => { timing[k] = +((Date.now() - t0) / 1000).toFixed(1); };
+  const t0 = Date.now(), timing = {};
+  // a second round of articles gets extra seconds of its own: a no-match after one set of articles is worse than a slower ad
+  let extraSeconds = 0; const budget = () => studio.budgetSeconds + extraSeconds;
+  const lap = (k) => { timing[k] = +((Date.now() - t0) / 1000).toFixed(1); };
   // every AI step must leave time for the rest (the recording needs ~30 s): when Gemini is overloaded the run stops
   // with a clear message inside the 2-minute budget instead of waiting on busy models
-  const timed = (p, reserveMs) => { let t; const left = studio.budgetSeconds * 1000 - (Date.now() - t0) - reserveMs;
+  const timed = (p, reserveMs) => { let t; const left = budget() * 1000 - (Date.now() - t0) - reserveMs;
     return Promise.race([p, new Promise((_, no) => { t = setTimeout(() => no(new Error(left < 20000 ? "This ad ran out of time waiting for the AI (Gemini), which is slow or overloaded right now. Try again in a minute." : "The AI (Gemini) is overloaded right now and did not answer in time. Try again in a minute.")), Math.max(8000, left)); })]).finally(() => clearTimeout(t)); };
   /** @type {Record<string, any>} */
   const result = { version: studio.version, prompts: STUDIO_PROMPTS, strip: STRIP_VERSION, brand, product, offer: offer || null, mock: true,
@@ -531,7 +534,7 @@ export async function makeInImage(o) {
     const maxChecks = studio.product.maxChecks || 6;
     const tryOpts = {
       maxTries: maxChecks,
-      outOfTime: () => Date.now() - t0 > (studio.budgetSeconds - 68) * 1000,   // leave the articles, the match and the recording their time
+      outOfTime: () => Date.now() - t0 > (budget() - 68) * 1000,   // leave the articles, the match and the recording their time
       prepare: async (/** @type {any} */ got, /** @type {"auto"|"photo"} */ mode) => {
         const i = got.idx, out = path.join(assets, "product.png");
         const c = JSON.parse((await py(["cutout.py", "product", got.f, out, ...(mode === "photo" ? ["--photo"] : [])])).trim().split("\n").pop());
@@ -562,7 +565,7 @@ export async function makeInImage(o) {
     // nothing usable among the first pictures (a brand site full of offer banners): one more round on the next pictures
     // found online — classified the same way, never the same address again, within the same limit of checks and time
     const used = () => tried.checks.filter((c) => c.method).length;
-    if (!tried.got && !userPic && !userFile && products.length > pThumbs.length && used() < maxChecks && Date.now() - t0 < (studio.budgetSeconds - 78) * 1000) {
+    if (!tried.got && !userPic && !userFile && products.length > pThumbs.length && used() < maxChecks && Date.now() - t0 < (budget() - 78) * 1000) {
       say(34, "assets", "No usable product photo among the first pictures — looking at more pictures found online…");
       const more = (await thumbs(products.slice(10), "q", 10)).map((x) => ({ ...x, n: x.n + 100 }));
       const cls = more.length ? await timed(ask("You sort product pictures for a display ad. You only judge the pictures shown.",
@@ -577,7 +580,7 @@ export async function makeInImage(o) {
         tried = { ...second, checks: [...tried.checks, ...second.checks] };
       }
     }
-    if (!tried.got && !service && !userPic && !userFile && used() < maxChecks && Date.now() - t0 < (studio.budgetSeconds - 78) * 1000) {
+    if (!tried.got && !service && !userPic && !userFile && used() < maxChecks && Date.now() - t0 < (budget() - 78) * 1000) {
       say(35, "assets", `Searching again for ${brand} ${product} (official product pictures)…`);
       const again = [...(await imageSearch(`${brand} ${product} official product`, { fetchImpl }).catch(() => [])), ...(await imageSearch(`${brand} ${product} png`, { fetchImpl, transparent: true }).catch(() => []))];
       const seenA = new Set([...candidates.map((x) => x.url), ...products.map((x) => x.url)]);
@@ -594,7 +597,7 @@ export async function makeInImage(o) {
         tried = { ...third, checks: [...tried.checks, ...third.checks] };
       }
     }
-    if (!tried.got && service && !userPic && !userFile && used() < maxChecks && Date.now() - t0 < (studio.budgetSeconds - 78) * 1000) {
+    if (!tried.got && service && !userPic && !userFile && used() < maxChecks && Date.now() - t0 < (budget() - 78) * 1000) {
       const what = [product, known?.category || ""].join(" ").replace(/\b(app|service|delivery|booking|online)\b/gi, " ").replace(/\s+/g, " ").trim() || product;
       say(35, "assets", `Looking for a clean photo of ${what} for the ad…`);
       const stock = (await imageSearch(`${what} photo site:unsplash.com OR site:pexels.com`, { fetchImpl }).catch(() => [])).filter((x) => /unsplash\.com|pexels\.com/.test(x.host) && x.thumb);
@@ -665,7 +668,8 @@ export async function makeInImage(o) {
     for (let round = 1; round <= 2 && !ok.length; round++) {
       let short = usableShort.filter((x) => !triedUrls.has(x.url)).slice(0, studio.fetchArticles);
       if (round === 2) {
-        if (Date.now() - t0 > (studio.budgetSeconds - 55) * 1000) { result.secondArticleRound = "skipped: not enough time left"; break; }
+        extraSeconds = studio.secondRoundExtraSeconds ?? 40;
+        if (Date.now() - t0 > (budget() - 55) * 1000) { result.secondArticleRound = "skipped: not enough time left"; break; }
         if (short.length < 3) {   // ask for more fitting articles from the same list, never the ones already tried
           const rest = items.map((x, i) => ({ x, i })).filter(({ x }) => !triedUrls.has(x.url) && !rivals(x.title));
           const more = rest.length ? await timed(ask("You pick articles for contextual ads from the list given only.",
@@ -766,7 +770,7 @@ export async function makeInImage(o) {
     const refused = new Set();   // an article refused for its page (wall, no phone layout, blanked) is not tried again with another picture
     for (const c of ok.filter((x, i, all) => all.findIndex((y) => y.a.url === x.a.url && y.im.id === x.im.id) === i).slice(0, 4)) {
       if (refused.has(c.a.url)) continue;
-      if (out === null && result.renderProblems?.length && (Date.now() - t0) / 1000 > studio.budgetSeconds - 32) { result.renderProblems.push({ url: c.a.url, error: "not tried: the time budget was used up" }); break; }
+      if (out === null && result.renderProblems?.length && (Date.now() - t0) / 1000 > budget() - 32) { result.renderProblems.push({ url: c.a.url, error: "not tried: the time budget was used up" }); break; }
       say(72, "render", `Recording the ad on “${c.a.headline.slice(0, 70)}”…`);
       try {
         out = client
