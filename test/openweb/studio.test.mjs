@@ -151,6 +151,18 @@ test("logo display: reversed (white / black) for a one-colour logo that would no
   assert.equal(logoMode({ kind: "badge", ink: "#e21f26", behind: "#ffd100", style: "fresh" }), "badge");       // Maggi's oval
   assert.equal(logoMode({ kind: "photo", ink: "#888888", behind: "#222222", style: "bold" }), "chip");
   assert.equal(logoMode({ kind: "mark", ink: "#4a0e2e", behind: "#2a0819", style: "luxe" }), "white");
+  // Swiggy (2026-10-29): an orange logo with a white S on the orange strip vanished on a frosted chip; it is now its
+  // reversed copy (white, the S cut through to the orange); without that copy the chip is still the fallback
+  assert.equal(logoMode({ kind: "mark", ink: "#fe5005", light: 0.135, behind: "#ff5200", style: "journey", reverse: true }), "reverse");
+  assert.equal(logoMode({ kind: "mark", ink: "#fe5005", light: 0.135, behind: "#ff5200", style: "journey" }), "chip");
+  assert.equal(logoMode({ kind: "mark", ink: "#fe5005", light: 0.135, behind: "#ffffff", style: "fresh", reverse: true }), "colour");
+  assert.equal(logoMode({ kind: "mark", ink: "#ffd100", light: 0.2, behind: "#ffe14d", style: "fresh", reverse: true }), "chip", "white on yellow would not stand out either");
+  const html = stripHtml({ brand: "Swiggy", headline: "Freshness delivered in minutes", cta: "Order now", colour: "#ff5200", productUrl: "/a/product.png", productMode: "none",
+    logoUrl: "/a/logo.png", logoReverseUrl: "/a/logo_reverse.png", logoKind: "mark", logoInk: "#fe5005", logoLight: 0.135, style: "journey" });
+  assert.match(html, /<div class="lg reverse"><img src="\/a\/logo_reverse.png"/);
+  // the journey route is not drawn over a real photo (its pin landed on a person's face)
+  const scene = stripHtml({ brand: "Swiggy", headline: "h", cta: "Order now", colour: "#ff5200", productUrl: "/a/p.png", productMode: "scene", style: "journey", motif: "pin" });
+  assert.match(scene, /\.rt\{display:none\}/); assert.doesNotMatch(html, /\.rt\{display:none\}/);
 });
 
 test("topic matching over sitemap URLs: words taken from the URL, more matches rank first, then newer", () => {

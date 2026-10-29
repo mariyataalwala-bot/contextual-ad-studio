@@ -4,7 +4,7 @@ usage: python cutout.py product <in> <out.png> [--photo]   → prints JSON {meth
        python cutout.py colour  <logo>           → prints JSON {hex, light}
 product methods: "alpha" (the picture already has a transparent background), "plain-bg" (a plain studio background was
 removed from the edges inwards), "photo" (a real photo: kept as it is and shown as a card, never cut out by guessing)."""
-import sys, json
+import os, sys, json
 import numpy as np, cv2
 from PIL import Image
 
@@ -59,7 +59,7 @@ def product(src, dst, force_photo=False):
                 method = 'plain-bg'
     out = trim(a) if method != 'photo' else a
     Image.fromarray(out).save(dst)
-    print(json.dumps({'method': method, 'w': int(out.shape[1]), 'h': int(out.shape[0])}))
+    print(json.dumps({'method': method, 'clear': round(float((a[..., 3] < 20).mean()), 3), 'w': int(out.shape[1]), 'h': int(out.shape[0])}))
 
 def colour(src):
     a = load_rgba(src)
@@ -126,8 +126,16 @@ def logo(src, dst):
         # distinct colours that matter (at least 10% of the logo and clearly different from the main one)
         colours = 1 + sum(1 for j in order[1:] if counts[j] / counts.sum() >= 0.10 and np.abs(cen[j] - cen[order[0]]).max() > 60)
     Image.fromarray(out).save(dst)
+    reverse = None
+    if light >= 0.02 and kind == 'mark' and len(vis):
+        lo = float(min(ink))   # the ink's darkest channel; a white pixel is 255 in every channel
+        t = np.clip((out[..., :3].min(axis=2).astype(np.float32) - lo) / max(255 - lo, 1), 0, 1)
+        rev = np.zeros_like(out); rev[..., :3] = 255
+        rev[..., 3] = (out[..., 3].astype(np.float32) * (1 - t)).astype(np.uint8)
+        reverse = os.path.splitext(dst)[0] + '_reverse.png'
+        Image.fromarray(rev).save(reverse)
     lum = (0.2126 * ink[0] + 0.7152 * ink[1] + 0.0722 * ink[2]) / 255
-    print(json.dumps({'kind': kind, 'ink': '#%02x%02x%02x' % ink, 'lum': round(float(lum), 3), 'fill': round(float(fill), 3), 'keyed': not real_alpha and kind != 'photo', 'colours': int(colours), 'light': round(light, 3), 'w': int(out.shape[1]), 'h': int(out.shape[0])}))
+    print(json.dumps({'kind': kind, 'ink': '#%02x%02x%02x' % ink, 'lum': round(float(lum), 3), 'fill': round(float(fill), 3), 'keyed': not real_alpha and kind != 'photo', 'colours': int(colours), 'light': round(light, 3), 'reverse': reverse, 'w': int(out.shape[1]), 'h': int(out.shape[0])}))
 
 if __name__ == '__main__':
     if sys.argv[1] == 'product': product(sys.argv[2], sys.argv[3], '--photo' in sys.argv[4:])

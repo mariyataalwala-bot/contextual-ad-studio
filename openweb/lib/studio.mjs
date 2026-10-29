@@ -186,7 +186,7 @@ export const foreignSite = (host) => /\.(?:(?:co|com|org|net|gov|ac)\.)?(?:ee|fr
 // pictures that show exactly this product are tried, best kind first; banners and irrelevant pictures never are.
 // Lifestyle photos only for food, drinks and services, where the ad shows them as a scene behind the copy.
 export const PICTURE_KINDS = ["cutout", "product_on_background", "lifestyle", "promo_banner", "irrelevant"];
-const PICTURE_GUIDE = "cutout (the product alone on a transparent or plain white/single-colour background), product_on_background (the product clearly the main subject on a table, plate, surface or simple setting), lifestyle (a scene where the product is used or served, people or several props around it), promo_banner (any headline, offer, price or campaign text over the picture, an ad or web banner), irrelevant (not this product)";
+const PICTURE_GUIDE = "cutout (the product alone on a transparent or plain white/single-colour background), product_on_background (the product clearly the main subject on a table, plate, surface or simple setting), lifestyle (a scene where the product is used or served, people or several props around it), promo_banner (any headline, offer, price or campaign text over the picture, an ad or web banner, or website / app decoration art: illustrated or 3D-rendered objects, icons, coins or confetti floating on an empty background), irrelevant (not this product)";
 const KIND_ORDER = { cutout: 0, product_on_background: 1, lifestyle: 2 };
 /** @param {any} pick the AI's answer @param {any[]} thumbs P pictures ({ n, url, … }) @returns {any[]} pictures to try, best first */
 export function productCandidates(pick, thumbs, { lifestyleOk = false, max = 6 } = {}) {
@@ -467,7 +467,7 @@ export async function makeInImage(o) {
 
     // 3) product picture → cut-out (or scene photo); logo; brand colour
     const assets = path.join(workDir, "assets"); fs.mkdirSync(assets, { recursive: true });
-    let logoFile = null, productMode = /** @type {"alpha"|"plain-bg"|"photo"|"scene"|"none"} */ ("photo"), copy = { headline: "", subline: "", cta: "" };
+    let logoFile = null, logoReverseFile = /** @type {string|null} */ (null), productMode = /** @type {"alpha"|"plain-bg"|"photo"|"scene"|"none"} */ ("photo"), copy = { headline: "", subline: "", cta: "" };
     const style = STYLES.includes(o.style) ? o.style : STYLES.includes(known?.style) ? known.style : STYLES.includes(pick.style) ? pick.style : "bold";
     const motif = known?.motif || pick.motif || "none";
     if (!client) {
@@ -506,7 +506,7 @@ export async function makeInImage(o) {
         await py(["trim_logo.py", f]).catch(() => {});
         // background keyed out (also inside letters), so the logo sits directly on the ad — no white patch behind it
         const lg = await py(["cutout.py", "logo", f, path.join(assets, "logo_clean.png")]).then((t) => JSON.parse(t.trim().split(/\r?\n/).pop())).catch(() => null);
-        if (lg) { logoFile = path.join(assets, "logo_clean.png"); Object.assign(logoInfo, { kind: lg.kind, ink: lg.ink, light: lg.light, keyed: lg.keyed }); } }
+        if (lg) { logoFile = path.join(assets, "logo_clean.png"); logoReverseFile = lg.reverse && fs.existsSync(lg.reverse) ? lg.reverse : null; Object.assign(logoInfo, { kind: lg.kind, ink: lg.ink, light: lg.light, keyed: lg.keyed }); } }
     }
 
     // every finished product picture is checked by AI before it goes into the ad (a stage of its own — the article checks
@@ -527,6 +527,7 @@ export async function makeInImage(o) {
         return { ...c, previewFile: pv, preview: path.relative(workDir, pv).replace(/\\/g, "/") };
       },
       check: async (/** @type {any} */ got, /** @type {any} */ c) => {
+        if (c.method === "photo" && (c.clear || 0) > 0.3) return { ok: false, kind: "promo_banner", problem: `a graphic on a transparent background (${Math.round(c.clear * 100)}% see-through, e.g. objects floating on nothing), not a photograph` };
         const imgs = [{ label: "PRODUCT PICTURE to check (shown on a grey checkerboard: checkerboard = transparent)", file: c.previewFile }];
         if (got.x.file) imgs.push({ label: `Reference: the search thumbnail it came from ("${got.x.title}" on ${got.x.host})`, file: got.x.file });
         let lpv = null; if (!logoChecked) { lpv = path.join(checkDir, "logo.jpg"); await py(["cutout.py", "preview", logoFile, lpv]); imgs.push({ label: "LOGO PNG to check", file: lpv }); }
@@ -536,7 +537,7 @@ export async function makeInImage(o) {
           (service && c.method === "photo"
             ? `${brand} is a service (${known?.category || pick.product_name || product}): there is no pack to show. ok when this is ONE appealing photo of what the service gives people — for food delivery, tempting food or a meal; for travel, the destination, stay or journey; for an app, it in use — clear and well lit. A phone, hands, a table or several dishes in one shot are fine. `
             : `ok only if exactly this product (right brand, the variant asked for, current pack) is clearly the main subject, complete, not cut off or damaged. `) +
-          `Never ok: banner, headline, offer or price text over the picture; people or models as the focus; other brands' products; a watermark; a collage.\n` +
+          `Never ok: banner, headline, offer or price text over the picture; people or models as the focus; other brands' products; a watermark; a collage; website or app decoration art (illustrated or 3D-rendered food, icons, coins, confetti or boxes floating on an empty or transparent background — it must be a real photograph).\n` +
           `kind: what the picture is. picture_problem: true when the problem is in the original picture itself, false when only the cut-out went wrong.` +
           (lpv ? `\nLOGO PNG: logo_ok only if it is ${brand}'s own logo, complete and legible, and nothing else (no other logos, no photo around it).` : ""),
           VERIFY_SCHEMA, imgs, "medium"), 50000).catch((e) => { if (/overloaded/.test(e.message)) throw e; return { ok: false, problem: "the check could not run: " + e.message, picture_problem: true, logo_ok: false }; });
@@ -737,12 +738,13 @@ export async function makeInImage(o) {
     let fontsCss = fs.readFileSync(path.join(FONTS, "fonts.css"), "utf8").replace(/url\((f\d+\.woff2)\)/g, `url(${ASSET_URL}$1)`);
     const files = client ? {} : { ["product.png"]: path.join(assets, "product.png") };
     if (logoFile) files["logo" + path.extname(logoFile)] = logoFile;
+    if (logoFile && logoReverseFile) files["logo_reverse.png"] = logoReverseFile;
     for (const f of fs.readdirSync(FONTS).filter((x) => x.endsWith(".woff2"))) files[f] = path.join(FONTS, f);
     let html = null;
     if (!client) {
       const extra = await styleFonts(style, path.join(o.indexDir || path.join(workDir, "..", ".."), "_fonts"), fetchImpl).catch(() => null);   // no font → the design's fallback font
       if (extra) { fontsCss += "\n" + extra.css; Object.assign(files, extra.files); }
-      html = stripHtml({ brand, ...copy, colour: result.brandLook.colour, accent: result.brandLook.accent, productUrl: ASSET_URL + "product.png", productMode, logoUrl: logoFile ? ASSET_URL + "logo" + path.extname(logoFile) : null, logoKind: result.brandLook.logo?.kind, logoInk: result.brandLook.logo?.ink, logoLight: result.brandLook.logo?.light, style, motif });
+      html = stripHtml({ brand, ...copy, colour: result.brandLook.colour, accent: result.brandLook.accent, productUrl: ASSET_URL + "product.png", productMode, logoUrl: logoFile ? ASSET_URL + "logo" + path.extname(logoFile) : null, logoKind: result.brandLook.logo?.kind, logoInk: result.brandLook.logo?.ink, logoLight: result.brandLook.logo?.light, logoReverseUrl: logoFile && logoReverseFile ? ASSET_URL + "logo_reverse.png" : null, style, motif });
       fs.writeFileSync(path.join(workDir, "creative.html"), `<!doctype html><meta charset="utf-8"><!-- ${STRIP_VERSION} (${style}): open inside the mock renderer (assets are served from ${ASSET_URL}) -->\n${html}`);
     }
     const clientHold = client ? Math.min(9000, Math.max(5000, Math.round((client.seconds || 6) * 1000))) : 0;

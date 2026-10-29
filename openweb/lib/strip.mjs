@@ -26,12 +26,13 @@ export const contrast = (a, b) => { const x = relLum(a), y = relLum(b); return (
 // how the logo is shown on the colour behind it: "colour" (stands out as it is), "white" / "black" (reversed, one colour),
 // "badge" (a filled logo with its own background, e.g. Maggi's oval), "chip" (could not be separated: faint frosted chip)
 // A logo with light parts (Sprite's white outline, a white letter inside a coloured disc) loses them when shown
-// all-white, so it keeps its colours (or, when even that does not stand out, sits on a faint frosted chip).
-export function logoMode({ kind, ink, light = 0, behind, style }) {
+// all-white, so it keeps its colours; when its colour is the strip's own (Swiggy's orange logo on an orange strip) it is
+// shown reversed: white, with the light parts cut through to the strip ("reverse"); a faint frosted chip is the last resort.
+export function logoMode({ kind, ink, light = 0, behind, style, reverse = false }) {
   if (kind === "badge") return "badge";
   if (kind === "photo") return "chip";
   const k = hex(ink) || "#222222";
-  if (light >= 0.08) return contrast(k, behind) >= 2 ? "colour" : "chip";
+  if (light >= 0.08) return contrast(k, behind) >= 2.6 ? "colour" : reverse && contrast("#ffffff", behind) >= 2.2 ? "reverse" : "chip";
   if ((style === "tech" || style === "luxe") && relLum(behind) < 0.25) return "white";   // sleek and elegant designs: one-colour logo
   if (contrast(k, behind) >= 3.2) return "colour";
   return relLum(behind) < 0.4 ? "white" : "black";
@@ -171,7 +172,8 @@ function design(style, o, t) {
 .lg,.tx,.cta{z-index:2}
 .rt{position:absolute;right:4cqw;bottom:3cqw;width:30cqw;height:calc(var(--sh) - 7cqw);max-height:48cqh;z-index:3;overflow:visible}
 .rt path{fill:none;stroke:#fff;stroke-width:1.1;stroke-dasharray:2.2 2.6;stroke-linecap:round;stroke-dashoffset:0;opacity:.95;filter:drop-shadow(0 0 .4cqw rgba(0,0,0,.5))}
-.rt .mk{opacity:0}
+.rt .mk{opacity:0}${scene ? `
+.rt{display:none}` : ""}
 :host([data-go]) .pa{animation:panIn .7s .1s cubic-bezier(.2,.9,.25,1) forwards}
 :host([data-go]) .rt path{animation:drawPath 1.8s 1.1s ease-in-out forwards}
 :host([data-go]) .rt .mk{animation:fade .4s 2.7s forwards}
@@ -186,7 +188,7 @@ function design(style, o, t) {
 }
 
 /**
- * @param {{ brand: string, headline: string, subline?: string, cta: string, colour: string, accent?: string|null, productUrl: string, productMode: "alpha"|"plain-bg"|"photo"|"scene"|"none", logoUrl?: string|null, logoKind?: string|null, logoInk?: string|null, logoLight?: number, style?: string, motif?: string }} o
+ * @param {{ brand: string, headline: string, subline?: string, cta: string, colour: string, accent?: string|null, productUrl: string, productMode: "alpha"|"plain-bg"|"photo"|"scene"|"none", logoUrl?: string|null, logoReverseUrl?: string|null, logoKind?: string|null, logoInk?: string|null, logoLight?: number, style?: string, motif?: string }} o
  */
 export function stripHtml(o) {
   const style = STYLES.includes(o.style) ? o.style : "bold";
@@ -201,8 +203,8 @@ export function stripHtml(o) {
   const ctaBg = light ? "#141414" : "#ffffff", ctaInk = light ? "#ffffff" : contrast(c, "#ffffff") >= 3 ? c : "#141414";
   // the colour right behind the logo in each design, for the contrast check
   const behind = { bold: c, luxe: mix(c, "#000000", luminance(c) > 0.5 ? 0.55 : 0.25), sport: mix(c, "#000000", 0.15), fresh: mix(c, "#ffffff", 0.12), tech: "#0b0e15", journey: c }[style];
-  const lmode = o.logoUrl ? logoMode({ kind: o.logoKind || "mark", ink: o.logoInk, light: o.logoLight || 0, behind, style }) : "text";
-  const logo = o.logoUrl ? `<div class="lg ${lmode}"><img src="${esc(o.logoUrl)}" alt="${esc(o.brand)}"></div>` : `<div class="lg lgt">${esc(o.brand)}</div>`;
+  const lmode = o.logoUrl ? logoMode({ kind: o.logoKind || "mark", ink: o.logoInk, light: o.logoLight || 0, behind, style, reverse: !!o.logoReverseUrl }) : "text";
+  const logo = o.logoUrl ? `<div class="lg ${lmode}"><img src="${esc(lmode === "reverse" ? o.logoReverseUrl : o.logoUrl)}" alt="${esc(o.brand)}"></div>` : `<div class="lg lgt">${esc(o.brand)}</div>`;
   const halo = style === "luxe" ? "#f4e7cf" : mix(c, "#ffffff", 0.86);
   const back = style === "bold" ? `${scene ? "" : panel ? `<div class="pn"></div>` : ""}<div class="ring"></div>` : style === "luxe" ? `<div class="ring"></div>` : "";
   return `<style>
@@ -220,6 +222,7 @@ export function stripHtml(o) {
 .lg.colour img{filter:drop-shadow(0 .2cqw .6cqw rgba(0,0,0,.18))}
 .lg.white img{filter:brightness(0) invert(1) drop-shadow(0 .2cqw .7cqw rgba(0,0,0,.28))}
 .lg.black img{filter:brightness(0);opacity:.86}
+.lg.reverse img{filter:drop-shadow(0 .2cqw .7cqw rgba(0,0,0,.28))}
 .lg.badge img{filter:drop-shadow(0 .35cqw .9cqw rgba(0,0,0,.3))}
 .lg.chip{padding:.5cqw 1.4cqw;border-radius:1.2cqw;background:rgba(255,255,255,.14);border:.15cqw solid rgba(255,255,255,.32);-webkit-backdrop-filter:blur(.8cqw);backdrop-filter:blur(.8cqw)}
 .lgt{font:800 3.5cqw/1 Poppins,system-ui;color:${ink};letter-spacing:.03em;text-shadow:0 .2cqw .8cqw rgba(0,0,0,.2)}
