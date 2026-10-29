@@ -257,6 +257,21 @@ export function ctaFor({ rules = [], ctas = [], known = null, product = "", aiCa
   return { cta: ctas.includes(aiCta) ? aiCta : "Shop now", why: "no rule fits — the AI's choice" };
 }
 
+// The brand's own recent ads — the reference for the look and voice of the new ad: its official commercials found on
+// YouTube (title, channel and a still of each) plus the campaigns and ad look recorded in the brand knowledge.
+// The YouTube list is cached for a week per brand + product.
+export async function recentAdsRef(brand, product, { findAds = null, known = null, cacheFile = null, timeoutMs = 20000 } = {}) {
+  const key = `${brand}|${product}`.toLowerCase().replace(/[^a-z0-9|]/g, "");
+  let cache = {}; try { cache = cacheFile ? JSON.parse(fs.readFileSync(cacheFile, "utf8")) : {}; } catch { /* first use */ }
+  let ads = cache[key] && Date.now() - cache[key].t < 7 * 864e5 ? cache[key].ads : null;
+  if (!ads && findAds) {
+    let t; ads = await Promise.race([findAds({ brand, product }), new Promise((ok) => { t = setTimeout(() => ok(null), timeoutMs); })]).catch(() => null).finally(() => clearTimeout(t));
+    ads = ads && ads.filter((a) => a && a.id).slice(0, 6).map((a) => ({ id: a.id, title: a.title || "", channel: a.channel || null, url: `https://www.youtube.com/watch?v=${a.id}`, still: `https://i.ytimg.com/vi/${a.id}/hqdefault.jpg` }));
+    if (ads && cacheFile) { cache[key] = { t: Date.now(), ads }; try { fs.mkdirSync(path.dirname(cacheFile), { recursive: true }); fs.writeFileSync(cacheFile, JSON.stringify(cache)); } catch { /* cache only */ } }
+  }
+  return { ads: ads || [], campaigns: (known?.campaigns || []).slice(0, 4), adLook: known?.adLook || null };
+}
+
 const TOPIC_SCHEMA = { type: "object", properties: { words: { type: "array", items: { type: "string" } }, competitors: { type: "array", items: { type: "string" } } }, required: ["words"] };
 
 // ---------- AI prompts (versioned: STUDIO_PROMPTS) ----------
@@ -318,7 +333,7 @@ export const words = (s, n) => {
 };
 
 /**
- * @param {{ brand: string, product: string, offer?: string, productImage?: string, style?: string, brands?: any, clientAd?: { file: string, type: "image"|"video", name?: string, seconds?: number }|null, workDir: string, indexDir?: string, studio: any, cfg: any, store: any,
+ * @param {{ brand: string, product: string, recentAds?: ((q: { brand: string, product?: string }) => Promise<any[]>)|null, offer?: string, productImage?: string, style?: string, brands?: any, clientAd?: { file: string, type: "image"|"video", name?: string, seconds?: number }|null, workDir: string, indexDir?: string, studio: any, cfg: any, store: any,
  *   ask: Function, fetchImpl?: any, py: (args: string[]) => Promise<string>, ffmpeg: (args: string[]) => Promise<any>, chromium?: any, firecrawl?: { key: string }|null, productFile?: string|null,
  *   signal?: AbortSignal, say?: (pct: number, stage: string, msg?: string) => void }} o
  */
@@ -347,12 +362,13 @@ export async function makeInImage(o) {
   // counts only next to one of its product words (so "Char Dham Yatra" stories stay available to Yatra)
   const ownNews = (t) => known ? namesBrand(known, t) : !!rivalMatcher([brand])(t);
   if (known) result.brandProfile = { id: known.id, name: known.name, sub: known.sub, category: known.category };
-  const official = (h) => brandHost(h, brand) || (known?.domains || []).some((d) => { const x = d.replace(/^www\./, ""); return h === x || h.endsWith("." + x); });
+  const official = (h) => !!h && (brandHost(h, brand) || (known?.domains || []).some((d) => { const x = d.replace(/^www\./, ""); return h === x || h.endsWith("." + x); }));
   const client = o.clientAd || null;   // the client's own creative (image or video file): placed as it is, nothing is generated
   if (client) result.creative = { source: "client", file: path.basename(client.file), type: client.type, name: client.name || null };
   try {
     // 1) product pictures, logo candidates and the latest articles — all at once
     say(4, "search", `Searching online for ${brand} ${product}…`);
+    const refP = client ? Promise.resolve({ ads: [], campaigns: [], adLook: null }) : recentAdsRef(brand, product, { findAds: o.recentAds || null, known, cacheFile: path.join(o.indexDir || path.join(workDir, "..", ".."), "_index", "recentads.json") });
     const topicP = ask("You help find articles for contextual ads.",
       `Brand: ${brand}. Product: ${product}.\n${brief ? brief + "\n" : ""}Give 15-25 lowercase single words (a few two-word phrases at most) that would appear in the web address of a news or lifestyle article that is a natural place for this ad — the product type, how and where it is used, occasions, activities, dishes, places (e.g. for running shoes: running, marathon, jogging, walking, workout, fitness, steps, cardio, sneakers; for instant noodles: noodles, recipe, snack, ramen, hostel, monsoon, chai, breakfast). Never the brand name or competitor names.\nAlso competitors: 8-20 rival brands of ${brand} for this product and their product line names (e.g. for a phone: Apple, iPhone, Samsung, Galaxy, Google, Pixel, OnePlus, Xiaomi, Redmi, Vivo, Oppo, Realme).`,
       TOPIC_SCHEMA, [], "medium").catch(() => ({ words: [], competitors: [] }));
@@ -405,6 +421,12 @@ export async function makeInImage(o) {
     if (!client && !pThumbs.length) throw new Error("The product pictures found online could not be downloaded just now (the image host refused). Try again in a minute.");
 
     // 2) AI: the packshot + logo (vision) and the plan — copy, targeting, article shortlist (text) — in parallel
+    const ref = await refP;
+    result.recentAds = ref;
+    const stills = (await Promise.all(ref.ads.slice(0, 4).map(async (a, i) => { const f = await downloadImage(a.still, path.join(cand, `r${i + 1}`), { fetchImpl, fs }).catch(() => null); return f && /\.(jpg|png)$/.test(f) ? { ...a, file: f, n: i + 1 } : null; }))).filter(Boolean);
+    const refLine = ref.ads.length || ref.campaigns.length || ref.adLook
+      ? `The brand's recent ads (the reference for colours, style and voice — the new ad should look and sound like this brand's current advertising):${ref.adLook ? `\n- Ad look: ${ref.adLook}` : ""}${ref.campaigns.length ? `\n- Campaigns: ${ref.campaigns.map((c) => `"${c.name}"${c.year ? ` (${c.year})` : ""}`).join("; ")}` : ""}${ref.ads.length ? `\n- Recent commercials on YouTube: ${ref.ads.map((a) => `"${a.title}"`).join("; ")}` : ""}\n`
+      : "";
     say(16, "understand", client ? "Planning where the ad fits best…" : "Choosing the product photo, logo and style, and writing the copy…");
     const list = items.map((x, i) => `${i + 1}. [${x.section}] ${x.title}`).join("\n");
     const pickP = client ? Promise.resolve({ packshot: 0, packshot_ranked: [], packshot_why: "client's own ad", product_name: product, is_service: false, logo: 0, logo_why: "", brand_colour: "", accent_colour: "", style: "bold", motif: "none" }) : ask(
@@ -413,12 +435,12 @@ export async function makeInImage(o) {
       `1. packshot: the number of the P picture that shows EXACTLY this product as sold in India today. Check, on the pack or item itself: the brand; the exact variant asked for (e.g. "Zero Sugar" vs regular, "Masala" vs another flavour, the model name or number, silver vs gold, size); the current design and logo (not an old pack); Indian packaging (not a US or European pack — fl oz labels, foreign-language text or foreign prices mean a foreign pack). Reject a picture that shows a different variant, a related product, an old design, a foreign pack, several different products, a person or model wearing or holding it, a promotional banner or poster with headline text, a collage or comparison chart, a big text/price overlay, a watermark, or the product cropped or blurred. A plain or transparent background is best, but the product on a table, plate or simple background is fine (the ad can show it as a photo). Prefer the brand's own site and Indian shops. For a service (stays, flights, delivery, apps) pick the photo that best shows the experience. If no picture is exactly right, return 0 — never a near miss. packshot_ranked: every picture that passes all these checks, best first.\n` +
       `   pictures: classify EVERY P picture — kind: ${PICTURE_GUIDE}; exact: true only when it shows exactly this product as described above.\n` +
       `2. product_name: the product's name as written on its page (short).\n3. is_service.\n4. logo: the number of the L picture that is ${brand}'s real current logo on its own — the company that sells ${product}, not another organisation with a similar name. Never a picture with several logos (a logo history / evolution chart, a collage, a sheet of brands), a photo of a shop sign, or a logo inside a larger photo. If several are right, the newest version. 0 if none.\n5. brand_colour: ${brand}'s main brand colour as #rrggbb (as used in its ads and logo). accent_colour: a second colour from ${brand}'s identity that contrasts with brand_colour and with the chosen product's own colours (the product will stand on it).\n6. style — the ad design that suits ${brand} and this product: bold (FMCG, everyday goods, sales, snacks), luxe (jewellery, beauty, premium fashion, watches), sport (shoes, sportswear, fitness gear), fresh (drinks, food, groceries), tech (phones, electronics, gadgets, apps), journey (travel, stays, airlines, delivery and other services). motif: bubbles (fizzy or cold drinks), steam (hot food), sparkle (jewellery, beauty), speed (sport), flight (airlines, travel), pin (stays, places, delivery), none.`,
-      PICK_SCHEMA, [...pThumbs.map((x) => ({ label: `P${x.n} — "${x.title}" on ${x.host}`, file: x.file })), ...lThumbs.map((x) => ({ label: `L${x.n} — "${x.title}" (${x.host})`, file: x.file }))], "medium");
+      PICK_SCHEMA, [...stills.map((x) => ({ label: `R${x.n} — a still from ${brand}'s recent ad "${x.title}" (reference for brand_colour, accent_colour and style only — never the packshot)`, file: x.file })), ...pThumbs.map((x) => ({ label: `P${x.n} — "${x.title}" on ${x.host}`, file: x.file })), ...lThumbs.map((x) => ({ label: `L${x.n} — "${x.title}" (${x.host})`, file: x.file }))], "medium");
     const planP = ask(
       "You plan contextual in-image ads for an Indian digital publisher network. You write short, honest ad copy and pick articles only from the list given.",
-      `Brand: ${brand}\nProduct: ${product}\n${brief ? brief + "\n" : ""}Product pages found: ${[...new Set(products.slice(0, 6).map((x) => x.title))].join(" | ")}\n${offer ? `Offer typed by the user (may be used word for word): ${offer}\n` : ""}\n` +
+      `Brand: ${brand}\nProduct: ${product}\n${brief ? brief + "\n" : ""}${refLine}Product pages found: ${[...new Set(products.slice(0, 6).map((x) => x.title))].join(" | ")}\n${offer ? `Offer typed by the user (may be used word for word): ${offer}\n` : ""}\n` +
       `1. category, audience, contexts (topics and moments where a reader naturally thinks of this product), avoid (topics this ad must never appear next to), competitors (brands that compete with ${brand} on this product, and their product line names — e.g. for a phone: Apple, iPhone, Samsung, Galaxy, Google, Pixel, OnePlus, Xiaomi, Redmi, Vivo, Oppo, Realme; 8-20 names).\n` +
-      `2. Ad copy for a strip over an article photo: headline at most ${studio.copy.maxHeadlineWords} words; subline at most ${studio.copy.maxSublineWords} words, naming the product; cta from the list. ${studio.copy.noClaims} No superlatives like "best" or "No.1". English.\n` +
+      `2. Ad copy for a strip over an article photo: headline at most ${studio.copy.maxHeadlineWords} words; subline at most ${studio.copy.maxSublineWords} words, naming the product; cta from the list. ${studio.copy.noClaims} No superlatives like "best" or "No.1". English. Write in the voice of the brand's recent ads; the brand's own current campaign line (from the campaigns above) may be used as the headline when it fits.\n` +
       `3. shortlist: up to ${studio.shortlist} article numbers from the list below whose topic is a DIRECT fit for this product, best first, each with why. A direct fit is an article about this product's category or about the main thing people buy it for: for a phone — phones, phone features, apps, mobile photography tips, gadgets; for running shoes — running, walking, workouts; for noodles — quick meals, snacks, recipes; for flights or stays — travel and destinations. A loose link ("people take photos on trips", "everyone uses a phone") is NOT a fit: leave such articles out, and return fewer (even none) rather than weak ones. Never: articles about ${brand} itself or any competitor — a review, launch or price story about another company's product of the same kind (another phone, shoe, noodle brand…) is competitor content, even if the product type matches; prefer stories about how people use this kind of product (tips, how-tos, guides, shopping guides without rival brands); death, crime, accidents, disasters, war, illness scares, politics, controversy or negative stories about this kind of product; hard news. The topic must fit the product first. Among fitting stories, prefer ones that do not centre on a named celebrity or politician (an ad over a recognisable face reads as an endorsement, so such pictures are rejected later). Prefer service and lifestyle stories (how-tos, guides, recipes, trips, trends) published recently.\n\nARTICLES:\n${list}`,
       PLAN_SCHEMA(studio.copy.ctas), [], "medium");
     const [pick, plan] = await timed(Promise.all([pickP, planP]), 65000);
@@ -523,6 +545,23 @@ export async function makeInImage(o) {
         tried = { ...second, checks: [...tried.checks, ...second.checks] };
       }
     }
+    if (!tried.got && !service && !userPic && !userFile && used() < maxChecks && Date.now() - t0 < (studio.budgetSeconds - 78) * 1000) {
+      say(35, "assets", `Searching again for ${brand} ${product} (official product pictures)…`);
+      const again = [...(await imageSearch(`${brand} ${product} official product`, { fetchImpl }).catch(() => [])), ...(await imageSearch(`${brand} ${product} png`, { fetchImpl, transparent: true }).catch(() => []))];
+      const seenA = new Set([...candidates.map((x) => x.url), ...products.map((x) => x.url)]);
+      const fresh = again.filter((x) => x.thumb && !seenA.has(x.url) && where(x.host) >= 0).sort((a, b) => where(b.host) - where(a.host)).slice(0, 8);
+      const shotsA = (await thumbs(fresh, "o", 8)).map((x) => ({ ...x, n: x.n + 300 }));
+      const clsA = shotsA.length ? await timed(ask("You sort product pictures for a display ad. You only judge the pictures shown.",
+        `Brand: ${brand}\nProduct: ${product}\n${brief ? brief + "\n" : ""}Classify EVERY picture — kind: ${PICTURE_GUIDE}; exact: true only when it shows exactly this product (the brand, the variant asked for, the current Indian pack — not a foreign pack, an old design or another variant).`,
+        { type: "object", properties: { pictures: PICK_SCHEMA.properties.pictures }, required: ["pictures"] },
+        shotsA.map((x) => ({ label: `P${x.n} — "${x.title}" on ${x.host}`, file: x.file })), "medium"), 40000).catch(() => ({ pictures: [] })) : { pictures: [] };
+      const nextA = productCandidates({ pictures: clsA.pictures || [] }, shotsA, { lifestyleOk });
+      result.productCandidates.push(...nextA.map((x) => ({ url: x.url, kind: x.kind, site: x.host, round: "again" })));
+      if (nextA.length) {
+        const third = await tryProductPictures(await download(nextA, candidates.length + 80), { ...tryOpts, maxTries: Math.max(1, maxChecks - used()) });
+        tried = { ...third, checks: [...tried.checks, ...third.checks] };
+      }
+    }
     if (!tried.got && service && !userPic && !userFile && used() < maxChecks && Date.now() - t0 < (studio.budgetSeconds - 78) * 1000) {
       const what = [product, known?.category || ""].join(" ").replace(/\b(app|service|delivery|booking|online)\b/gi, " ").replace(/\s+/g, " ").trim() || product;
       say(35, "assets", `Looking for a clean photo of ${what} for the ad…`);
@@ -537,7 +576,7 @@ export async function makeInImage(o) {
     }
     result.pngChecks = tried.checks;
     // a service with no usable photo at all: a brand-only ad (logo, colours, copy and motion) rather than no ad
-    if (!tried.got && service) {
+    if (!tried.got) {   // no product picture passed: a brand ad (logo, colours and copy in the style of its recent ads) rather than no ad
       if (logoFile && !logoChecked) {
         const lpv = path.join(checkDir, "logo.jpg"); await py(["cutout.py", "preview", logoFile, lpv]);
         const lv = await timed(ask("You check the finished pictures of a display ad before it is published. Judge only what you see.",
@@ -545,7 +584,8 @@ export async function makeInImage(o) {
           VERIFY_SCHEMA, [{ label: "LOGO PNG to check", file: lpv }], "medium"), 40000).catch(() => ({ logo_ok: false }));
         if (!lv.logo_ok) { result.logoRejected = { ...logoInfo, why: lv.logo_problem || "the logo check failed" }; logoFile = null; logoInfo = null; }
       }
-      say(37, "assets", "No usable photo of the service — making a brand-only ad (logo, colours and copy).");
+      say(37, "assets", `No product photo passed the checks — making a brand ad for ${brand} (logo, colours and copy in the style of its recent ads).`);
+      if (userPic || userFile) result.userPhotoRejected = tried.checks.map((c) => c.problem).filter(Boolean).slice(0, 2).join("; ") || "the photo did not pass the check";
       tried = { ...tried, got: { x: { url: null, page: null, host: null, title: "brand-only ad (no photo)", n: -2, kind: null }, f: "", via: "—" }, c: { method: "none" }, v: { kind: null } };
       result.brandOnly = true;
     }
@@ -578,72 +618,98 @@ export async function makeInImage(o) {
     const rivals0 = rivalMatcher([...(plan.competitors || []), ...(known?.competitors || [])]), rivals = (t) => rivals0(t) || (ownNews(t) ? ["the brand itself"] : null);
     const picked = (plan.shortlist || []).map((s) => ({ ...items[s.n - 1], why: s.why })).filter((x) => x.url);
     result.rivalHeadlinesDropped = picked.filter((x) => rivals(x.title)).map((x) => ({ url: x.url, title: x.title, names: rivals(x.title) }));
-    const short = picked.filter((x) => !rivals(x.title)).slice(0, studio.fetchArticles);
-    if (!short.length) throw new StudioStop("no_match", `No recent article on the media-plan publishers is a good context for ${brand} ${product} right now.`);
-    say(38, "articles", `Reading ${short.length} shortlisted articles…`);
+    const usableShort = picked.filter((x) => !rivals(x.title));
+    if (!usableShort.length) throw new StudioStop("no_match", `No recent article on the media-plan publishers is a good context for ${brand} ${product} right now.`);
     const secOf = new Map([...studio.sections, ...(studio.sitemaps || [])].map((s) => [s.id, s]));
     const reader = makeReader({ fetcher, py, firecrawl: o.firecrawl || null, fetchImpl, timeoutMs: 25000, tmpDir: path.join(store.root, "tmp", "read") });
     const stored = store.listArticles();
-    const got = await Promise.all(short.map(async (s) => {
-      const old = stored.find((a) => a.url === s.url && !a.error && a.images && !a.images.some((im) => im.status === "unavailable") && "free" in a && a.extraction?.version === EXTRACT_VERSION && Date.now() - Date.parse(a.fetchedAt) < 6 * 3600e3);
-      const a = old || await withTimeout(analyseUrl({ url: s.url, publisher: secOf.get(s.section), fetcher, cfg, store, ask: null, fetchImpl, tmpDir: path.join(store.root, "tmp", "img"), reader, imageTimeoutMs: 8000 }), 35000, "Reading the article")
-        .catch((e) => ({ url: s.url, error: { code: e.code || "ERROR", message: String(e.message).slice(0, 200) } }));
-      return { s, a };
-    }));
-    lap("articles");
-    const rejected = [], images = /** @type {any[]} */ ([]);
-    const review = [];   // fitting articles whose text could not be read well enough to check brand safety: for a person, never placed
-    for (const { s, a } of got) {
-      if (a.error) { rejected.push({ url: s.url, title: s.title, why: `could not be read (${a.error.code}${a.error.code === "TIMEOUT" ? ": " + a.error.message : ""})` }); continue; }
-      if (a.free === false) { rejected.push({ url: s.url, title: s.title, why: "subscription article (the page marks it isAccessibleForFree: false)" }); continue; }
-      const ex = a.extraction || { status: "complete", method: a.source, notes: [] };
-      if (ex.status === "none" || ex.status === "headline_only") {
-        const why = `only the headline could be read (${ex.method}) — brand safety can't be checked without the article text`;
-        review.push({ url: s.url, title: a.headline || s.title, why: s.why, problem: why }); rejected.push({ url: s.url, title: s.title, why }); continue;
-      }
-      if (a.canonical && taken.has(urlKey(a.canonical))) { rejected.push({ url: s.url, title: s.title, why: `the same article (${a.canonical}) already carries another brand's ad: ${taken.get(urlKey(a.canonical))}` }); continue; }
-      // page safety (word lists, safety policy): only pages where nothing was flagged; the AI check below sees the text too
-      if (a.safety.state === "unsafe" || a.safety.reasons.some((r) => r !== "SAFETY_AI_UNAVAILABLE" && r !== "SAFETY_CLEAR")) { rejected.push({ url: s.url, title: s.title, why: `page safety: ${a.safety.reasons.join(", ")}`, evidence: a.safety.evidence?.slice(0, 3) }); continue; }
-      const usable = (a.images || []).filter((im) => im.status === "ok" && im.width >= studio.image.minWidth && im.width / im.height >= studio.image.minAspect && im.width / im.height <= studio.image.maxAspect).slice(0, studio.image.perArticle);
-      if (!usable.length) { rejected.push({ url: s.url, title: s.title, why: "no landscape picture big enough for an in-image unit" }); continue; }
-      for (const im of usable) { const rec = store.getImage(im.id); if (rec) images.push({ a, s, im: { ...rec, ...(rec.uses?.[a.id] || {}) } }); }
-    }
-    const rank = new Map(); for (const c of images) { const n = (rank.get(c.a.id) || 0); c.nth = n; rank.set(c.a.id, n + 1); }
-    const pool = images.sort((x, y) => x.nth - y.nth).slice(0, studio.image.maxCandidates);
-    result.reviewArticles = review;
-    const forReview = review.length ? ` ${review.length} fitting article(s) could not be read well enough for the brand-safety check — listed for review, not placed.` : "";
-    if (!pool.length) throw new StudioStop(review.length ? "needs_review" : "no_match", `The shortlisted articles have no usable pictures (${rejected.map((r) => r.why).join("; ")}).${forReview}`);
-    say(52, "images", `Checking ${pool.length} article picture(s)…`);
-    await Promise.all(pool.map(async (c, i) => {   // small JPEG copies for the AI check
-      const raw = await downloadImage(c.im.finalUrl || c.im.src, path.join(cand, `a${i + 1}_src`), { fetchImpl, fs }).catch(() => null);
-      if (raw) { c.file = path.join(cand, `a${i + 1}.jpg`); await ffmpeg(["-loglevel", "error", "-y", "-i", raw, "-vf", "scale=640:-2", "-frames:v", "1", c.file]).catch(() => { c.file = null; }); }
-    }));
-    const shown = pool.filter((c) => c.file && fs.existsSync(c.file)).map((c, i) => ({ ...c, k: i + 1 }));
-    if (!shown.length) throw new Error("The article pictures could not be downloaded for the check.");
-
-    // 5) AI: which picture, with the three checks
-    say(60, "match", "Matching the ad to article photos (context · image · brand safety)…");
+    const rejected = [], review = [];   // review: fitting articles whose text could not be read well enough to check brand safety — for a person, never placed
+    const triedUrls = new Set();
+    let scored = /** @type {any[]} */ ([]), ok = /** @type {any[]} */ ([]), anyPictures = false, k0 = 0;
     let adRef = null;   // the client's creative as the AI sees it (a frame of a video)
     if (client) { adRef = path.join(cand, "client_ad.jpg"); await ffmpeg(["-loglevel", "error", "-y", ...(client.type === "video" ? ["-ss", "1.5"] : []), "-i", client.file, "-vf", "scale=640:-2", "-frames:v", "1", adRef]).catch(() => { adRef = null; }); }
-    const fin = await timed(ask(
-      `You place contextual in-image ads. ${client ? "The client's own ad (shown as AD) will be laid over the lower part of the chosen picture." : "A branded strip will cover the bottom 46% of the chosen picture."} You judge only what the article text and the pictures shown actually contain.`,
-      `${brief ? brief + "\n" : ""}Ad: ${brand} — ${pick.product_name || product} (${plan.category}). ${client ? "The ad is the client's own creative (picture AD)." : `Strip copy: "${copy.headline}" / "${copy.subline}".`}\nCompetitors: ${[...new Set([...(known?.competitors || []), ...(plan.competitors || [])])].join(", ") || "-"}\nAvoid: ${(plan.avoid || []).join(", ") || "-"}\n\n` +
-      // the article (first ~1,400 characters) and the paragraphs right around each picture: what a reader sees next to the ad
-      shown.map((c) => `[${c.k}] Article: "${c.a.headline}"\n   Article text${c.a.extraction?.status === "partial" ? " (only part of the article could be read — judge only this)" : ""}: ${norm(c.a.body || "").slice(0, 1400)}\n   Picture alt/caption: ${c.im.alt || c.im.caption || "-"}\n   Text just above the picture: ${norm(c.im.context?.before || "").slice(-450) || "-"}\n   Text just below the picture: ${norm(c.im.context?.after || "").slice(0, 450) || "-"}`).join("\n") +
-      `\n\nFor every picture k give: context_fit (0-10: 9-10 only when the article is about this product's category or the main thing it is bought for; 6-8 closely related; 5 or less when the link is loose or indirect — e.g. a phone on a road-trip or travel story, shoes on a motorbike trip, noodles on a dal recipe), image_fit (0-10, does the picture's scene suit the product — the right setting or activity), safe (false if the article or picture involves anything in Avoid, tragedy, crime, illness, a negative view of this kind of product (health warnings, "unhealthy", calories, sodium, additives, junk, addiction, safety problems — anywhere in the article text, not only the headline), a competitor's product or logo (an article that reviews, launches, prices or reports on a specific product from another company in the same or a neighbouring category counts — for a phone that includes other tablets, smartwatches, earbuds and laptops), a recognisable celebrity or politician whose face next to the ad could look like an endorsement, or children as the focus for an adult product), safe_why, strip_ok, why (one sentence).`,
-      FINAL_SCHEMA, [...(adRef ? [{ label: "AD — the client's own creative (for reference; do not score it)", file: adRef }] : []), ...shown.map((c) => ({ label: `Picture [${c.k}] (from article ${c.a.headline.slice(0, 70)})`, file: c.file }))], "high"), 32000);
-    lap("ai_match");
-    // a hard check next to the AI's score: the headline or section must name at least one of the product's topic words
-    // (an article about alarms and deep sleep is not an earbuds article, whatever score it gets)
-    const scored = shown.map((c) => { const v = { ...((fin.candidates || []).find((x) => x.k === c.k) || {}) };
-      const hit = topicHit(`${c.a.headline} ${c.a.url}`, [...topicWords, ...(known?.category ? [known.category] : [])]);
-      if (!hit && v.context_fit > 6) { v.context_fit_ai = v.context_fit; v.context_fit = 6; v.why = `${v.why || ""} (Capped at 6/10: the headline and section name none of the product's topics.)`.trim(); }
-      v.topic = hit;
-      return { ...c, v, score: (v.context_fit || 0) * 0.55 + (v.image_fit || 0) * 0.45 }; })
-      .sort((x, y) => (Number(y.v.safe && y.v.strip_ok) - Number(x.v.safe && x.v.strip_ok)) || y.score - x.score);
-    const ok = scored.filter((c) => c.v.safe && c.v.strip_ok && c.score >= studio.minScore && c.v.context_fit >= studio.minContext);
+    // two rounds at most: the first shortlisted articles; then (time allowing) the rest of the shortlist — or a fresh
+    // shortlist of other articles when it runs out — instead of stopping at the first set that does not fit
+    for (let round = 1; round <= 2 && !ok.length; round++) {
+      let short = usableShort.filter((x) => !triedUrls.has(x.url)).slice(0, studio.fetchArticles);
+      if (round === 2) {
+        if (Date.now() - t0 > (studio.budgetSeconds - 55) * 1000) { result.secondArticleRound = "skipped: not enough time left"; break; }
+        if (short.length < 3) {   // ask for more fitting articles from the same list, never the ones already tried
+          const rest = items.map((x, i) => ({ x, i })).filter(({ x }) => !triedUrls.has(x.url) && !rivals(x.title));
+          const more = rest.length ? await timed(ask("You pick articles for contextual ads from the list given only.",
+            `Brand: ${brand}. Product: ${pick.product_name || product} (${plan.category}).\nPick up to 6 more article numbers whose topic is a DIRECT fit (the product's category or the main thing it is bought for), best first. None about ${brand} itself or a competitor; no tragedy, crime, illness or politics. Fewer (even none) rather than weak ones.\n\nARTICLES:\n${rest.slice(0, 160).map(({ x }, j) => `${j + 1}. [${x.section}] ${x.title}`).join("\n")}`,
+            { type: "object", properties: { shortlist: { type: "array", items: { type: "object", properties: { n: { type: "integer" }, why: { type: "string" } }, required: ["n", "why"] } } }, required: ["shortlist"] }, [], "medium"), 30000).catch(() => ({ shortlist: [] })) : { shortlist: [] };
+          const extra = (more.shortlist || []).map((m) => rest.slice(0, 160)[m.n - 1] && { ...rest.slice(0, 160)[m.n - 1].x, why: m.why }).filter((x) => x && x.url && !rivals(x.title));
+          short = [...short, ...extra.filter((x) => !short.some((y) => y.url === x.url))].slice(0, studio.fetchArticles);
+        }
+        if (!short.length) { result.secondArticleRound = "no more fitting articles in the list"; break; }
+        say(56, "articles", `None of the first articles fitted well enough — reading ${short.length} more…`);
+        result.secondArticleRound = short.map((x) => x.title);
+      } else say(38, "articles", `Reading ${short.length} shortlisted articles…`);
+      for (const x of short) triedUrls.add(x.url);
+      const got = await Promise.all(short.map(async (s) => {
+        const old = stored.find((a) => a.url === s.url && !a.error && a.images && !a.images.some((im) => im.status === "unavailable") && "free" in a && a.extraction?.version === EXTRACT_VERSION && Date.now() - Date.parse(a.fetchedAt) < 6 * 3600e3);
+        const a = old || await withTimeout(analyseUrl({ url: s.url, publisher: secOf.get(s.section), fetcher, cfg, store, ask: null, fetchImpl, tmpDir: path.join(store.root, "tmp", "img"), reader, imageTimeoutMs: 8000 }), 35000, "Reading the article")
+          .catch((e) => ({ url: s.url, error: { code: e.code || "ERROR", message: String(e.message).slice(0, 200) } }));
+        return { s, a };
+      }));
+
+      lap(round === 1 ? "articles" : "articles_2");
+      const images = /** @type {any[]} */ ([]);
+      for (const { s, a } of got) {
+        if (a.error) { rejected.push({ url: s.url, title: s.title, why: `could not be read (${a.error.code}${a.error.code === "TIMEOUT" ? ": " + a.error.message : ""})` }); continue; }
+        if (a.free === false) { rejected.push({ url: s.url, title: s.title, why: "subscription article (the page marks it isAccessibleForFree: false)" }); continue; }
+        const ex = a.extraction || { status: "complete", method: a.source, notes: [] };
+        if (ex.status === "none" || ex.status === "headline_only") {
+          const why = `only the headline could be read (${ex.method}) — brand safety can't be checked without the article text`;
+          review.push({ url: s.url, title: a.headline || s.title, why: s.why, problem: why }); rejected.push({ url: s.url, title: s.title, why }); continue;
+        }
+        if (a.canonical && taken.has(urlKey(a.canonical))) { rejected.push({ url: s.url, title: s.title, why: `the same article (${a.canonical}) already carries another brand's ad: ${taken.get(urlKey(a.canonical))}` }); continue; }
+        // page safety (word lists, safety policy): only pages where nothing was flagged; the AI check below sees the text too
+        if (a.safety.state === "unsafe" || a.safety.reasons.some((r) => r !== "SAFETY_AI_UNAVAILABLE" && r !== "SAFETY_CLEAR")) { rejected.push({ url: s.url, title: s.title, why: `page safety: ${a.safety.reasons.join(", ")}`, evidence: a.safety.evidence?.slice(0, 3) }); continue; }
+        const usable = (a.images || []).filter((im) => im.status === "ok" && im.width >= studio.image.minWidth && im.width / im.height >= studio.image.minAspect && im.width / im.height <= studio.image.maxAspect).slice(0, studio.image.perArticle);
+        if (!usable.length) { rejected.push({ url: s.url, title: s.title, why: "no landscape picture big enough for an in-image unit" }); continue; }
+        for (const im of usable) { const rec = store.getImage(im.id); if (rec) images.push({ a, s, im: { ...rec, ...(rec.uses?.[a.id] || {}) } }); }
+      }
+
+      const rank = new Map(); for (const c of images) { const n = (rank.get(c.a.id) || 0); c.nth = n; rank.set(c.a.id, n + 1); }
+      const pool = images.sort((x, y) => x.nth - y.nth).slice(0, studio.image.maxCandidates);
+      if (!pool.length) continue;
+      anyPictures = true;
+      say(round === 1 ? 52 : 60, "images", `Checking ${pool.length} article picture(s)…`);
+      await Promise.all(pool.map(async (c, i) => {   // small JPEG copies for the AI check
+        const raw = await downloadImage(c.im.finalUrl || c.im.src, path.join(cand, `a${round}_${i + 1}_src`), { fetchImpl, fs }).catch(() => null);
+        if (raw) { c.file = path.join(cand, `a${round}_${i + 1}.jpg`); await ffmpeg(["-loglevel", "error", "-y", "-i", raw, "-vf", "scale=640:-2", "-frames:v", "1", c.file]).catch(() => { c.file = null; }); }
+      }));
+      const shown = pool.filter((c) => c.file && fs.existsSync(c.file)).map((c, i) => ({ ...c, k: i + 1 }));
+      if (!shown.length) continue;
+      // 5) AI: which picture, with the three checks
+      say(round === 1 ? 60 : 66, "match", "Matching the ad to article photos (context · image · brand safety)…");
+      const fin = await timed(ask(
+        `You place contextual in-image ads. ${client ? "The client's own ad (shown as AD) will be laid over the lower part of the chosen picture." : "A branded strip will cover the bottom 46% of the chosen picture."} You judge only what the article text and the pictures shown actually contain.`,
+        `${brief ? brief + "\n" : ""}Ad: ${brand} — ${pick.product_name || product} (${plan.category}). ${client ? "The ad is the client's own creative (picture AD)." : `Strip copy: "${copy.headline}" / "${copy.subline}".`}\nCompetitors: ${[...new Set([...(known?.competitors || []), ...(plan.competitors || [])])].join(", ") || "-"}\nAvoid: ${(plan.avoid || []).join(", ") || "-"}\n\n` +
+        // the article (first ~1,400 characters) and the paragraphs right around each picture: what a reader sees next to the ad
+        shown.map((c) => `[${c.k}] Article: "${c.a.headline}"\n   Article text${c.a.extraction?.status === "partial" ? " (only part of the article could be read — judge only this)" : ""}: ${norm(c.a.body || "").slice(0, 1400)}\n   Picture alt/caption: ${c.im.alt || c.im.caption || "-"}\n   Text just above the picture: ${norm(c.im.context?.before || "").slice(-450) || "-"}\n   Text just below the picture: ${norm(c.im.context?.after || "").slice(0, 450) || "-"}`).join("\n") +
+        `\n\nFor every picture k give: context_fit (0-10: 9-10 only when the article is about this product's category or the main thing it is bought for; 6-8 closely related; 5 or less when the link is loose or indirect — e.g. a phone on a road-trip or travel story, shoes on a motorbike trip, noodles on a dal recipe), image_fit (0-10, does the picture's scene suit the product — the right setting or activity), safe (false if the article or picture involves anything in Avoid, tragedy, crime, illness, a negative view of this kind of product (health warnings, "unhealthy", calories, sodium, additives, junk, addiction, safety problems — anywhere in the article text, not only the headline), a competitor's product or logo (an article that reviews, launches, prices or reports on a specific product from another company in the same or a neighbouring category counts — for a phone that includes other tablets, smartwatches, earbuds and laptops), a recognisable celebrity or politician whose face next to the ad could look like an endorsement, or children as the focus for an adult product), safe_why, strip_ok, why (one sentence).`,
+        FINAL_SCHEMA, [...(adRef ? [{ label: "AD — the client's own creative (for reference; do not score it)", file: adRef }] : []), ...shown.map((c) => ({ label: `Picture [${c.k}] (from article ${c.a.headline.slice(0, 70)})`, file: c.file }))], "high"), 32000);
+      lap(round === 1 ? "ai_match" : "ai_match_2");
+      // a hard check next to the AI's score: the headline or section must name at least one of the product's topic words
+      // (an article about alarms and deep sleep is not an earbuds article, whatever score it gets)
+      const scoredR = shown.map((c) => { const v = { ...((fin.candidates || []).find((x) => x.k === c.k) || {}) };
+        const hit = topicHit(`${c.a.headline} ${c.a.url}`, [...topicWords, ...(known?.category ? [known.category] : [])]);
+        if (!hit && v.context_fit > 6) { v.context_fit_ai = v.context_fit; v.context_fit = 6; v.why = `${v.why || ""} (Capped at 6/10: the headline and section name none of the product's topics.)`.trim(); }
+        v.topic = hit;
+        return { ...c, v, score: (v.context_fit || 0) * 0.55 + (v.image_fit || 0) * 0.45 }; })
+        .sort((x, y) => (Number(y.v.safe && y.v.strip_ok) - Number(x.v.safe && x.v.strip_ok)) || y.score - x.score);
+      scored = [...scored, ...scoredR.map((c) => ({ ...c, k: c.k + k0 }))].sort((x, y) => (Number(y.v.safe && y.v.strip_ok) - Number(x.v.safe && x.v.strip_ok)) || y.score - x.score);
+      k0 += shown.length;
+      ok = scored.filter((c) => c.v.safe && c.v.strip_ok && c.score >= studio.minScore && c.v.context_fit >= studio.minContext);
+    }
+    result.reviewArticles = review;
+    const forReview = review.length ? ` ${review.length} fitting article(s) could not be read well enough for the brand-safety check — listed for review, not placed.` : "";
     result.candidates = scored.map((c) => ({ article: c.a.headline, url: c.a.url, image: c.im.finalUrl || c.im.src, ...c.v, score: +c.score.toFixed(1) }));
     result.rejectedArticles = rejected;
+    if (!anyPictures) throw new StudioStop(review.length ? "needs_review" : "no_match", `The shortlisted articles have no usable pictures (${rejected.map((r) => r.why).join("; ")}).${forReview}`);
     if (!ok.length) throw new StudioStop(review.length ? "needs_review" : "no_match", `No article picture passed all three checks right now (best: “${scored[0]?.a.headline}” — ${scored[0]?.v.why || ""} ${scored[0]?.v.safe ? "" : scored[0]?.v.safe_why || ""}).${forReview}`);
 
     // 6) the creative on the chosen picture, recorded on a phone

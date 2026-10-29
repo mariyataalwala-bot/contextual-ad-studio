@@ -843,7 +843,7 @@ function saveData(dataUrl, file) { const m = /^data:[^;]+;base64,(.*)$/.exec(dat
 
 // Open Web contextual placement (openweb/): its own routes and data folder; if its config is broken only that tab is off
 let openweb = null, openwebError = "";
-try { openweb = createOpenWeb({ dataDir: path.join(OUT_ROOT, "openweb"), ask, provider, ffmpeg: (args) => run("ffmpeg", args, { timeout: 120000 }), embed: embedTexts,
+try { openweb = createOpenWeb({ dataDir: path.join(OUT_ROOT, "openweb"), ask, provider, findAds, ffmpeg: (args) => run("ffmpeg", args, { timeout: 120000 }), embed: embedTexts,
   firecrawlKey: () => loadSettings().firecrawlKey || process.env.FIRECRAWL_API_KEY || null,
   py: (args) => run(PY, [path.join(PIPE, "scripts", args[0]), ...args.slice(1)], { timeout: 120000 }) }); }
 catch (e) { openwebError = e.message; console.error("Open Web disabled:", e.message); }

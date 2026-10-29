@@ -11,7 +11,7 @@ import { execFileSync } from "node:child_process";
 import { parseBingImages, brandHost } from "../../openweb/lib/websearch.mjs";
 import { stripHtml, fitStrip, luminance, STYLES, logoMode } from "../../openweb/lib/strip.mjs";
 import { clientCreative } from "../../openweb/routes.mjs";
-import { slugTitle, matchSlugs, sitemapIndex, loadStudioConfig, withRealName, usedArticles, rivalMatcher, styleFonts, studioRefusal, ctaFor } from "../../openweb/lib/studio.mjs";
+import { slugTitle, matchSlugs, sitemapIndex, loadStudioConfig, withRealName, usedArticles, rivalMatcher, styleFonts, studioRefusal, ctaFor, recentAdsRef } from "../../openweb/lib/studio.mjs";
 import { renderMock, ASSET_URL } from "../../openweb/lib/mock.mjs";
 import { loadMediaPlan, checkPublisherSources } from "../../openweb/lib/inventory.mjs";
 import { extractArticle } from "../../openweb/lib/extract.mjs";
@@ -91,6 +91,21 @@ test("brand-only ad (a service with no usable photo): no product picture or scen
     assert.ok(!/class="p |class="sc"/.test(html), `${style}: no product or scene element`);
     assert.ok(/\.tx\{[^}]*width:74cqw/.test(html), `${style}: wider copy`);
   }
+});
+
+test("recent ads as the reference: the brand's commercials (title, link, still) plus its recorded campaigns; cached per brand", async () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "ref-")), cacheFile = path.join(dir, "recentads.json");
+  let calls = 0;
+  const findAds = async () => { calls++; return [{ id: "abc123", title: "Spicy Laga. Sprite Utha. | Sprite TVC", channel: "Coca-Cola India" }, { title: "no id" }]; };
+  const known = { campaigns: [{ name: "Spicy Laga. Sprite Utha.", year: 2026, source: "https://x.test/a" }], adLook: "Green and white, comic tone" };
+  const r = await recentAdsRef("Sprite", "lemon drink", { findAds, known, cacheFile });
+  assert.equal(r.ads.length, 1);
+  assert.deepEqual(r.ads[0], { id: "abc123", title: "Spicy Laga. Sprite Utha. | Sprite TVC", channel: "Coca-Cola India", url: "https://www.youtube.com/watch?v=abc123", still: "https://i.ytimg.com/vi/abc123/hqdefault.jpg" });
+  assert.equal(r.campaigns[0].name, "Spicy Laga. Sprite Utha."); assert.equal(r.adLook, "Green and white, comic tone");
+  await recentAdsRef("Sprite", "lemon drink", { findAds, known, cacheFile });
+  assert.equal(calls, 1, "the second run reads the cache");
+  const slow = await recentAdsRef("Slow", "x", { findAds: () => new Promise(() => {}), timeoutMs: 50 });
+  assert.deepEqual(slow.ads, [], "a slow ad search never holds the run up");
 });
 
 test("the brand's own site is recognised by its host name, retailers are not", () => {
