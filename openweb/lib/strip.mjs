@@ -186,7 +186,7 @@ function design(style, o, t) {
 }
 
 /**
- * @param {{ brand: string, headline: string, subline?: string, cta: string, colour: string, accent?: string|null, productUrl: string, productMode: "alpha"|"plain-bg"|"photo"|"scene", logoUrl?: string|null, logoKind?: string|null, logoInk?: string|null, logoLight?: number, style?: string, motif?: string }} o
+ * @param {{ brand: string, headline: string, subline?: string, cta: string, colour: string, accent?: string|null, productUrl: string, productMode: "alpha"|"plain-bg"|"photo"|"scene"|"none", logoUrl?: string|null, logoKind?: string|null, logoInk?: string|null, logoLight?: number, style?: string, motif?: string }} o
  */
 export function stripHtml(o) {
   const style = STYLES.includes(o.style) ? o.style : "bold";
@@ -194,7 +194,8 @@ export function stripHtml(o) {
   const deep = mix(c, "#000000", light ? 0.18 : 0.38), glow = mix(c, "#ffffff", 0.35);
   // the product sits on a panel of the second brand colour (when it differs enough), so a pack the colour of the strip still stands out
   const a2 = hex(o.accent), panel = a2 && Math.abs(luminance(a2) - luminance(c)) > 0.18 ? a2 : null;
-  const cut = o.productMode === "alpha" || o.productMode === "plain-bg", scene = o.productMode === "scene";
+  // "none": a brand-only ad (no usable photo of a service) — logo, colours, copy and motion; the text takes the width
+  const cut = o.productMode === "alpha" || o.productMode === "plain-bg", scene = o.productMode === "scene", bare = o.productMode === "none";
   const d = design(style, o, { c, light, deep, glow, panel, cut, scene });
   const ink = d.ink;
   const ctaBg = light ? "#141414" : "#ffffff", ctaInk = light ? "#ffffff" : contrast(c, "#ffffff") >= 3 ? c : "#141414";
@@ -222,7 +223,7 @@ export function stripHtml(o) {
 .lg.badge img{filter:drop-shadow(0 .35cqw .9cqw rgba(0,0,0,.3))}
 .lg.chip{padding:.5cqw 1.4cqw;border-radius:1.2cqw;background:rgba(255,255,255,.14);border:.15cqw solid rgba(255,255,255,.32);-webkit-backdrop-filter:blur(.8cqw);backdrop-filter:blur(.8cqw)}
 .lgt{font:800 3.5cqw/1 Poppins,system-ui;color:${ink};letter-spacing:.03em;text-shadow:0 .2cqw .8cqw rgba(0,0,0,.2)}
-.tx{position:absolute;left:3.6cqw;width:52cqw;top:8.7cqw;color:${ink}}
+.tx{position:absolute;left:3.6cqw;width:${bare ? 74 : 52}cqw;top:8.7cqw;color:${ink}}
 .hd,.sb{position:absolute;left:0;right:0;top:0;text-wrap:balance;font-weight:700;font-size:var(--fs,${d.fs}cqw);line-height:1.08;letter-spacing:-.01em;text-shadow:${light && style === "bold" ? "none" : "0 .3cqw 1.2cqw rgba(0,0,0,.22)"}}
 .sb{font-weight:600;font-size:var(--fs2,${d.fs2}cqw);line-height:1.12}
 .wd{display:inline-block;overflow:hidden;vertical-align:top;padding-bottom:.4cqw}
@@ -275,7 +276,7 @@ ${d.css}
 <div class="w st-${style}" data-lg="${d.lg}" data-tx="${d.tx}" data-fs="${d.fs}" data-fs2="${d.fs2}"><div class="s">${d.deco}${scene ? `<div class="sc"><img src="${esc(o.productUrl)}" alt=""></div>` : back}<div class="sh"></div>${logo}
 <div class="tx${o.subline ? "" : " one"}"><div class="hd">${words(o.headline, "w1", d.words.d, d.words.step)}</div>${o.subline ? `<div class="sb">${words(o.subline, "w2", 4.15, d.words.step)}</div>` : ""}</div>
 <div class="cta">${esc(o.cta)}${ARROW}</div></div>
-${d.after || ""}${scene ? "" : `<div class="p ${cut ? "cut" : "photo"}"><img src="${esc(o.productUrl)}" alt=""></div>`}
+${d.after || ""}${scene || bare ? "" : `<div class="p ${cut ? "cut" : "photo"}"><img src="${esc(o.productUrl)}" alt=""></div>`}
 <span class="ad">Ad</span><span class="x">&times;</span></div>`;
 }
 

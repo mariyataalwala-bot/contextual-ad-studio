@@ -167,7 +167,7 @@ function showResult(dir, r) {
     <h3 style="font-size:14px;margin:18px 0 4px">About the ad</h3>
     <div class="kv">${isClient ? `<span>Ad</span><div>Uploaded ad${r.creative.name ? ` (${esc(r.creative.name)})` : ""}, shown as supplied</div>` : `<span>Style</span><div>${esc(r.design?.style || "bold")}${r.design?.chosenBy ? ` · ${r.design.chosenBy === "you" ? "chosen by you" : "picked automatically"}` : ""}</div>
       <span>Copy</span><div><b>${esc(r.copy.headline)}</b> · ${esc(r.copy.subline)} · [${esc(r.copy.cta)}]${r.nameNote ? `<div class="s" style="font-size:12px">${esc(r.nameNote)}</div>` : ""}</div>
-      <span>Product photo</span><div><a href="${esc(info.picture.page)}" target="_blank" rel="noopener">${esc(info.picture.site)}</a>${info.picture.official ? " (brand's own site)" : ""} · ${esc(info.cutout === "photo" ? "photo" : "cut out")}${info.checked ? " · checked" : ""}</div>
+      <span>Product photo</span><div>${r.brandOnly ? "Brand-only ad — no usable photo of the service was found online" : `<a href="${esc(info.picture.page)}" target="_blank" rel="noopener">${esc(info.picture.site)}</a>${info.picture.official ? " (brand's own site)" : ""} · ${esc(info.cutout === "photo" ? "photo" : "cut out")}${info.checked ? " · checked" : ""}`}</div>
       <span>Logo</span><div>${r.brandLook.logo.page ? `<a href="${esc(r.brandLook.logo.page)}" target="_blank" rel="noopener">${esc(r.brandLook.logo.site)}</a>` : esc(r.brandLook.logo.note)}</div>`}
       <span>Picture used</span><div><a href="${esc(pl.image.url)}" target="_blank" rel="noopener">${esc(pl.image.width)}×${esc(pl.image.height)}</a>${pl.image.lead ? " · lead image" : ""}</div>
       <span>Inventory</span><div>${esc(pl.inventory.mediaPlan)}</div></div>

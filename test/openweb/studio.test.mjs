@@ -32,6 +32,8 @@ test("copy names the product found online, not a misspelt or made-up name that w
   assert.equal(withRealName("Discover Motorola V70 edge plus", "V70 edge plus", "Motorola Edge 70 Pro Plus", "Motorola"), "Discover Motorola Edge 70 Pro Plus");
   assert.equal(withRealName("Run in Power shoes", "Power running shoes", "power running shoes", "Bata"), "Run in Power shoes");
   assert.equal(withRealName("Try a.b (x)", "a.b (x)", "Real", "B"), "Try Real", "typed text with regex characters is matched literally");
+  assert.equal(withRealName("Order fresh food on Zomato", "food", "Zomato", "Zomato"), "Order fresh food on Zomato", "the bare brand never replaces the typed words");
+  assert.equal(withRealName("Seafood fans love food", "food", "Fresh Meals", "X"), "Seafood fans love Fresh Meals", "whole words only");
 });
 
 test("one advertiser per article: an article used by another brand's mock is off-limits; withdrawn mocks and the same brand's own reruns are not", () => {
@@ -80,6 +82,15 @@ test("the button follows what the brand sells: Shop now / Buy now in most cases,
   assert.equal(cta("Hero MotoCorp", "Splendor"), "Book a test ride");
   assert.equal(cta("Godrej Properties", "new homes", "Real estate"), "Explore", "nothing to buy in a click: the AI's Explore stands");
   assert.ok(st.copy.ctaRules.every((r) => st.copy.ctas.includes(r.cta)), "every rule's button is in the allowed list");
+});
+
+test("brand-only ad (a service with no usable photo): no product picture or scene in the ad, the copy takes the width", () => {
+  for (const style of STYLES) {
+    const html = stripHtml({ brand: "Zomato", headline: "Dinner, sorted", subline: "Order from top restaurants", cta: "Order now", colour: "#e23744", productUrl: "https://a.test/none.png", productMode: "none", logoUrl: null, style });
+    assert.ok(!html.includes("none.png"), `${style}: no product picture`);
+    assert.ok(!/class="p |class="sc"/.test(html), `${style}: no product or scene element`);
+    assert.ok(/\.tx\{[^}]*width:74cqw/.test(html), `${style}: wider copy`);
+  }
 });
 
 test("the brand's own site is recognised by its host name, retailers are not", () => {

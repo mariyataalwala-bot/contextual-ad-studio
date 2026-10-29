@@ -300,8 +300,13 @@ const FINAL_SCHEMA = { type: "object", properties: {
 const bingLarge = (thumb, size) => /^https:\/\/[\w.]*bing\.(net|com)\/th/.test(thumb || "") ? thumb.replace(/&(w|h|c)=\d+/g, "") + `&w=${size}&h=${size}&c=7` : null;
 // what the user typed, replaced by the product's real name found online (the brand prefix left off): copy must name the real product
 const reEsc = (t) => String(t).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-export const withRealName = (text, typed, found, brand) => !found || !typed || found.toLowerCase() === typed.toLowerCase() ? text
-  : String(text).replace(new RegExp(reEsc(typed), "ig"), found.replace(new RegExp(`^${reEsc(brand)}\\s+`, "i"), ""));
+// Only a real product name replaces the typed words — whole words only — never the bare brand ("food" must not
+// become "Zomato" in "Order fresh food on Zomato").
+export const withRealName = (text, typed, found, brand) => {
+  const real = String(found || "").replace(new RegExp(`^${reEsc(brand)}\\s*`, "i"), "").trim();
+  if (!real || !typed || String(found).toLowerCase() === String(typed).toLowerCase() || real.toLowerCase() === String(brand).toLowerCase()) return text;
+  return String(text).replace(new RegExp(`(^|[^\\w])${reEsc(typed)}(?=$|[^\\w])`, "ig"), (_, pre) => pre + real);
+};
 // copy kept to about n words without cutting a phrase in half: up to two extra words are allowed (the strip fits text
 // by size); a longer line is shortened and never left ending on "for", "your", "the" …
 export const words = (s, n) => {
@@ -422,7 +427,7 @@ export async function makeInImage(o) {
 
     // 3) product picture → cut-out (or scene photo); logo; brand colour
     const assets = path.join(workDir, "assets"); fs.mkdirSync(assets, { recursive: true });
-    let logoFile = null, productMode = /** @type {"alpha"|"plain-bg"|"photo"|"scene"} */ ("photo"), copy = { headline: "", subline: "", cta: "" };
+    let logoFile = null, productMode = /** @type {"alpha"|"plain-bg"|"photo"|"scene"|"none"} */ ("photo"), copy = { headline: "", subline: "", cta: "" };
     const style = STYLES.includes(o.style) ? o.style : STYLES.includes(known?.style) ? known.style : STYLES.includes(pick.style) ? pick.style : "bold";
     const motif = known?.motif || pick.motif || "none";
     if (!client) {
@@ -431,7 +436,8 @@ export async function makeInImage(o) {
     const ASK_PHOTO = "Upload the product photo or paste a link to it, then press Generate again.";
     // pictures to try, best first: the user's own photo (uploaded file or link), else only pictures the AI classified as
     // exactly this product — never a banner or an unrelated picture
-    const lifestyleOk = !!pick.is_service || style === "fresh" || style === "journey";
+    const service = !!pick.is_service || /deliver|airline|flight|travel|booking|\bstays?\b|hotel|streaming|\bapps?\b|assistant|bank|insurance|telecom|ride|cab/i.test(known?.category || "");
+    const lifestyleOk = service || style === "fresh" || style === "journey";
     let candidates = productCandidates(pick, pThumbs, { lifestyleOk });
     if (userFile) candidates = [{ url: "upload:" + path.basename(userFile), page: null, host: "uploaded file", title: "photo uploaded by the user", n: -1, user: true, kind: "product_on_background" }];
     else if (userPic) {
@@ -487,7 +493,9 @@ export async function makeInImage(o) {
         const v = await timed(ask("You check the finished pictures of a display ad before it is published. Judge only what you see.",
           `Ad for ${brand} — ${pick.product_name || product} (asked for: "${product}"), as sold in India.\n` +
           (c.method === "photo" ? `PRODUCT PICTURE — the original photo, shown in the ad as a photo. ALLOWED and never a reason to reject: a background, table or surface, cloth or napkin, plate, board, serving dish, garnish or simple props around the product${got.x.kind === "lifestyle" ? ", and a lifestyle scene where the product is clearly the hero" : ""}.\n` : "PRODUCT PICTURE — a cut-out: no leftover background blocks, nothing damaged or removed by the cutting.\n") +
-          `ok only if exactly this product (right brand, the variant asked for, current pack) is clearly the main subject, complete, not cut off or damaged. ` +
+          (service && c.method === "photo"
+            ? `${brand} is a service (${known?.category || pick.product_name || product}): there is no pack to show. ok when this is ONE appealing photo of what the service gives people — for food delivery, tempting food or a meal; for travel, the destination, stay or journey; for an app, it in use — clear and well lit. A phone, hands, a table or several dishes in one shot are fine. `
+            : `ok only if exactly this product (right brand, the variant asked for, current pack) is clearly the main subject, complete, not cut off or damaged. `) +
           `Never ok: banner, headline, offer or price text over the picture; people or models as the focus; other brands' products; a watermark; a collage.\n` +
           `kind: what the picture is. picture_problem: true when the problem is in the original picture itself, false when only the cut-out went wrong.` +
           (lpv ? `\nLOGO PNG: logo_ok only if it is ${brand}'s own logo, complete and legible, and nothing else (no other logos, no photo around it).` : ""),
@@ -515,7 +523,32 @@ export async function makeInImage(o) {
         tried = { ...second, checks: [...tried.checks, ...second.checks] };
       }
     }
+    if (!tried.got && service && !userPic && !userFile && used() < maxChecks && Date.now() - t0 < (studio.budgetSeconds - 78) * 1000) {
+      const what = [product, known?.category || ""].join(" ").replace(/\b(app|service|delivery|booking|online)\b/gi, " ").replace(/\s+/g, " ").trim() || product;
+      say(35, "assets", `Looking for a clean photo of ${what} for the ad…`);
+      const stock = (await imageSearch(`${what} photo site:unsplash.com OR site:pexels.com`, { fetchImpl }).catch(() => [])).filter((x) => /unsplash\.com|pexels\.com/.test(x.host) && x.thumb);
+      const shots = (await thumbs(stock.slice(0, 6), "s", 6)).map((x) => ({ ...x, n: x.n + 200, kind: "lifestyle" }));
+      const seen = new Set(candidates.map((x) => x.url)), next = shots.filter((x) => !seen.has(x.url));
+      result.productCandidates.push(...next.map((x) => ({ url: x.url, kind: "lifestyle", site: x.host, round: "stock" })));
+      if (next.length) {
+        const third = await tryProductPictures(await download(next, candidates.length + 50), { ...tryOpts, maxTries: maxChecks - used() });
+        tried = { ...third, checks: [...tried.checks, ...third.checks] };
+      }
+    }
     result.pngChecks = tried.checks;
+    // a service with no usable photo at all: a brand-only ad (logo, colours, copy and motion) rather than no ad
+    if (!tried.got && service) {
+      if (logoFile && !logoChecked) {
+        const lpv = path.join(checkDir, "logo.jpg"); await py(["cutout.py", "preview", logoFile, lpv]);
+        const lv = await timed(ask("You check the finished pictures of a display ad before it is published. Judge only what you see.",
+          `LOGO PNG: logo_ok only if it is ${brand}'s own logo, complete and legible, and nothing else (no other logos, no photo around it). ok: true.`,
+          VERIFY_SCHEMA, [{ label: "LOGO PNG to check", file: lpv }], "medium"), 40000).catch(() => ({ logo_ok: false }));
+        if (!lv.logo_ok) { result.logoRejected = { ...logoInfo, why: lv.logo_problem || "the logo check failed" }; logoFile = null; logoInfo = null; }
+      }
+      say(37, "assets", "No usable photo of the service — making a brand-only ad (logo, colours and copy).");
+      tried = { ...tried, got: { x: { url: null, page: null, host: null, title: "brand-only ad (no photo)", n: -2, kind: null }, f: "", via: "—" }, c: { method: "none" }, v: { kind: null } };
+      result.brandOnly = true;
+    }
     if (!tried.got) {
       const n = used(), why = tried.checks.map((c) => c.problem || c.skipped).filter(Boolean).slice(0, 3).join("; ");
       throw Object.assign(new StudioStop("no_match", n
@@ -523,14 +556,14 @@ export async function makeInImage(o) {
         : `None of the pictures found online is exactly ${brand} ${product} as sold in India — they were offer banners, other products or other variants${why ? ` (${why})` : ""}. ${ASK_PHOTO}`), { needsInput: "product_image" });
     }
     const cut = tried.c, prodSrc = tried.got.x, via = tried.got.via;
-    productMode = (pick.is_service || prodSrc.kind === "lifestyle") && cut.method === "photo" ? "scene" : cut.method;
+    productMode = cut.method === "none" ? "none" : (service || prodSrc.kind === "lifestyle") && cut.method === "photo" ? "scene" : cut.method;
     result.productInfo = { name: pick.product_name, picture: { url: prodSrc.url, page: prodSrc.page, site: prodSrc.host, title: prodSrc.title, official: official(prodSrc.host), chosenBecause: prodSrc.user ? "given by the user" : pick.packshot_why, aiChoice: prodSrc.n === pick.packshot, kind: tried.v.kind || prodSrc.kind || null, downloadedFrom: via }, cutout: cut.method, layout: productMode, checked: true };
     let colour = known?.colours.primary || (/^#[0-9a-f]{6}$/i.test(pick.brand_colour || "") ? pick.brand_colour : null);
     if (!colour && logoFile) colour = JSON.parse((await py(["cutout.py", "colour", logoFile])).trim()).hex;
     result.brandLook = { logo: logoInfo || { note: result.logoRejected ? "The logo found online failed the check — the brand name is shown as text." : "No logo was confirmed online — the brand name is shown as text." }, colour: colour || "#1d2b53", accent: known?.colours.accent || (/^#[0-9a-f]{6}$/i.test(pick.accent_colour || "") ? pick.accent_colour : null), colourFrom: known?.colours.primary ? "MediaKart brand knowledge" : pick.brand_colour ? "AI (brand colour)" : logoFile ? "logo pixels" : "default" };
     // the product's real name (as found on its page) replaces what was typed, e.g. "V70 edge plus" → "Edge 70 Pro Plus"
     const found = String(pick.product_name || "").trim(), typed = product.trim();
-    const named = (t) => withRealName(t, typed, found, brand);
+    const named = (t) => service ? t : withRealName(t, typed, found, brand);   // a service has no model name to swap in
     if (found && found.toLowerCase() !== typed.toLowerCase()) result.nameNote = `Typed “${typed}”; the product found online is “${found}”.`;
     copy = { headline: words(named(plan.headline), studio.copy.maxHeadlineWords), subline: words(offer || named(plan.subline), offer ? 12 : studio.copy.maxSublineWords), cta: plan.cta };
     const button = ctaFor({ rules: studio.copy.ctaRules, ctas: studio.copy.ctas, known, product, aiCategory: plan.category, aiCta: plan.cta });
@@ -658,7 +691,7 @@ export async function makeInImage(o) {
         { name: "Brand safety", pass: true, detail: `Page check: ${chosen.a.safety.reasons.filter((r) => !/AI_UNAVAILABLE/.test(r)).join(", ") || "no sensitive terms"}. Picture: ${chosen.v.safe_why}` },
       ],
     };
-    result.files = { video: path.basename(out.mp4 || ""), still: path.basename(out.png), creative: client ? "assets/" + path.basename(client.file) : "creative.html", product: client ? null : "assets/product.png", logo: logoFile ? "assets/" + path.basename(logoFile) : null };
+    result.files = { video: path.basename(out.mp4 || ""), still: path.basename(out.png), creative: client ? "assets/" + path.basename(client.file) : "creative.html", product: client || result.brandOnly ? null : "assets/product.png", logo: logoFile ? "assets/" + path.basename(logoFile) : null };
     const ex = chosen.a.extraction;
     result.status = ex?.status === "partial" ? "partial" : "success";
     result.statusWhy = result.status === "partial" ? `Made from partial context: ${ex.notes.join("; ") || `only ${ex.chars} characters of the article could be read`}. Every check passed on the text that could be read.` : "Every check passed on the article text.";
