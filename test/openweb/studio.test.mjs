@@ -11,7 +11,7 @@ import { execFileSync } from "node:child_process";
 import { parseBingImages, brandHost } from "../../openweb/lib/websearch.mjs";
 import { stripHtml, fitStrip, luminance, STYLES, logoMode } from "../../openweb/lib/strip.mjs";
 import { clientCreative } from "../../openweb/routes.mjs";
-import { slugTitle, matchSlugs, sitemapIndex, loadStudioConfig, withRealName, usedArticles, rivalMatcher, styleFonts, studioRefusal, ctaFor, recentAdsRef } from "../../openweb/lib/studio.mjs";
+import { slugTitle, matchSlugs, sitemapIndex, loadStudioConfig, withRealName, usedArticles, rivalMatcher, styleFonts, studioRefusal, ctaFor, recentAdsRef, noMatchMessage } from "../../openweb/lib/studio.mjs";
 import { renderMock, ASSET_URL } from "../../openweb/lib/mock.mjs";
 import { loadMediaPlan, checkPublisherSources } from "../../openweb/lib/inventory.mjs";
 import { extractArticle } from "../../openweb/lib/extract.mjs";
@@ -402,4 +402,19 @@ test("products that may not be advertised are refused before any work starts (in
   for (const [b, p] of [["Nestle", "NAN Pro infant formula"], ["Nestle", "Cerelac"], ["Cerelac", "wheat apple"]]) assert.match(studioRefusal(c, b, p) || "", /IMS Act/, `${b} / ${p}`);
   assert.equal(studioRefusal(c, "Nestle", "Maggi noodles"), null);
   assert.equal(studioRefusal(c, "GIVA", "earrings"), null, "brands not on the list are not blocked");
+});
+
+// Réal fruit juice (2026-10-29): the stop message named a weak "safe" article as the best and hid why the strong one failed
+test("no match: the message says how many articles were checked, the closest fits and what each missed, and that search is off", () => {
+  const c = (headline, url, v, score) => ({ a: { headline, url }, v, score });
+  const scored = [
+    c("Prabhu Deva's breakfast routine", "u1", { context_fit: 5, safe: true, strip_ok: true }, 4.5),
+    c("Whole fruit vs juice: what people with diabetes should know", "u2", { context_fit: 8, safe: false, safe_why: "Health warnings about juice." }, 8.4),
+    c("Whole fruit vs juice: what people with diabetes should know", "u2", { context_fit: 8, safe: false, safe_why: "Health warnings about juice." }, 8.4),
+  ];
+  const m = noMatchMessage({ brand: "Réal", product: "fruit juice", scored, minContext: 8, minScore: 7, searchOn: false });
+  assert.match(m, /^No article fits Réal fruit juice right now — 2 articles checked\. Closest: “Whole fruit vs juice/);
+  assert.match(m, /\(fit 8\/10\): not brand-safe — Health warnings about juice · “Prabhu Deva's breakfast routine” \(fit 5\/10\): only a loose fit \(5\/10, needs 8\)\./);
+  assert.match(m, /Article search is off \(add a Firecrawl key in Settings\)/);
+  assert.doesNotMatch(noMatchMessage({ brand: "B", product: "p", scored, minContext: 8, minScore: 7, searchOn: true }), /search is off/);
 });

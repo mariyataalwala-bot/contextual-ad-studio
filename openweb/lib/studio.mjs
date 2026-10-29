@@ -235,6 +235,19 @@ export async function tryProductPictures(fetched, { prepare, check, maxTries = 6
   return { got: null, c: null, v: null, checks };
 }
 
+// Why no article was placed, in plain words: how many were checked, the closest ones and what each missed (a strong
+// fit that is not brand-safe is named as such, not hidden behind a weaker safe one), and whether article search was on.
+/** @param {{ brand: string, product: string, scored: any[], minContext: number, minScore: number, searchOn: boolean }} o */
+export function noMatchMessage({ brand, product, scored, minContext, minScore, searchOn }) {
+  const seen = new Set(), arts = [];
+  for (const c of [...scored].sort((x, y) => (y.v.context_fit || 0) - (x.v.context_fit || 0) || y.score - x.score)) { if (seen.has(c.a.url)) continue; seen.add(c.a.url); arts.push(c); }
+  const missed = (c) => !c.v.safe ? `not brand-safe — ${c.v.safe_why || "the safety check failed"}` : c.v.context_fit < minContext ? `only a loose fit (${c.v.context_fit}/10, needs ${minContext})`
+    : !c.v.strip_ok ? `the ad would cover the picture's subject — ${c.v.why || ""}` : `the picture does not suit the ad (score ${c.score.toFixed(1)}, needs ${minScore})`;
+  const closest = arts.slice(0, 2).map((c) => `“${c.a.headline}” (fit ${c.v.context_fit ?? "?"}/10): ${missed(c).replace(/[.\s]+$/, "")}`).join(" · ");
+  return `No article fits ${brand} ${product} right now — ${arts.length} article${arts.length === 1 ? "" : "s"} checked${closest ? `. Closest: ${closest}` : ""}.` +
+    (searchOn ? "" : " Article search is off (add a Firecrawl key in Settings), so only the publishers' latest feeds were checked — try again later or add the key for a wider search.");
+}
+
 // The first topic word (or phrase) found in a headline / URL, by word stem ("walking" finds "walk", "recipes" finds
 // "recipe"); null when none is there
 export function topicHit(text, topics) {
@@ -731,7 +744,7 @@ export async function makeInImage(o) {
     result.candidates = scored.map((c) => ({ article: c.a.headline, url: c.a.url, image: c.im.finalUrl || c.im.src, ...c.v, score: +c.score.toFixed(1) }));
     result.rejectedArticles = rejected;
     if (!anyPictures) throw new StudioStop(review.length ? "needs_review" : "no_match", `The shortlisted articles have no usable pictures (${rejected.map((r) => r.why).join("; ")}).${forReview}`);
-    if (!ok.length) throw new StudioStop(review.length ? "needs_review" : "no_match", `No article picture passed all three checks right now (best: “${scored[0]?.a.headline}” — ${scored[0]?.v.why || ""} ${scored[0]?.v.safe ? "" : scored[0]?.v.safe_why || ""}).${forReview}`);
+    if (!ok.length) throw new StudioStop(review.length ? "needs_review" : "no_match", noMatchMessage({ brand, product, scored, minContext: studio.minContext, minScore: studio.minScore, searchOn: !!fc?.enabled }) + forReview);
 
     // 6) the creative on the chosen picture, recorded on a phone
     const FONTS = path.join(HERE, "..", "..", "pipeline", "template", "fonts");
