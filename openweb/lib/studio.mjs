@@ -15,6 +15,7 @@ import { renderMock, ASSET_URL } from "./mock.mjs";
 import { discoverArticles, discoverCampaigns } from "./discover.mjs";
 import { stripHtml, fitStrip, STRIP_VERSION, STYLES, styleFontsUrl, styleFontFaces } from "./strip.mjs";
 import { storyHtml, STORY_VERSION, MOTIFS, hookFor } from "./story.mjs";
+import { sceneHtml, sceneVersion, directorPrompt, deviceFor, DIRECTOR_SCHEMA, DIRECTOR_VERSION, DEVICES } from "./director.mjs";
 import { norm, sha256 } from "./text.mjs";
 import { findBrand, brandBrief, bannedReason, namesBrand } from "./brands.mjs";
 
@@ -124,6 +125,19 @@ export function matchSlugs(entries, words, limit = 80) {
 // Articles that already carry another brand's mock (every result.json in the studio folder that was not withdrawn):
 // one article, one advertiser — the same road-trip story must not show IndiGo, Airbnb and Motorola.
 const urlKey = (u) => String(u || "").replace(/[#?].*$/, "").replace(/\/$/, "").toLowerCase();
+/** The creative devices of the latest ads (newest first), so the creative director does not repeat itself. */
+export function recentDevices(root, limit = 4) {
+  const seen = [];
+  let dirs = []; try { dirs = fs.readdirSync(root).filter((x) => !x.startsWith("_")); } catch { return []; }
+  for (const b of dirs) {
+    let runs = []; try { runs = fs.readdirSync(path.join(root, b)); } catch { continue; }
+    for (const t of runs) {
+      try { const r = JSON.parse(fs.readFileSync(path.join(root, b, t, "result.json"), "utf8")); if (!r.error && r.director?.device) seen.push({ at: String(r.createdAt), device: r.director.device }); } catch { /* not a finished ad */ }
+    }
+  }
+  return seen.sort((a, b) => b.at.localeCompare(a.at)).slice(0, limit).map((x) => x.device);
+}
+
 export function usedArticles(root, brand) {
   const used = new Map(), me = String(brand).trim().toLowerCase();
   let dirs = []; try { dirs = fs.readdirSync(root).filter((x) => !x.startsWith("_")); } catch { return used; }
@@ -761,15 +775,37 @@ export async function makeInImage(o) {
     if (logoFile) files["logo" + path.extname(logoFile)] = logoFile;
     if (logoFile && logoReverseFile) files["logo_reverse.png"] = logoReverseFile;
     for (const f of fs.readdirSync(FONTS).filter((x) => x.endsWith(".woff2"))) files[f] = path.join(FONTS, f);
-    let html = null;
+    /** @type {(c: any) => string|null} the creative for a candidate picture (a director scene can use the picture itself) */
+    let htmlFor = () => null;
+    const fontFaces = [...styleFontFaces(style)];
     if (!client) {
-      const extra = await styleFonts(style, path.join(o.indexDir || path.join(workDir, "..", ".."), "_fonts"), fetchImpl).catch(() => null);   // no font → the design's fallback font
+      const fontDir = path.join(o.indexDir || path.join(workDir, "..", ".."), "_fonts");
+      const extra = await styleFonts(style, fontDir, fetchImpl).catch(() => null);   // no font → the design's fallback font
       if (extra) { fontsCss += "\n" + extra.css; Object.assign(files, extra.files); }
-      const story = studio.creative.layout === "story";
+      const layout = studio.creative.layout;
       const look = { brand, ...copy, colour: result.brandLook.colour, accent: result.brandLook.accent, productUrl: ASSET_URL + "product.png", productMode, logoUrl: logoFile ? ASSET_URL + "logo" + path.extname(logoFile) : null, logoKind: result.brandLook.logo?.kind, logoInk: result.brandLook.logo?.ink, logoLight: result.brandLook.logo?.light, logoReverseUrl: logoFile && logoReverseFile ? ASSET_URL + "logo_reverse.png" : null, style, motif };
-      html = story ? storyHtml({ ...look, hook }) : stripHtml(look);
-      result.creative = { format: story ? "story" : "strip", version: story ? `${STORY_VERSION}+${STRIP_VERSION}` : STRIP_VERSION };
-      fs.writeFileSync(path.join(workDir, "creative.html"), `<!doctype html><meta charset="utf-8"><!-- ${result.creative.version} (${style}${story ? ", " + hook : ""}): open inside the mock renderer (assets are served from ${ASSET_URL}) -->\n${html}`);
+      if (layout === "director") {
+        // the creative director: one idea for this brand, product and the picture it will play on (the first to be recorded)
+        say(70, "render", "Creative direction: shaping the idea for this ad…");
+        const top = ok[0], root = o.indexDir || path.join(workDir, "..", ".."), recent = recentDevices(root);
+        let brief = await timed(ask("You are the executive creative director of a premium ad studio. You only judge what is shown and never invent product claims.",
+          directorPrompt({ brand, product: pick.product_name || product, category: plan.category, headline: copy.headline, articleHeadline: top.a.headline, imageAlt: top.im.alt || top.im.caption || "", colours: [result.brandLook.colour, result.brandLook.accent].filter(Boolean), recent, recentAds: (result.recentAds?.ads || []).map((x) => x.title) }),
+          DIRECTOR_SCHEMA, [{ label: "Picture 1 — the product", file: path.join(assets, "product.png") }, ...(top.file ? [{ label: "Picture 2 — the article photo", file: top.file }] : [])], "high"), 30000).catch((e) => { result.directorProblem = String(e.message).slice(0, 200); return null; });
+        const by = brief ? "AI" : "rules";
+        if (!brief || !DEVICES.includes(brief.device)) brief = { device: deviceFor({ style, hook, category: plan.category }), message: copy.headline, base: result.brandLook.colour, accent: result.brandLook.accent, product_fx: ["shine", "rim"] };
+        brief.message = words(brief.message || copy.headline, 6);
+        if (brief.kicker) brief.kicker = words(brief.kicker, 3);
+        result.director = { version: DIRECTOR_VERSION, by, recentDevices: recent, ...brief };
+        // the device's own display font (spotlight: Playfair, shatter: Anton)
+        const dStyle = { spotlight: "luxe", shatter: "sport" }[brief.device];
+        if (dStyle && dStyle !== style) { const f = await styleFonts(dStyle, fontDir, fetchImpl).catch(() => null); if (f) { fontsCss += "\n" + f.css; Object.assign(files, f.files); } fontFaces.push(...styleFontFaces(dStyle)); }
+        result.creative = { format: "director", device: brief.device, version: sceneVersion(brief.device) };
+        htmlFor = (c) => sceneHtml({ ...look, hook, photoUrl: c.im.finalUrl || c.im.src }, brief);
+      } else {
+        const story = layout === "story", html = story ? storyHtml({ ...look, hook }) : stripHtml(look);
+        result.creative = { format: story ? "story" : "strip", version: story ? `${STORY_VERSION}+${STRIP_VERSION}` : STRIP_VERSION };
+        htmlFor = () => html;
+      }
     }
     const clientHold = client ? Math.min(9000, Math.max(5000, Math.round((client.seconds || 6) * 1000))) : 0;
     const base = `${slug(brand)}_${slug(product)}_inimage`;
@@ -784,8 +820,10 @@ export async function makeInImage(o) {
           ? await renderMock({ articleUrl: c.a.url, leadImage: c.im.finalUrl || c.im.src, format: "in-image", outBase: path.join(workDir, base), video: true, strict: true,
             creativeFile: client.file, holdMs: clientHold, navTimeoutMs: 25000, ffmpeg, chromium: o.chromium })
           : await renderMock({ articleUrl: c.a.url, leadImage: c.im.finalUrl || c.im.src, format: "in-image", outBase: path.join(workDir, base), video: true, strict: true,
-            creativeHtml: html, assets: files, fontsCss, fontFaces: styleFontFaces(style), fit: fitStrip, holdMs: studio.creative.seconds * 1000, navTimeoutMs: 25000, ffmpeg, chromium: o.chromium });
-        chosen = c; break;
+            creativeHtml: htmlFor(c), assets: files, fontsCss, fontFaces, fit: fitStrip, holdMs: studio.creative.seconds * 1000, navTimeoutMs: 25000, ffmpeg, chromium: o.chromium });
+        chosen = c;
+        if (!client) fs.writeFileSync(path.join(workDir, "creative.html"), `<!doctype html><meta charset="utf-8"><!-- ${result.creative.version} (${style}, ${result.director?.device || hook}): open inside the mock renderer (assets are served from ${ASSET_URL}) -->\n${htmlFor(c)}`);
+        break;
       } catch (e) { (result.renderProblems ||= []).push({ url: c.a.url, error: e.message }); if (/PAYWALL|NOT_MOBILE|NOT_VISIBLE|PAGE_LOAD/.test(e.code || "")) refused.add(c.a.url); }
     }
     lap("render");

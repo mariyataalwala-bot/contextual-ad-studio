@@ -11,9 +11,10 @@ import { execFileSync } from "node:child_process";
 import { parseBingImages, brandHost } from "../../openweb/lib/websearch.mjs";
 import { stripHtml, fitStrip, luminance, STYLES, logoMode } from "../../openweb/lib/strip.mjs";
 import { clientCreative } from "../../openweb/routes.mjs";
-import { slugTitle, matchSlugs, sitemapIndex, loadStudioConfig, withRealName, usedArticles, rivalMatcher, styleFonts, studioRefusal, ctaFor, recentAdsRef, noMatchMessage } from "../../openweb/lib/studio.mjs";
+import { recentDevices, slugTitle, matchSlugs, sitemapIndex, loadStudioConfig, withRealName, usedArticles, rivalMatcher, styleFonts, studioRefusal, ctaFor, recentAdsRef, noMatchMessage } from "../../openweb/lib/studio.mjs";
 import { renderMock, ASSET_URL, placeInPage, goCreative } from "../../openweb/lib/mock.mjs";
 import { storyHtml, splitStory, hookFor, MOTIFS, STORY_MS } from "../../openweb/lib/story.mjs";
+import { sceneHtml, deviceFor, DEVICES, directorPrompt } from "../../openweb/lib/director.mjs";
 import { loadMediaPlan, checkPublisherSources } from "../../openweb/lib/inventory.mjs";
 import { extractArticle } from "../../openweb/lib/extract.mjs";
 import { FILLER } from "./helpers.mjs";
@@ -459,4 +460,48 @@ test("story: placed on the page, the hook layer sits over the picture and act 4 
     assert.ok(await p.evaluate(() => document.getElementById("mk-page").hasAttribute("data-go")));
     await p.waitForFunction(() => document.getElementById("mk-slot").hasAttribute("data-go2"), null, { timeout: 3000 });
   } finally { await b.close(); }
+});
+
+// ---------- the creative director (one idea per ad, staged by a device) ----------
+const look = /** @type {any} */ ({ brand: "Test", headline: "Strip line", subline: "Second", cta: "Buy now", colour: "#e41e2b", accent: "#ffffff", productUrl: ASSET_URL + "product.png", productMode: "alpha", style: "fresh", photoUrl: "https://a.test/photo.jpg" });
+
+test("director: every device stages its own scene, then the strip on data-go2; copy escaped; classes never clash with the strip", () => {
+  const stripClasses = new Set([...stripHtml(look).matchAll(/class="([^"]+)"/g)].flatMap((m) => m[1].split(/\s+/)));
+  const seen = new Set();
+  for (const device of DEVICES.filter((d) => d !== "medallion")) {
+    const h = sceneHtml(look, { device, message: "Cold <b>as</b> ice", kicker: "Hot day?", base: "#e41e2b", accent: "#fff", liquid: "#f6a400", product_fx: ["shine", "droplets", "rim", "reflection", "glints"] });
+    assert.ok(h.includes(`data-device="${device}"`), device);
+    assert.match(h, /:host\(\[data-go2\]\) \.s\{/, `${device}: the strip waits for act 2`);
+    assert.ok(!h.includes("<b>as</b>") && h.includes("&lt;b&gt;as&lt;/b&gt;"), `${device}: copy escaped`);
+    const scene = h.slice(h.indexOf('<div class="dz"'));
+    const mine = [...scene.matchAll(/class="([^"]+)"/g)].flatMap((m) => m[1].split(/\s+/)).filter((c) => !["white", "black", "colour", "reverse", "badge", "chip", "text"].includes(c));
+    for (const c of mine) assert.ok(!stripClasses.has(c), `${device}: class ${c} is also the strip's`);
+    seen.add(scene.length);
+  }
+  assert.equal(seen.size, 5, "five different scenes");
+  assert.ok(splitStory(sceneHtml(look, { device: "medallion", message: "Hi" }))[1], "medallion is the story with its hook layer");
+  assert.ok(splitStory(sceneHtml({ ...look, photoUrl: null }, { device: "shatter", message: "Hi" }))[1], "shatter needs the article photo, else the medallion story");
+  assert.ok(sceneHtml(look, { device: "frost", message: "x", product_fx: ["droplets"] }).includes('class="dDew"'), "condensation on a cold cut-out");
+  assert.ok(!sceneHtml({ ...look, productMode: "photo" }, { device: "frost", message: "x", product_fx: ["droplets"] }).includes('class="dDew"'), "no condensation masked onto a photo");
+});
+
+test("director: rules pick a device when the AI is not available; the brief prompt carries the recent devices", () => {
+  assert.equal(deviceFor({ style: "fresh", hook: "bubbles", category: "Soft drinks" }), "frost");
+  assert.equal(deviceFor({ style: "fresh", hook: "leaves", category: "Coffee" }), "pour");
+  assert.equal(deviceFor({ style: "luxe", hook: "sparkle", category: "Jewellery" }), "spotlight");
+  assert.equal(deviceFor({ style: "journey", hook: "flight", category: "Airline" }), "portal");
+  assert.equal(deviceFor({ style: "sport", hook: "speed", category: "Running shoes" }), "shatter");
+  assert.equal(deviceFor({ style: "bold", hook: "insects", category: "Mosquito repellent" }), "medallion");
+  const p = directorPrompt({ brand: "B", product: "p", category: "", imageAlt: "", headline: "h", articleHeadline: "a", colours: ["#000000"], recent: ["frost", "pour"] });
+  assert.match(p, /Recent ads already used: frost, pour/);
+});
+
+test("director: recentDevices lists the newest ads' devices, skipping withdrawn ones and the index", () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "dev-"));
+  const put = (b, t, r) => { fs.mkdirSync(path.join(root, b, t), { recursive: true }); fs.writeFileSync(path.join(root, b, t, "result.json"), JSON.stringify(r)); };
+  put("a", "1", { createdAt: "2026-10-29T10:00:00Z", director: { device: "frost" } });
+  put("b", "1", { createdAt: "2026-10-29T11:00:00Z", director: { device: "portal" } });
+  put("c", "1", { createdAt: "2026-10-29T12:00:00Z", director: { device: "pour" }, error: "withdrawn" });
+  put("_index", "x", { createdAt: "2026-10-29T13:00:00Z", director: { device: "shatter" } });
+  assert.deepEqual(recentDevices(root), ["portal", "frost"]);
 });
