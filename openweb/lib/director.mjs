@@ -285,6 +285,29 @@ ${hero(o, t.fx, seed)}<div class="dMsg">${kick}${msg(1.7, 0.16)}</div><div class
   return null;
 }
 
+// The end card carries the idea on: the strip that stays is dressed like the scene before it (frost → frosted glass,
+// pour → the liquid's colour with a wave on top, spotlight → black and gold, portal → the journey design, shatter → the
+// angled sport design), instead of every idea settling into the same strip.
+const END_STYLE = { frost: "bold", pour: "bold", spotlight: "luxe", portal: "journey", shatter: "sport" };
+/** The strip design an ad ends on (its fonts are loaded by the studio). */
+export const endStyle = (device, fallback) => END_STYLE[device] || fallback;
+function endCard(dev, brief, base) {
+  if (dev === "frost") return { look: { colour: "#e3f1fa", accent: null }, css: `
+.w .s{background:linear-gradient(118deg,rgba(240,249,255,.9),rgba(212,234,248,.84));-webkit-backdrop-filter:blur(1.8cqw) saturate(1.3);backdrop-filter:blur(1.8cqw) saturate(1.3);box-shadow:0 -.4cqw 0 rgba(255,255,255,.95) inset,0 -1cqw 3.4cqw rgba(20,60,90,.22)}
+.w .s:after{opacity:.05}
+.w .tx{color:#0e2f4a}
+.w .cta{background:${base};color:${inkOn(base)}}` };
+  if (dev === "pour") {
+    const liq = hex(brief.liquid) || base, hiL = mix(liq, "#ffffff", 0.3), dkL = mix(liq, "#000000", 0.32);
+    const wave = `url("data:image/svg+xml;utf8,${encodeURIComponent("<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 10' preserveAspectRatio='none'><path d='M0 6 Q12.5 0 25 5 T50 5 T75 5 T100 4 V10 H0Z'/></svg>")}")`;
+    return { look: { colour: liq, accent: null }, css: `
+.w .s{background:linear-gradient(180deg,${hiL} 0%,${liq} 30%,${dkL} 100%);box-shadow:none;-webkit-mask:${wave} top/100% 4.2cqw no-repeat,linear-gradient(#000,#000) 0 4cqw/100% 100% no-repeat;mask:${wave} top/100% 4.2cqw no-repeat,linear-gradient(#000,#000) 0 4cqw/100% 100% no-repeat}
+.w .s:before{display:none}
+.w .lg{top:4.6cqw}.w .tx{margin-top:1.6cqw}` };
+  }
+  return { look: { colour: base }, css: "" };
+}
+
 /**
  * The ad as staged by the creative director: the device's ~6 s scene over the picture, then the brand strip.
  * @param {Parameters<typeof stripHtml>[0] & { hook?: string|null, photoUrl?: string|null, seed?: string }} o
@@ -302,9 +325,10 @@ export function sceneHtml(o, brief) {
   const logo = o.logoUrl ? `<span class="dLm ${lmode}"><img src="${esc(lmode === "reverse" ? o.logoReverseUrl : o.logoUrl)}" alt=""></span>` : `<b class="dLt">${esc(o.brand)}</b>`;
   const d = device(dev, o, { ...brief, message: brief.message || o.headline }, { base, deepBase, logo, seed, fx, photoUrl: o.photoUrl, kickAt: 2.7 });
   if (!d) return storyHtml(o);
-  const strip = stripHtml(o).split(":host([data-go])").join(":host([data-go2])");
+  const end = endCard(dev, brief, base);
+  const strip = stripHtml({ ...o, ...end.look, style: endStyle(dev, o.style) }).split(":host([data-go])").join(":host([data-go2])");
   return `${strip}
-<style>
+<style>${end.css}
 .dz{position:absolute;inset:0;container-type:size;overflow:hidden;font-family:Poppins,system-ui,sans-serif;-webkit-font-smoothing:antialiased;pointer-events:none}
 .w>.ad,.w>.x{display:none}
 .dMw,.dKw{display:inline-block;opacity:0;transform:translateY(45%)}

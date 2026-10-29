@@ -15,7 +15,7 @@ import { renderMock, ASSET_URL } from "./mock.mjs";
 import { discoverArticles, discoverCampaigns } from "./discover.mjs";
 import { stripHtml, fitStrip, STRIP_VERSION, STYLES, styleFontsUrl, styleFontFaces } from "./strip.mjs";
 import { storyHtml, STORY_VERSION, MOTIFS, hookFor } from "./story.mjs";
-import { sceneHtml, sceneVersion, directorPrompt, deviceFor, DIRECTOR_SCHEMA, DIRECTOR_VERSION, DEVICES } from "./director.mjs";
+import { sceneHtml, sceneVersion, directorPrompt, deviceFor, endStyle, DIRECTOR_SCHEMA, DIRECTOR_VERSION, DEVICES } from "./director.mjs";
 import { norm, sha256 } from "./text.mjs";
 import { findBrand, brandBrief, bannedReason, namesBrand } from "./brands.mjs";
 
@@ -802,8 +802,11 @@ export async function makeInImage(o) {
         if (brief.kicker) brief.kicker = words(brief.kicker, 3);
         result.director = { version: DIRECTOR_VERSION, by, recentDevices: recent, ...brief };
         // the device's own display font (spotlight: Playfair, shatter: Anton)
-        const dStyle = { spotlight: "luxe", shatter: "sport" }[brief.device];
-        if (dStyle && dStyle !== style) { const f = await styleFonts(dStyle, fontDir, fetchImpl).catch(() => null); if (f) { fontsCss += "\n" + f.css; Object.assign(files, f.files); } fontFaces.push(...styleFontFaces(dStyle)); }
+        // … and the end card's design, which follows the device
+        for (const dStyle of new Set([{ spotlight: "luxe", shatter: "sport" }[brief.device], endStyle(brief.device, style)].filter((x) => x && x !== style))) {
+          const f = await styleFonts(dStyle, fontDir, fetchImpl).catch(() => null); if (f) { fontsCss += "\n" + f.css; Object.assign(files, f.files); }
+          fontFaces.push(...styleFontFaces(dStyle));
+        }
         result.creative = { format: "director", device: brief.device, version: sceneVersion(brief.device) };
         htmlFor = (c) => sceneHtml({ ...look, hook, photoUrl: c.im.finalUrl || c.im.src }, brief);
       } else {
@@ -856,7 +859,9 @@ export async function makeInImage(o) {
     return result;
   } catch (e) {   // a stopped run keeps what it found and why it stopped, for review
     const status = /** @type {any} */ (e).status || "failed";
-    try { fs.writeFileSync(path.join(workDir, "result.json"), JSON.stringify({ ...result, status, needsInput: /** @type {any} */ (e).needsInput || null, error: e.message, timing }, null, 1)); } catch { /* the error itself is what matters */ }
+    // a crash (not a planned stop) keeps where it happened, so it can be fixed from the record
+    const where = e instanceof StudioStop ? null : String(e.stack || "").split("\n").slice(1, 5).map((l) => l.trim().replace(/\(?file:\/\/\/[^)]*\/openweb\//, "(openweb/")).join(" | ");
+    try { fs.writeFileSync(path.join(workDir, "result.json"), JSON.stringify({ ...result, status, needsInput: /** @type {any} */ (e).needsInput || null, error: e.message, ...(where ? { errorAt: where } : {}), timing }, null, 1)); } catch { /* the error itself is what matters */ }
     throw Object.assign(e, { status });
   }
 }

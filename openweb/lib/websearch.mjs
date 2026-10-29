@@ -32,7 +32,7 @@ export async function imageSearch(q, { transparent = false, fetchImpl = globalTh
 // The brand's own sites rank first (bata.com, maggi.in …), then the rest in search order.
 export function brandHost(host, brand) {
   const b = String(brand).toLowerCase().replace(/[^a-z0-9]/g, "");
-  const h = host.toLowerCase().replace(/^www\./, "").split(".");
+  const h = String(host || "").toLowerCase().replace(/^www\./, "").split(".");   // a search result can come without a host
   return b.length >= 3 && h.some((part) => part.replace(/[^a-z0-9]/g, "") === b || (part.length > 4 && part.replace(/[^a-z0-9]/g, "").startsWith(b)));
 }
 

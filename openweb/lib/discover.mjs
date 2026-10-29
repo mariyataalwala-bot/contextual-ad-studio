@@ -256,7 +256,7 @@ export async function discoverCampaigns(o) {
   }
   out.verified.sort((a, b) => String(b.date).localeCompare(String(a.date)));
   const byName = new Map();
-  out.verified = out.verified.filter((c) => { const k = c.name?.toLowerCase() || c.title.toLowerCase().replace(/[^a-z0-9]/g, "").slice(0, 48);
+  out.verified = out.verified.filter((c) => { const k = c.name?.toLowerCase() || String(c.title || "").toLowerCase().replace(/[^a-z0-9]/g, "").slice(0, 48);
     const first = byName.get(k); if (!first) { byName.set(k, c); c.alsoReported = []; return true; }
     first.alsoReported.push(c.url); if (c.forProduct) first.forProduct = true; return false; });
   if (!out.verified.length) out.flags.push(`no verified campaign for ${brand} in the last ${months} months`);
