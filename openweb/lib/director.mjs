@@ -126,7 +126,7 @@ function device(name, o, b, t) {
 .dKk{font:600 2.6cqw/1.2 Poppins,system-ui;letter-spacing:.18em;text-transform:uppercase;color:#2b6d97;margin-bottom:1.4cqw}
 .dMs{font:700 6.2cqw/1.04 Poppins,system-ui;letter-spacing:-.015em;text-wrap:balance;color:#0e2f4a;text-shadow:0 0 1.4cqw rgba(255,255,255,.9),0 .1cqw 0 rgba(255,255,255,.8)}
 .dLg{height:5cqw;margin-bottom:1.6cqw;opacity:0}
-:host([data-go]) .dFz{animation:dFzIn 1.3s .1s cubic-bezier(.2,.8,.3,1) forwards}
+:host([data-go]) .dFz{animation:dFzIn 1.3s .1s cubic-bezier(.2,.8,.3,1) forwards,dOut .55s 5.75s cubic-bezier(.5,0,.75,0) forwards}
 :host([data-go]) .dCr{animation:dIn 1s .6s forwards}
 :host([data-go]) .dTr{animation:dTrickle 2.4s ease-in forwards}
 :host([data-go]) .dVp{animation:dVapour 3s ease-out forwards}
@@ -135,7 +135,8 @@ function device(name, o, b, t) {
 @keyframes dTrickle{0%{opacity:0;transform:translateY(0)}15%{opacity:.9}100%{opacity:0;transform:translateY(110cqh)}}
 @keyframes dVapour{0%{opacity:0;transform:translateY(0) scale(.6)}40%{opacity:.7}100%{opacity:0;transform:translateY(-14cqh) scale(1.4)}}
 @keyframes dRiseCold{from{opacity:0;transform:translateY(60cqh) rotate(6deg)}to{opacity:1;transform:rotate(-3deg)}}`,
-      html: `<div class="dFz"></div><svg class="dCr" viewBox="0 0 100 56" preserveAspectRatio="none">${n(14, (i) => { const left = i % 2 === 0, x = left ? r() * 14 : 100 - r() * 14, y = r() * 56; let d = `M${x.toFixed(1)} ${y.toFixed(1)}`; for (let k = 0; k < 4; k++) d += ` l${((left ? 1 : -1) * (2 + r() * 4)).toFixed(1)} ${(r() * 6 - 3).toFixed(1)}`; return `<path d="${d}"/>`; })}</svg>
+      under: `<div class="dFz"></div>`,
+      html: `<svg class="dCr" viewBox="0 0 100 56" preserveAspectRatio="none">${n(14, (i) => { const left = i % 2 === 0, x = left ? r() * 14 : 100 - r() * 14, y = r() * 56; let d = `M${x.toFixed(1)} ${y.toFixed(1)}`; for (let k = 0; k < 4; k++) d += ` l${((left ? 1 : -1) * (2 + r() * 4)).toFixed(1)} ${(r() * 6 - 3).toFixed(1)}`; return `<path d="${d}"/>`; })}</svg>
 ${n(5, (i) => `<i class="dTr" style="left:${(8 + i * 9 + r() * 4).toFixed(1)}%;animation-delay:${(1 + i * 0.5).toFixed(1)}s"></i>`)}
 <div class="dMsg"><div class="dLg">${logo}</div>${kick}${msg(3.0)}</div>
 ${hero(o, t.fx, seed)}${n(2, (i) => `<i class="dVp" style="right:${12 + i * 10}cqw;bottom:${50 + i * 12}cqh;animation-delay:${(1.8 + i * 0.6).toFixed(1)}s"></i>`)}` };
@@ -314,14 +315,16 @@ export function sceneHtml(o, brief) {
 .dAd{position:absolute;right:5.8cqw;top:1.75cqw;font:600 1.8cqw/1 system-ui;letter-spacing:.08em;color:#fff;background:rgba(0,0,0,.32);padding:.55cqw .95cqw;border-radius:.8cqw;opacity:0;z-index:9}
 .dX{position:absolute;right:1.4cqw;top:1.4cqw;width:3.6cqw;height:3.6cqw;border-radius:50%;background:rgba(0,0,0,.32);color:#fff;font:500 2.8cqw/3.5cqw system-ui;text-align:center;opacity:0;z-index:9}
 :host([data-go]) .dAd,:host([data-go]) .dX{animation:dIn .3s .3s forwards}
-:host([data-go]) .dz{animation:dSceneOut .55s 5.75s cubic-bezier(.5,0,.75,0) forwards}
+/* the scene fades out on an inner wrapper: an animated .dz would cut the frost's backdrop blur off from the photo */
+.dzi{position:absolute;inset:0}
+:host([data-go]) .dzi{animation:dSceneOut .55s 5.75s cubic-bezier(.5,0,.75,0) forwards}
 @keyframes dWord{to{opacity:1;transform:none}}
 @keyframes dOut{from{opacity:1}to{opacity:0}}
 @keyframes dSceneOut{to{opacity:0;transform:scale(1.04)}}
 ${HERO_CSS(fx.includes("rim") ? d.rim || mix(base, "#ffffff", 0.5) : null)}
 ${d.css}
 </style>
-<div class="dz" data-go2="${STORY_MS}" data-device="${dev}">${d.html}<span class="dAd">Ad</span><span class="dX">&times;</span></div>`;
+<div class="dz" data-go2="${STORY_MS}" data-device="${dev}">${d.under || ""}<div class="dzi">${d.html}</div><span class="dAd">Ad</span><span class="dX">&times;</span></div>`;
 }
 
 export const sceneVersion = (device) => device === "medallion" ? `${DIRECTOR_VERSION}/${STORY_VERSION}+${STRIP_VERSION}` : `${DIRECTOR_VERSION}/${device}+${STRIP_VERSION}`;
