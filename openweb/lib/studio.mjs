@@ -37,7 +37,7 @@ export class StudioStop extends Error {
 }
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
-export const STUDIO_PROMPTS = "inimage-prompts.v2";   // v2 (2026-10-29): the AI also picks the story hook
+export const STUDIO_PROMPTS = "inimage-prompts.v3";   // v2 (2026-10-29): the AI also picks the story hook; v3: article_safe, decided per article
 const WIKI_UA = { "User-Agent": "ContextualAdStudio/1.0 (Mediakart contextual-ad demo tool)" };
 const slug = (s) => String(s).toLowerCase().normalize("NFKD").replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 40) || "brand";
 
@@ -336,9 +336,10 @@ const FINAL_SCHEMA = { type: "object", properties: {
     k: { type: "integer" }, context_fit: { type: "integer", description: "0-10: 9-10 the article is about this product's category or its main use; 6-8 closely related; 0-5 only a loose link" },
     image_fit: { type: "integer", description: "0-10: the picture's scene suits this product" },
     safe: { type: "boolean" }, safe_why: { type: "string" },
+    article_safe: { type: "boolean", description: "the ARTICLE itself (its topic and text, whatever the picture) is a safe, positive place for this product — false when it warns about, questions or is negative about this kind of product, or is about illness, risks or diet restrictions tied to it; the same answer for every picture of the same article" },
     strip_ok: { type: "boolean", description: "the bottom 46% of the picture can be covered without hiding the main subject's face or key text" },
     why: { type: "string" },
-  }, required: ["k", "context_fit", "image_fit", "safe", "safe_why", "strip_ok", "why"] } },
+  }, required: ["k", "context_fit", "image_fit", "safe", "safe_why", "article_safe", "strip_ok", "why"] } },
 }, required: ["candidates"] };
 
 // Bing's own copy of a search result at a larger size (used when the picture's site refuses the download)
@@ -759,6 +760,10 @@ export async function makeInImage(o) {
         .sort((x, y) => (Number(y.v.safe && y.v.strip_ok) - Number(x.v.safe && x.v.strip_ok)) || y.score - x.score);
       scored = [...scored, ...scoredR.map((c) => ({ ...c, k: c.k + k0 }))].sort((x, y) => (Number(y.v.safe && y.v.strip_ok) - Number(x.v.safe && x.v.strip_ok)) || y.score - x.score);
       k0 += shown.length;
+      // brand safety is decided per article, not per picture: an article that any check finds unsafe for the product
+      // (Tropicana on "Whole fruit vs juice … diabetes": one picture of fresh fruit passed, another of the same article did not) is left out whole
+      const unsafeArticles = new Set(scored.filter((c) => c.v.article_safe === false).map((c) => c.a.url));
+      for (const c of scored) if (unsafeArticles.has(c.a.url) && c.v.safe) { c.v.safe = false; c.v.safe_why = `The article itself is not a safe place for this product (another check of it: ${(scored.find((x) => x.a.url === c.a.url && x.v.article_safe === false)?.v.safe_why || "unsafe").slice(0, 160)}).`; }
       ok = scored.filter((c) => c.v.safe && c.v.strip_ok && c.score >= studio.minScore && c.v.context_fit >= studio.minContext);
     }
     result.reviewArticles = review;
