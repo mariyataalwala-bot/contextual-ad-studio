@@ -12,10 +12,11 @@ import { normaliseCampaign, todayIST } from "./lib/campaigns.mjs";
 import { loadMediaPlan, loadShowcase, refreshShowcase, creativeFiles, checkPublisherSources } from "./lib/inventory.mjs";
 import { renderMock, MockError } from "./lib/mock.mjs";
 import { ensureVectors } from "./lib/semantic.mjs";
-import { loadStudioConfig, makeInImage, studioRefusal, sectionItems, feedFetcher, sitemapIndex } from "./lib/studio.mjs";
+import { loadStudioConfig, makeInImage, studioRefusal, sectionItems, feedFetcher, sitemapIndex, rivalMatcher } from "./lib/studio.mjs";
 import { STYLES } from "./lib/strip.mjs";
-import { loadBrands } from "./lib/brands.mjs";
-import { makeReader } from "./lib/reader.mjs";
+import { loadBrands, findBrand, namesBrand } from "./lib/brands.mjs";
+import { makeFirecrawl, discoverArticles, discoverCampaigns } from "./lib/discover.mjs";
+import { makeReader, withTimeout } from "./lib/reader.mjs";
 
 // A creative file the client supplies, sent from the page as a data: URL. Its type is read from the file's own bytes
 // (not from the name): PNG, JPEG, GIF, WebP pictures; MP4, WebM videos. At most 40 MB.
@@ -55,6 +56,28 @@ export function createOpenWeb({ dataDir, ask = null, provider = () => "none", ff
   const log = (j, m) => j.log.push(new Date().toLocaleTimeString() + "  " + m);
   // Firecrawl renders JavaScript-built pages only when a key is set (settings.json "firecrawlKey" or FIRECRAWL_API_KEY)
   const firecrawl = () => { const key = firecrawlKey(); return key ? { key } : null; };
+  // Firecrawl Search for discovery (articles on the publishers, the brand's campaigns): bounded retries, cached on disk
+  const fcFor = () => { const dc = studio.discovery || {}; return makeFirecrawl({ key: firecrawlKey(), fetchImpl, cacheDir: path.join(studioRoot, "_index", "firecrawl"), retries: dc.retries ?? 1, timeoutMs: (dc.timeoutSeconds || 25) * 1000, searchTtlH: dc.searchCacheHours || 6, scrapeTtlH: dc.scrapeCacheHours || 48 }); };
+  // brand → recent relevant articles (best 3–5, with evidence and flags) and, separately, its verified recent campaigns
+  async function discoverReport({ brand, product = "", days = 0, months = 0 }) {
+    const dc = studio.discovery || {}, known = findBrand(brands, brand, product);
+    const topics = [...new Set([product, ...(known?.topics || [])].map((x) => String(x || "").trim()).filter(Boolean))], competitors = [...(known?.competitors || [])];
+    if (topics.length < 5 && ask && provider() !== "none") {   // an unknown brand: its topics and rivals from the AI (once)
+      const t = await withTimeout(ask("You help find articles for contextual ads.", `Brand: ${brand}. Product: ${product || "(the brand's main product or service)"}.\nGive 10-15 lowercase words or short phrases that name what this brand sells and the moments it is used in (topics of news or lifestyle articles where its ad fits). Never the brand or rival names. Also competitors: 6-15 rival brands and product lines.`,
+        { type: "object", properties: { words: { type: "array", items: { type: "string" } }, competitors: { type: "array", items: { type: "string" } } }, required: ["words"] }, [], "medium"), 30000, "Topic words").catch(() => null);
+      topics.push(...(t?.words || [])); competitors.push(...(t?.competitors || []));
+    }
+    const fc = fcFor(), reader = makeReader({ fetcher: makeFetcher({ fetchImpl, gapMs: 1000 }), py, firecrawl: firecrawl(), fetchImpl, timeoutMs: 20000, tmpDir: path.join(store.root, "tmp", "read") });
+    const rivalsOf = rivalMatcher(competitors), ownNews = (t) => (known ? namesBrand(known, t) : !!rivalMatcher([brand])(t));
+    const publishers = [...studio.sections, ...(studio.sitemaps || [])].map((p) => ({ domain: p.domain, id: p.id }));
+    const [articles, campaigns] = await Promise.all([
+      withTimeout(discoverArticles({ brand, product, topics, rivals: rivalsOf, ownNews, publishers, days: days || dc.articleDays || 45, fc, reader, cfg, maxRead: dc.maxRead || 8, perPublisher: dc.perPublisher || 3, limit: dc.limit || 5 }), 90000, "Article discovery")
+        .catch((e) => ({ candidates: [], excluded: [], queries: [], flags: ["article discovery stopped: " + e.message] })),
+      withTimeout(discoverCampaigns({ brand, product, aliases: known?.aliases || [], months: months || dc.campaignMonths || 12, fc, reader, tradePress: dc.tradePress || [], maxRead: dc.maxCampaignReads || 6 }), 60000, "Campaign discovery")
+        .catch((e) => ({ verified: [], unverified: [], excluded: [], queries: [], flags: ["campaign discovery stopped: " + e.message] })),
+    ]);
+    return { brand, product, knownBrand: !!known, topics, checkedAt: new Date().toISOString(), articles, campaigns, note: "Recommendation only — nothing is served. Campaigns are listed only from dated trade-press pages that name the brand; others are unverified." };
+  }
 
   const findRec = (key) => { for (const a of store.getRecommendations()?.results || []) { const r = a.recommendations.find((x) => x.key === key); if (r) return r; } return null; };
   const pubOf = (a) => pubs.get(a.publisherId);
@@ -120,7 +143,7 @@ export function createOpenWeb({ dataDir, ask = null, provider = () => "none", ff
     const end = (status, outcome, error) => { if (j.status !== "running") return false; Object.assign(j, { status, outcome, tEnd: Date.now() }); if (error) j.error = error; if (studioBusy === j.id) studioBusy = null; return true; };
     const ctl = new AbortController(), limitS = studio.budgetSeconds + 75;
     const dog = setTimeout(() => { ctl.abort(); if (end("failed", "failed", `Stopped: the run took longer than ${limitS} s (last step: ${j.stage}). Nothing was placed.`)) log(j, j.error); }, limitS * 1000);
-    makeInImage({ recentAds: findAds, brand, product, offer, productImage, style, clientAd, brands, workDir, indexDir: studioRoot, studio, cfg, store, ask, fetchImpl, py, ffmpeg, chromium, firecrawl: firecrawl(), signal: ctl.signal, say, productFile })
+    makeInImage({ discovery: { fc: fcFor(), campaigns: campaignsFor }, recentAds: findAds, brand, product, offer, productImage, style, clientAd, brands, workDir, indexDir: studioRoot, studio, cfg, store, ask, fetchImpl, py, ffmpeg, chromium, firecrawl: firecrawl(), signal: ctl.signal, say, productFile })
       .then((r) => { if (end("done", r.status || "success")) { j.result = r; j.pct = 100; log(j, `Ad ready in ${r.seconds} s (${j.outcome}${r.status === "partial" ? ": " + r.statusWhy : ""}).`); } })
       .catch((e) => { if (end("failed", e.status || "failed", e.message)) { j.needsInput = e.needsInput || null; log(j, `Stopped (${j.outcome}): ` + e.message); } try { fs.writeFileSync(path.join(workDir, "error.txt"), e.stack || e.message); } catch { /* best effort */ } })
       .finally(() => clearTimeout(dog));
@@ -136,6 +159,11 @@ export function createOpenWeb({ dataDir, ask = null, provider = () => "none", ff
     }
     const p = u.pathname.slice("/api/ow".length);
     if (p === "/studio/brands") return send(res, 200, { version: brands.version, brands: brands.brands.map((b) => ({ name: b.name, category: b.category, subBrands: (b.subBrands || []).map((x) => x.name) })) });
+    if (p === "/studio/discover") {   // ?brand=Zomato&product=food&days=45&months=12
+      const brand = String(u.searchParams.get("brand") || "").trim().slice(0, 60), product = String(u.searchParams.get("product") || "").trim().slice(0, 100);
+      if (!brand) return send(res, 400, { error: "Give a brand (…/discover?brand=Zomato)." });
+      return send(res, 200, await discoverReport({ brand, product, days: Math.min(365, +u.searchParams.get("days") || 0), months: Math.min(36, +u.searchParams.get("months") || 0) }));
+    }
     if (p === "/studio/start" && req.method === "POST") { const r = studioStart(await body(req)); return send(res, r.code, r.body); }
     if (p === "/studio/list") {   // earlier mocks (newest first), read back from their result.json files
       const out = [];
@@ -261,5 +289,16 @@ export function createOpenWeb({ dataDir, ask = null, provider = () => "none", ff
     }
     return send(res, 404, { error: "not found" });
   }
-  return { handle, cfg, store };
+  // the brand's verified campaigns, for the studio and the YouTube tool (names to search its ads by); null without a
+  // Firecrawl key. One lookup per brand for 30 minutes, so a studio run and its ad search share it.
+  const campaignMemo = new Map();
+  const campaignsFor = (/** @type {string} */ brand) => { const fc = fcFor(); if (!fc.enabled) return Promise.resolve(null);
+    const k = brand.toLowerCase().trim(), m = campaignMemo.get(k);
+    if (m && Date.now() - m.t < 30 * 60e3) return m.p;
+    const dc = studio.discovery || {}, known = findBrand(brands, brand, "");
+    const p = withTimeout(discoverCampaigns({ brand, aliases: known?.aliases || [], months: dc.campaignMonths || 12, fc, tradePress: dc.tradePress || [], maxRead: 4,
+      reader: makeReader({ fetcher: makeFetcher({ fetchImpl, gapMs: 1000 }), py, firecrawl: null, fetchImpl, timeoutMs: 15000, tmpDir: path.join(store.root, "tmp", "read") }) }), 25000, "Campaign discovery").catch(() => null);
+    campaignMemo.set(k, { t: Date.now(), p }); p.then((v) => { if (!v) campaignMemo.delete(k); });
+    return p; };
+  return { handle, cfg, store, campaignsFor };
 }

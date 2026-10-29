@@ -12,6 +12,7 @@ import { analyseUrl } from "./pipeline.mjs";
 import { makeReader, withTimeout } from "./reader.mjs";
 import { EXTRACT_VERSION } from "./extract.mjs";
 import { renderMock, ASSET_URL } from "./mock.mjs";
+import { discoverArticles, discoverCampaigns } from "./discover.mjs";
 import { stripHtml, fitStrip, STRIP_VERSION, STYLES, styleFontsUrl, styleFontFaces } from "./strip.mjs";
 import { norm, sha256 } from "./text.mjs";
 import { findBrand, brandBrief, bannedReason, namesBrand } from "./brands.mjs";
@@ -333,7 +334,7 @@ export const words = (s, n) => {
 };
 
 /**
- * @param {{ brand: string, product: string, recentAds?: ((q: { brand: string, product?: string }) => Promise<any[]>)|null, offer?: string, productImage?: string, style?: string, brands?: any, clientAd?: { file: string, type: "image"|"video", name?: string, seconds?: number }|null, workDir: string, indexDir?: string, studio: any, cfg: any, store: any,
+ * @param {{ brand: string, product: string, discovery?: { fc: any, campaigns?: (brand: string) => Promise<any> }|null, recentAds?: ((q: { brand: string, product?: string }) => Promise<any[]>)|null, offer?: string, productImage?: string, style?: string, brands?: any, clientAd?: { file: string, type: "image"|"video", name?: string, seconds?: number }|null, workDir: string, indexDir?: string, studio: any, cfg: any, store: any,
  *   ask: Function, fetchImpl?: any, py: (args: string[]) => Promise<string>, ffmpeg: (args: string[]) => Promise<any>, chromium?: any, firecrawl?: { key: string }|null, productFile?: string|null,
  *   signal?: AbortSignal, say?: (pct: number, stage: string, msg?: string) => void }} o
  */
@@ -368,6 +369,13 @@ export async function makeInImage(o) {
   try {
     // 1) product pictures, logo candidates and the latest articles — all at once
     say(4, "search", `Searching online for ${brand} ${product}…`);
+    // the brand's recent campaigns, verified on dated trade-press pages (Firecrawl Search), in parallel with everything else
+    const disc = studio.discovery || {}, fc = o.discovery?.fc || null;
+    const campP = fc?.enabled && !client && o.discovery?.campaigns ? o.discovery.campaigns(brand).then((c) => c || { verified: [], unverified: [], excluded: [], flags: ["campaign discovery gave no answer"] })
+      : fc?.enabled && !client
+      ? withTimeout(discoverCampaigns({ brand, product, aliases: known?.aliases || [], months: disc.campaignMonths || 12, fc, tradePress: disc.tradePress || [], maxRead: disc.maxCampaignReads || 6,
+          reader: makeReader({ fetcher, py, firecrawl: null, fetchImpl, timeoutMs: 15000, tmpDir: path.join(store.root, "tmp", "read") }) }), 25000, "Campaign discovery").catch((e) => ({ verified: [], unverified: [], excluded: [], flags: ["campaign discovery stopped: " + e.message] }))
+      : Promise.resolve(null);
     const refP = client ? Promise.resolve({ ads: [], campaigns: [], adLook: null }) : recentAdsRef(brand, product, { findAds: o.recentAds || null, known, cacheFile: path.join(o.indexDir || path.join(workDir, "..", ".."), "_index", "recentads.json") });
     const topicP = ask("You help find articles for contextual ads.",
       `Brand: ${brand}. Product: ${product}.\n${brief ? brief + "\n" : ""}Give 15-25 lowercase single words (a few two-word phrases at most) that would appear in the web address of a news or lifestyle article that is a natural place for this ad — the product type, how and where it is used, occasions, activities, dishes, places (e.g. for running shoes: running, marathon, jogging, walking, workout, fitness, steps, cardio, sneakers; for instant noodles: noodles, recipe, snack, ramen, hostel, monsoon, chai, breakfast). Never the brand name or competitor names.\nAlso competitors: 8-20 rival brands of ${brand} for this product and their product line names (e.g. for a phone: Apple, iPhone, Samsung, Galaxy, Google, Pixel, OnePlus, Xiaomi, Redmi, Vivo, Oppo, Realme).`,
@@ -385,9 +393,17 @@ export async function makeInImage(o) {
     const seenUrl = new Set(feedItems.map((x) => x.url));
     const taken = usedArticles(o.indexDir || path.join(workDir, "..", ".."), brand);
     const topicWords = [...new Set([...(topic.words || []), ...(known?.topics || [])])];
-    const all = [...feedItems, ...matchSlugs(older.filter((x) => !seenUrl.has(x.url)), topicWords)];
+    const early0 = rivalMatcher([...(topic.competitors || []), ...(known?.competitors || [])]), early = (t) => early0(t) || (ownNews(t) ? ["the brand itself"] : null);
+    // Firecrawl Search across the media-plan publishers (older and wider than the feeds); the article checks below read them
+    const pubsForSearch = [...studio.sections, ...(studio.sitemaps || [])].map((p) => ({ domain: p.domain, id: p.id }));
+    const found = fc?.enabled && !client
+      ? await withTimeout(discoverArticles({ brand, product, topics: topicWords, rivals: early0, ownNews, publishers: pubsForSearch, days: disc.articleDays || 45, perPublisher: disc.perPublisher || 3, fc, searchOnly: true }), 20000, "Article search").catch((e) => ({ found: [], queries: [], excluded: [], flags: ["article search stopped: " + e.message] }))
+      : null;
+    result.discovery = found ? { queries: found.queries, found: (found.found || []).length, excluded: found.excluded.length, flags: found.flags } : { flags: ["Firecrawl key not set — search-based discovery is off (feeds and sitemaps used)"] };
+    const searched = (found?.found || []).filter((x) => !seenUrl.has(x.url)).map((x) => ({ url: x.url, title: x.title, published: null, section: x.publisher, via: "search" }));
+    const all = [...feedItems, ...searched, ...matchSlugs(older.filter((x) => !seenUrl.has(x.url) && !searched.some((y) => urlKey(y.url) === urlKey(x.url))), topicWords)];
     // speed and focus: rival headlines out before any AI reads the list, topic matches first, at most studio.listMax lines
-    const early0 = rivalMatcher([...(topic.competitors || []), ...(known?.competitors || [])]), early = (t) => early0(t) || (ownNews(t) ? ["the brand itself"] : null), hits = new Set(matchSlugs(all, topicWords, 1e9).map((x) => x.url));
+    const hits = new Set([...matchSlugs(all, topicWords, 1e9).map((x) => x.url), ...searched.map((x) => x.url)]);
     const items = all.filter((x) => !taken.has(urlKey(x.url)) && !early(x.title)).sort((a, b) => Number(hits.has(b.url)) - Number(hits.has(a.url))).slice(0, studio.listMax);
     result.articlesTakenByOtherBrands = all.filter((x) => taken.has(urlKey(x.url))).map((x) => ({ url: x.url, title: x.title, usedBy: taken.get(urlKey(x.url)) }));
     result.topicWords = topicWords;
@@ -422,10 +438,12 @@ export async function makeInImage(o) {
 
     // 2) AI: the packshot + logo (vision) and the plan — copy, targeting, article shortlist (text) — in parallel
     const ref = await refP;
+    const camp = await campP;
+    if (camp) { ref.verifiedCampaigns = camp.verified; ref.unverifiedCampaigns = camp.unverified; ref.campaignFlags = camp.flags; }
     result.recentAds = ref;
     const stills = (await Promise.all(ref.ads.slice(0, 4).map(async (a, i) => { const f = await downloadImage(a.still, path.join(cand, `r${i + 1}`), { fetchImpl, fs }).catch(() => null); return f && /\.(jpg|png)$/.test(f) ? { ...a, file: f, n: i + 1 } : null; }))).filter(Boolean);
-    const refLine = ref.ads.length || ref.campaigns.length || ref.adLook
-      ? `The brand's recent ads (the reference for colours, style and voice — the new ad should look and sound like this brand's current advertising):${ref.adLook ? `\n- Ad look: ${ref.adLook}` : ""}${ref.campaigns.length ? `\n- Campaigns: ${ref.campaigns.map((c) => `"${c.name}"${c.year ? ` (${c.year})` : ""}`).join("; ")}` : ""}${ref.ads.length ? `\n- Recent commercials on YouTube: ${ref.ads.map((a) => `"${a.title}"`).join("; ")}` : ""}\n`
+    const refLine = ref.ads.length || ref.campaigns.length || ref.adLook || ref.verifiedCampaigns?.length
+      ? `The brand's recent ads (the reference for colours, style and voice — the new ad should look and sound like this brand's current advertising):${ref.adLook ? `\n- Ad look: ${ref.adLook}` : ""}${ref.verifiedCampaigns?.length ? `\n- Recent campaigns (verified on dated trade-press pages): ${ref.verifiedCampaigns.slice(0, 4).map((c) => `"${c.title}" (${c.date.slice(0, 10)}): ${c.evidence}`).join(" | ")}` : ""}${ref.campaigns.length ? `\n- Campaigns: ${ref.campaigns.map((c) => `"${c.name}"${c.year ? ` (${c.year})` : ""}`).join("; ")}` : ""}${ref.ads.length ? `\n- Recent commercials on YouTube: ${ref.ads.map((a) => `"${a.title}"`).join("; ")}` : ""}\n`
       : "";
     say(16, "understand", client ? "Planning where the ad fits best…" : "Choosing the product photo, logo and style, and writing the copy…");
     const list = items.map((x, i) => `${i + 1}. [${x.section}] ${x.title}`).join("\n");
@@ -659,6 +677,8 @@ export async function makeInImage(o) {
       for (const { s, a } of got) {
         if (a.error) { rejected.push({ url: s.url, title: s.title, why: `could not be read (${a.error.code}${a.error.code === "TIMEOUT" ? ": " + a.error.message : ""})` }); continue; }
         if (a.free === false) { rejected.push({ url: s.url, title: s.title, why: "subscription article (the page marks it isAccessibleForFree: false)" }); continue; }
+        // stale: older than the discovery range (articles found by search arrive without a date; the page tells it)
+        if (a.published && Date.now() - Date.parse(a.published) > (disc.articleDays || 45) * 864e5) { rejected.push({ url: s.url, title: s.title, why: `stale — published ${String(a.published).slice(0, 10)}` }); continue; }
         const ex = a.extraction || { status: "complete", method: a.source, notes: [] };
         if (ex.status === "none" || ex.status === "headline_only") {
           const why = `only the headline could be read (${ex.method}) — brand safety can't be checked without the article text`;

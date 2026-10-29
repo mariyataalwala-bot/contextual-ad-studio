@@ -368,7 +368,11 @@ const ICONS = ["mesh", "pan", "chip", "bowl", "plate", "tube", "jar", "bottle", 
 
 // Step A: find the brand's official ads (AI ranks them; without AI: the brand's own channel first)
 async function findAds({ brand, product }) {
-  const qs = [`${brand} ad`, `${brand} TVC`, `${brand} ${product || ""} ad`.replace(/\s+/g, " ").trim(), `${brand} official commercial`];
+  // the brand's recent campaigns, verified on dated trade-press pages (only with a Firecrawl key): their names are searched too
+  const camp = await (openweb?.campaignsFor?.(brand) ?? Promise.resolve(null)).catch(() => null);
+  const verified = (camp?.verified || []).slice(0, 4);
+  const qs = [`${brand} ad`, `${brand} TVC`, `${brand} ${product || ""} ad`.replace(/\s+/g, " ").trim(), `${brand} official commercial`,
+    ...verified.filter((c) => c.name).slice(0, 2).map((c) => `${brand} ${c.name}`)];
   const seen = new Map();
   try { for (const r of await ytJson(["searchjson", [...new Set(qs)].join("||"), "12"])) if (!seen.has(r.id)) seen.set(r.id, r); }
   catch (e) { console.error("ad search failed:", e.message); throw new Error("YouTube search failed on this server: " + e.message.slice(0, 200)); }
@@ -377,7 +381,7 @@ async function findAds({ brand, product }) {
   try {
     const pick = await ask(
       "You help an ad agency find a brand's own official TV/YouTube commercials.",
-      `${brandBrief(BRANDS ? findBrand(BRANDS, brand, product || "") : null)}\nBrand: ${brand}${product ? `\nProduct focus: ${product}` : ""}\nYouTube results (JSON):\n${JSON.stringify(list)}\n\n` +
+      `${brandBrief(BRANDS ? findBrand(BRANDS, brand, product || "") : null)}\nBrand: ${brand}${product ? `\nProduct focus: ${product}` : ""}${verified.length ? `\nThe brand's recent campaigns (reported on dated trade-press pages; prefer their films when they are in the results):\n${verified.map((c) => `- ${c.name ? `"${c.name}" — ` : ""}${c.title} (${String(c.date).slice(0, 10)})`).join("\n")}` : ""}\nYouTube results (JSON):\n${JSON.stringify(list)}\n\n` +
         `Return up to 6 that are the brand's OWN official TV / CTV commercials (16:9 TVCs uploaded by the brand's or its parent company's official channel; not vertical mobile/Shorts/Reels ads, not reactions, reviews, compilations or fan uploads). Prefer recent ads that show the product clearly. Rank best first, and say in one short line why each fits.`,
       { type: "object", additionalProperties: false, required: ["ads"],
         properties: { ads: { type: "array", items: { type: "object", additionalProperties: false, required: ["id", "why"], properties: { id: { type: "string" }, why: { type: "string" } } } } } },
@@ -886,7 +890,10 @@ http.createServer(async (req, res) => {
       const k = BRANDS && findBrand(BRANDS, b.brand || "", b.product || ""), why = bannedReason(k, b.product || "");
       if (why) return send(res, 400, { error: `This product can't be advertised: ${why}` });
       const id = "a" + Date.now().toString(36); adJobs[id] = { status: "running" };
-      Promise.all([findAds(b), k?.logo?.png ? { url: k.logo.png, source: "Wikimedia (MediaKart brand knowledge)" } : wikiLogo(b.brand).catch(() => null)]).then(([ads, logo]) => { adJobs[id] = { status: "done", logo, ads: ads.map((a) => ({ ...a, logo: avatarCache.get(a.channelId) || null })) }; }).catch((e) => { adJobs[id] = { status: "failed", error: e.message }; });
+      Promise.all([findAds(b), k?.logo?.png ? { url: k.logo.png, source: "Wikimedia (MediaKart brand knowledge)" } : wikiLogo(b.brand).catch(() => null),
+        (openweb?.campaignsFor?.(b.brand || "") ?? Promise.resolve(null)).catch(() => null)])
+        .then(([ads, logo, camp]) => { adJobs[id] = { status: "done", logo, ads: ads.map((a) => ({ ...a, logo: avatarCache.get(a.channelId) || null })),
+          campaigns: camp ? { verified: camp.verified.slice(0, 4).map((c) => ({ name: c.name, title: c.title, url: c.url, date: c.date })), flags: camp.flags } : null }; }).catch((e) => { adJobs[id] = { status: "failed", error: e.message }; });
       return send(res, 200, { id });
     }
     const am = u.pathname.match(/^\/api\/ads\/(\w+)$/);

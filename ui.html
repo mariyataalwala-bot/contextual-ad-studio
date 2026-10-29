@@ -180,6 +180,7 @@ video{width:100%;display:block;background:#000}
   <section class="card hide" id="s2">
     <div class="ch"><div class="num">2</div><div><h2>Which ad should we place?</h2><p class="s">The brand's official 16:9 TV / CTV commercials found on YouTube. Pick one, or paste a link.</p></div></div>
     <div class="logobar" id="logoBar"><span class="lbl">Logo</span><div class="lbox" id="logoBox"><span class="s">Looking it up…</span></div><span class="s" id="logoSrc"></span><label class="uplink">Wrong logo? Upload one<input type="file" id="logo" accept="image/*" hidden></label></div>
+    <p class="s" id="camps" hidden></p>
     <div class="ads" id="ads"></div>
     <div class="or">OR PASTE LINKS</div>
     <div class="row"><div><label for="adUrl">Ad link (16:9 TV / CTV ad)</label><input type="text" id="adUrl" placeholder="https://www.youtube.com/watch?v=…"></div>
@@ -256,6 +257,8 @@ $('findAds').onclick=async()=>{
   $('ads').innerHTML=skeleton(); $('s2').classList.remove('hide'); stepTo(2); $('s2').scrollIntoView({behavior:'smooth',block:'start'});
   try{ const st=await api('/api/ads',{brand:$('brand').value.trim(),product:$('product').value.trim()}); let r;
     for(;;){ await new Promise(z=>setTimeout(z,2000)); r=await api('/api/ads/'+st.id); if(r.status==='failed') throw new Error(r.error); if(r.status==='done') break; }
+    const cv=r.campaigns?.verified||[]; $('camps').hidden=!r.campaigns;
+    $('camps').innerHTML=cv.length?'Recent campaigns (dated trade-press reports): '+cv.map(c=>`<a href="${esc(c.url)}" target="_blank" rel="noopener">${esc(c.name||c.title.slice(0,60))}</a> (${esc(String(c.date).slice(0,10))})`).join(' · '):esc((r.campaigns?.flags||[])[0]||'');
     adList=r.ads; adSel=null; wikiLogo=r.logo||null; showLogo(); if(!wikiLogo&&adList[0]) findChannelLogo(adList[0]); $('start').disabled=!$('adUrl').value.trim();
     $('ads').innerHTML=adList.length?adList.map((a,i)=>`<div class="ad" data-i="${i}"><img src="https://i.ytimg.com/vi/${esc(a.id)}/mqdefault.jpg" alt="" loading="lazy">${a.length?`<span class="dur">${esc(a.length)}</span>`:''}<div class="meta"><b>${esc(a.title)}</b><span class="ch2">${esc(a.channel)}</span>${a.why?`<br><span class="why">${esc(a.why)}</span>`:''}</div></div>`).join(''):'<p class="s">No official 16:9 TV ads found — paste a link below.</p>';
     document.querySelectorAll('.ad').forEach(el=>el.onclick=()=>{document.querySelectorAll('.ad').forEach(x=>x.classList.remove('sel'));el.classList.add('sel');adSel=adList[+el.dataset.i];$('adUrl').value='';$('start').disabled=false;prefetch(adSel.id);showLogo();if(!wikiLogo&&!logoData)findChannelLogo(adSel);});
