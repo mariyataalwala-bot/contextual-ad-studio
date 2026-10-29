@@ -12,7 +12,8 @@ import { parseBingImages, brandHost } from "../../openweb/lib/websearch.mjs";
 import { stripHtml, fitStrip, luminance, STYLES, logoMode } from "../../openweb/lib/strip.mjs";
 import { clientCreative } from "../../openweb/routes.mjs";
 import { slugTitle, matchSlugs, sitemapIndex, loadStudioConfig, withRealName, usedArticles, rivalMatcher, styleFonts, studioRefusal, ctaFor, recentAdsRef, noMatchMessage } from "../../openweb/lib/studio.mjs";
-import { renderMock, ASSET_URL } from "../../openweb/lib/mock.mjs";
+import { renderMock, ASSET_URL, placeInPage, goCreative } from "../../openweb/lib/mock.mjs";
+import { storyHtml, splitStory, hookFor, MOTIFS, STORY_MS } from "../../openweb/lib/story.mjs";
 import { loadMediaPlan, checkPublisherSources } from "../../openweb/lib/inventory.mjs";
 import { extractArticle } from "../../openweb/lib/extract.mjs";
 import { FILLER } from "./helpers.mjs";
@@ -417,4 +418,45 @@ test("no match: the message says how many articles were checked, the closest fit
   assert.match(m, /\(fit 8\/10\): not brand-safe — Health warnings about juice · “Prabhu Deva's breakfast routine” \(fit 5\/10\): only a loose fit \(5\/10, needs 8\)\./);
   assert.match(m, /Article search is off \(add a Firecrawl key in Settings\)/);
   assert.doesNotMatch(noMatchMessage({ brand: "B", product: "p", scored, minContext: 8, minScore: 7, searchOn: true }), /search is off/);
+});
+
+// ---------- the story creative (hook over the page → frosted takeover with the medallion → message → strip) ----------
+const story = (o = {}) => storyHtml({ brand: "Test", headline: "Fizz <b>up</b> your meal", subline: "Second line", cta: "Buy now", colour: "#e41e2b", accent: "#ffffff", productUrl: ASSET_URL + "product.png", productMode: "alpha", style: "fresh", motif: "bubbles", ...o });
+
+test("story: the strip waits for act 4 (data-go2), the hook goes on the page layer, the copy is escaped", () => {
+  const [own, page] = splitStory(story());
+  assert.ok(page, "a hook layer for the page");
+  assert.match(own, /:host\(\[data-go2\]\) \.s\{/, "the strip's own entrance starts on data-go2");
+  assert.match(own, /:host\(\[data-go\]\) \.md\{/, "the takeover starts on data-go");
+  assert.ok(own.includes(`data-go2="${STORY_MS}"`));
+  assert.ok(!own.includes("<b>up</b>") && own.includes("&lt;b&gt;up&lt;/b&gt;"));
+  assert.match(page, /<use href="#k"\/>/); assert.ok((page.match(/class="f/g) || []).length >= 8, "enough hook elements");
+  assert.equal(story(), story(), "the same brand always gets the same scatter");
+  assert.ok(story({ claim: "99.9% <protection>" }).includes("&lt;protection&gt;"), "an approved claim takes the medallion's back");
+  assert.deepEqual(splitStory("<div>strip</div>"), ["<div>strip</div>", null]);
+});
+
+test("story: every hook draws, old motif names map to a hook", () => {
+  for (const h of MOTIFS) assert.match(splitStory(story({ hook: h }))[1], /<g id="k"/, h);
+  assert.equal(hookFor("steam"), "leaves"); assert.equal(hookFor("none"), "bokeh"); assert.equal(hookFor("bubbles"), "bubbles"); assert.equal(hookFor("nonsense"), "bokeh");
+});
+
+test("story: placed on the page, the hook layer sits over the picture and act 4 follows data-go", { timeout: 90000 }, async () => {
+  const { chromium } = await import("playwright");
+  const b = await chromium.launch();
+  try {
+    const p = await b.newPage({ viewport: { width: 412, height: 900 } });
+    await p.goto(base + "/a");
+    const slot = /** @type {any} */ (await p.evaluate(placeInPage, { format: "in-image", src: "", isVideo: false, leadImage: base + "/walk.png", html: story(), strict: true }));
+    assert.equal(slot.how, "the chosen article image");
+    const r = await p.evaluate(() => {
+      const u = document.getElementById("mk-slot"), pg = document.getElementById("mk-page"), a = u.getBoundingClientRect(), c = pg.getBoundingClientRect();
+      /** @type {HTMLElement} */ (u.shadowRoot.querySelector("[data-go2]")).dataset.go2 = "150";   // act 4 sooner, for the test
+      return { dx: Math.abs(a.left - c.left) + Math.abs(a.top - c.top) + Math.abs(a.width - c.width), flyers: pg.shadowRoot.querySelectorAll(".f").length };
+    });
+    assert.ok(r.dx < 2, "the hook layer covers the picture's box"); assert.ok(r.flyers >= 8);
+    await p.evaluate(goCreative);
+    assert.ok(await p.evaluate(() => document.getElementById("mk-page").hasAttribute("data-go")));
+    await p.waitForFunction(() => document.getElementById("mk-slot").hasAttribute("data-go2"), null, { timeout: 3000 });
+  } finally { await b.close(); }
 });

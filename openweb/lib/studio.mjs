@@ -14,6 +14,7 @@ import { EXTRACT_VERSION } from "./extract.mjs";
 import { renderMock, ASSET_URL } from "./mock.mjs";
 import { discoverArticles, discoverCampaigns } from "./discover.mjs";
 import { stripHtml, fitStrip, STRIP_VERSION, STYLES, styleFontsUrl, styleFontFaces } from "./strip.mjs";
+import { storyHtml, STORY_VERSION, MOTIFS, hookFor } from "./story.mjs";
 import { norm, sha256 } from "./text.mjs";
 import { findBrand, brandBrief, bannedReason, namesBrand } from "./brands.mjs";
 
@@ -35,7 +36,7 @@ export class StudioStop extends Error {
 }
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
-export const STUDIO_PROMPTS = "inimage-prompts.v1";
+export const STUDIO_PROMPTS = "inimage-prompts.v2";   // v2 (2026-10-29): the AI also picks the story hook
 const WIKI_UA = { "User-Agent": "ContextualAdStudio/1.0 (Mediakart contextual-ad demo tool)" };
 const slug = (s) => String(s).toLowerCase().normalize("NFKD").replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 40) || "brand";
 
@@ -303,6 +304,7 @@ const PICK_SCHEMA = { type: "object", properties: {
   accent_colour: { type: "string", description: "a second brand colour as #rrggbb that contrasts with brand_colour and with the product's pack" },
   style: { type: "string", enum: STYLES, description: "the ad design that suits this brand and product" },
   motif: { type: "string", enum: ["none", "bubbles", "steam", "sparkle", "speed", "flight", "pin"] },
+  hook: { type: "string", enum: MOTIFS },
 }, required: ["style", "motif", "accent_colour", "packshot", "packshot_ranked", "pictures", "packshot_why", "product_name", "is_service", "logo", "logo_why", "brand_colour"] };
 
 const PLAN_SCHEMA = (ctas) => ({ type: "object", properties: {
@@ -463,12 +465,13 @@ export async function makeInImage(o) {
       : "";
     say(16, "understand", client ? "Planning where the ad fits best…" : "Choosing the product photo, logo and style, and writing the copy…");
     const list = items.map((x, i) => `${i + 1}. [${x.section}] ${x.title}`).join("\n");
-    const pickP = client ? Promise.resolve({ packshot: 0, packshot_ranked: [], packshot_why: "client's own ad", product_name: product, is_service: false, logo: 0, logo_why: "", brand_colour: "", accent_colour: "", style: "bold", motif: "none" }) : ask(
+    const pickP = client ? Promise.resolve({ packshot: 0, packshot_ranked: [], packshot_why: "client's own ad", product_name: product, is_service: false, logo: 0, logo_why: "", brand_colour: "", accent_colour: "", style: "bold", motif: "none", hook: "bokeh" }) : ask(
       "You prepare assets for a display ad. You only choose among the pictures shown; you never describe a picture you were not shown.",
       `Brand: ${brand}\nProduct: ${product}\n${brief ? brief + "\n" : ""}\nP pictures are product photos found online, with the page they are on. L pictures are logo candidates.\n` +
       `1. packshot: the number of the P picture that shows EXACTLY this product as sold in India today. Check, on the pack or item itself: the brand; the exact variant asked for (e.g. "Zero Sugar" vs regular, "Masala" vs another flavour, the model name or number, silver vs gold, size); the current design and logo (not an old pack); Indian packaging (not a US or European pack — fl oz labels, foreign-language text or foreign prices mean a foreign pack). Reject a picture that shows a different variant, a related product, an old design, a foreign pack, several different products, a person or model wearing or holding it, a promotional banner or poster with headline text, a collage or comparison chart, a big text/price overlay, a watermark, or the product cropped or blurred. A plain or transparent background is best, but the product on a table, plate or simple background is fine (the ad can show it as a photo). Prefer the brand's own site and Indian shops. For a service (stays, flights, delivery, apps) pick the photo that best shows the experience. If no picture is exactly right, return 0 — never a near miss. packshot_ranked: every picture that passes all these checks, best first.\n` +
       `   pictures: classify EVERY P picture — kind: ${PICTURE_GUIDE}; exact: true only when it shows exactly this product as described above.\n` +
-      `2. product_name: the product's name as written on its page (short).\n3. is_service.\n4. logo: the number of the L picture that is ${brand}'s real current logo on its own — the company that sells ${product}, not another organisation with a similar name. Never a picture with several logos (a logo history / evolution chart, a collage, a sheet of brands), a photo of a shop sign, or a logo inside a larger photo. If several are right, the newest version. 0 if none.\n5. brand_colour: ${brand}'s main brand colour as #rrggbb (as used in its ads and logo). accent_colour: a second colour from ${brand}'s identity that contrasts with brand_colour and with the chosen product's own colours (the product will stand on it).\n6. style — the ad design that suits ${brand} and this product: bold (FMCG, everyday goods, sales, snacks), luxe (jewellery, beauty, premium fashion, watches), sport (shoes, sportswear, fitness gear), fresh (drinks, food, groceries), tech (phones, electronics, gadgets, apps), journey (travel, stays, airlines, delivery and other services). motif: bubbles (fizzy or cold drinks), steam (hot food), sparkle (jewellery, beauty), speed (sport), flight (airlines, travel), pin (stays, places, delivery), none.`,
+      `2. product_name: the product's name as written on its page (short).\n3. is_service.\n4. logo: the number of the L picture that is ${brand}'s real current logo on its own — the company that sells ${product}, not another organisation with a similar name. Never a picture with several logos (a logo history / evolution chart, a collage, a sheet of brands), a photo of a shop sign, or a logo inside a larger photo. If several are right, the newest version. 0 if none.\n5. brand_colour: ${brand}'s main brand colour as #rrggbb (as used in its ads and logo). accent_colour: a second colour from ${brand}'s identity that contrasts with brand_colour and with the chosen product's own colours (the product will stand on it).\n6. style — the ad design that suits ${brand} and this product: bold (FMCG, everyday goods, sales, snacks), luxe (jewellery, beauty, premium fashion, watches), sport (shoes, sportswear, fitness gear), fresh (drinks, food, groceries), tech (phones, electronics, gadgets, apps), journey (travel, stays, airlines, delivery and other services). motif: bubbles (fizzy or cold drinks), steam (hot food), sparkle (jewellery, beauty), speed (sport), flight (airlines, travel), pin (stays, places, delivery), none.
+7. hook: what bursts out of the article picture and over the page in the ad's first second, tied to what the product does: bubbles (fizzy or cold drinks), sparkle (jewellery, beauty, celebrations), leaves (food, herbal, ayurvedic, natural, groceries), confetti (sales, festive, everyday goods), flight (airlines, travel), coins (banking, payments, savings, insurance), flakes (cooling: ACs, ice cream, menthol), insects (repellents, pest control), petals (fragrance, weddings, skincare), hearts (gifting, chocolate, dating), speed (sport, shoes, cars, bikes), pin (stays, places, delivery), bokeh (anything else).`,
       PICK_SCHEMA, [...stills.map((x) => ({ label: `R${x.n} — a still from ${brand}'s recent ad "${x.title}" (reference for brand_colour, accent_colour and style only — never the packshot)`, file: x.file })), ...pThumbs.map((x) => ({ label: `P${x.n} — "${x.title}" on ${x.host}`, file: x.file })), ...lThumbs.map((x) => ({ label: `L${x.n} — "${x.title}" (${x.host})`, file: x.file }))], "medium");
     const planP = ask(
       "You plan contextual in-image ads for an Indian digital publisher network. You write short, honest ad copy and pick articles only from the list given.",
@@ -486,6 +489,7 @@ export async function makeInImage(o) {
     let logoFile = null, logoReverseFile = /** @type {string|null} */ (null), productMode = /** @type {"alpha"|"plain-bg"|"photo"|"scene"|"none"} */ ("photo"), copy = { headline: "", subline: "", cta: "" };
     const style = STYLES.includes(o.style) ? o.style : STYLES.includes(known?.style) ? known.style : STYLES.includes(pick.style) ? pick.style : "bold";
     const motif = known?.motif || pick.motif || "none";
+    const hook = MOTIFS.includes(known?.hook) ? known.hook : MOTIFS.includes(pick.hook) ? pick.hook : hookFor(motif);
     if (!client) {
     say(30, "assets", "Preparing the product cut-out and the logo…");
     const userPic = String(o.productImage || "").trim(), userFile = o.productFile || null;
@@ -644,7 +648,7 @@ export async function makeInImage(o) {
     const button = ctaFor({ rules: studio.copy.ctaRules, ctas: studio.copy.ctas, known, product, aiCategory: plan.category, aiCta: plan.cta });
     copy.cta = button.cta; result.ctaWhy = button.why;
     result.copy = copy;
-    result.design = { style, motif, chosenBy: STYLES.includes(o.style) ? "you" : STYLES.includes(known?.style) ? "brand knowledge" : "AI" };
+    result.design = { style, motif, hook, chosenBy: STYLES.includes(o.style) ? "you" : STYLES.includes(known?.style) ? "brand knowledge" : "AI" };
     }
     lap("assets");
 
@@ -761,8 +765,11 @@ export async function makeInImage(o) {
     if (!client) {
       const extra = await styleFonts(style, path.join(o.indexDir || path.join(workDir, "..", ".."), "_fonts"), fetchImpl).catch(() => null);   // no font → the design's fallback font
       if (extra) { fontsCss += "\n" + extra.css; Object.assign(files, extra.files); }
-      html = stripHtml({ brand, ...copy, colour: result.brandLook.colour, accent: result.brandLook.accent, productUrl: ASSET_URL + "product.png", productMode, logoUrl: logoFile ? ASSET_URL + "logo" + path.extname(logoFile) : null, logoKind: result.brandLook.logo?.kind, logoInk: result.brandLook.logo?.ink, logoLight: result.brandLook.logo?.light, logoReverseUrl: logoFile && logoReverseFile ? ASSET_URL + "logo_reverse.png" : null, style, motif });
-      fs.writeFileSync(path.join(workDir, "creative.html"), `<!doctype html><meta charset="utf-8"><!-- ${STRIP_VERSION} (${style}): open inside the mock renderer (assets are served from ${ASSET_URL}) -->\n${html}`);
+      const story = studio.creative.layout === "story";
+      const look = { brand, ...copy, colour: result.brandLook.colour, accent: result.brandLook.accent, productUrl: ASSET_URL + "product.png", productMode, logoUrl: logoFile ? ASSET_URL + "logo" + path.extname(logoFile) : null, logoKind: result.brandLook.logo?.kind, logoInk: result.brandLook.logo?.ink, logoLight: result.brandLook.logo?.light, logoReverseUrl: logoFile && logoReverseFile ? ASSET_URL + "logo_reverse.png" : null, style, motif };
+      html = story ? storyHtml({ ...look, hook }) : stripHtml(look);
+      result.creative = { format: story ? "story" : "strip", version: story ? `${STORY_VERSION}+${STRIP_VERSION}` : STRIP_VERSION };
+      fs.writeFileSync(path.join(workDir, "creative.html"), `<!doctype html><meta charset="utf-8"><!-- ${result.creative.version} (${style}${story ? ", " + hook : ""}): open inside the mock renderer (assets are served from ${ASSET_URL}) -->\n${html}`);
     }
     const clientHold = client ? Math.min(9000, Math.max(5000, Math.round((client.seconds || 6) * 1000))) : 0;
     const base = `${slug(brand)}_${slug(product)}_inimage`;

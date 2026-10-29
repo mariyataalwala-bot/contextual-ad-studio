@@ -36,6 +36,15 @@ export function tidyPage() {
 }
 
 // Runs inside the page. Returns the slot's document rectangle, or { error }.
+// Starts the HTML creative: its unit (and a story's hook layer over the page) get data-go; a story then gets data-go2
+// for its last act after the time it gives on its [data-go2]
+export function goCreative() {
+  const u = document.getElementById("mk-slot"), pg = document.getElementById("mk-page");
+  u.setAttribute("data-go", ""); pg?.setAttribute("data-go", "");
+  const ms = Number(/** @type {HTMLElement|null} */ (u.shadowRoot?.querySelector("[data-go2]"))?.dataset.go2);
+  if (ms > 0) setTimeout(() => u.setAttribute("data-go2", ""), ms);
+}
+
 // Our unit lives in a shadow root on a custom <mk-unit> element (id "mk-slot") with !important inline styles, so the
 // publisher's CSS cannot restyle, resize or hide the creative.
 export function placeInPage({ format, src, isVideo, leadImage, html = null, strict = false }) {
@@ -79,8 +88,17 @@ export function placeInPage({ format, src, isVideo, leadImage, html = null, stri
     const hr = host.getBoundingClientRect(), ir = img.getBoundingClientRect();
     const over = `position:absolute;left:${ir.left - hr.left + host.scrollLeft}px;top:${ir.top - hr.top + host.scrollTop}px;width:${ir.width}px;height:${ir.height}px;overflow:hidden;z-index:2147483000;pointer-events:none;margin:0;padding:0;border:0`;
     if (html) {   // an HTML creative fills the image box itself (its strip, product and text are laid out inside)
+      // a story creative carries a second part (after <!--mk-page-->) that flies over the page around the picture:
+      // it sits on the page itself, over the picture's box but not clipped by it or by the publisher's containers
+      const cut = html.indexOf("<!--mk-page-->"), own = cut < 0 ? html : html.slice(0, cut);
       const el = document.createElement("mk-unit"); el.id = "mk-slot"; el.setAttribute("style", imp(over + ";display:block"));
-      el.attachShadow({ mode: "open" }).innerHTML = html; host.append(el);
+      el.attachShadow({ mode: "open" }).innerHTML = own; host.append(el);
+      if (cut >= 0) {
+        const bs = getComputedStyle(document.body).position === "static" ? null : document.body.getBoundingClientRect();
+        const pg = document.createElement("mk-unit"); pg.id = "mk-page";
+        pg.setAttribute("style", imp(`position:absolute;left:${ir.left + scrollX - (bs ? bs.left + scrollX : 0)}px;top:${ir.top + scrollY - (bs ? bs.top + scrollY : 0)}px;width:${ir.width}px;height:${ir.height}px;overflow:visible;z-index:2147483001;pointer-events:none;display:block;margin:0;padding:0;border:0`));
+        pg.attachShadow({ mode: "open" }).innerHTML = html.slice(cut + 14); document.body.append(pg);
+      }
     } else host.append(unit(over, "position:absolute;left:0;right:0;bottom:0;max-height:100%;overflow:hidden;box-shadow:0 -6px 18px rgba(0,0,0,.25)"));
     slot = { ...docRect(img), how: exact ? (leadImage && (html || strict) ? "the chosen article image" : "lead image (matches the article's declared image)") : "first large image on the page" };
   } else if (format === "in-scroll" || format === "display") {
@@ -178,13 +196,13 @@ export async function renderMock({ articleUrl, leadImage, creativeFile = null, c
           const step = (t) => { const k = Math.min(1, (t - t0) / 2000); scrollTo(0, y0 + (y - y0) * (k < 0.5 ? 2 * k * k : 1 - (-2 * k + 2) ** 2 / 2)); if (k < 1) requestAnimationFrame(step); else done(null); };
           requestAnimationFrame(step);
         }), target);
-        if (creativeHtml) { await page.waitForTimeout(250); await page.evaluate(() => document.getElementById("mk-slot").setAttribute("data-go", "")); }
+        if (creativeHtml) { await page.waitForTimeout(250); await page.evaluate(goCreative); }
         await page.waitForTimeout(holdMs);
       });
     }
     else {
       await page.evaluate((y) => scrollTo(0, y), target); await page.waitForTimeout(1500); await page.evaluate(tidyPage);
-      if (creativeHtml) { await page.evaluate(() => document.getElementById("mk-slot").setAttribute("data-go", "")); await page.waitForTimeout(holdMs); }
+      if (creativeHtml) { await page.evaluate(goCreative); await page.waitForTimeout(holdMs); }
       await page.waitForTimeout(300);
     }
     if (careful) {
