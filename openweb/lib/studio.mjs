@@ -798,8 +798,10 @@ export async function makeInImage(o) {
           DIRECTOR_SCHEMA, [{ label: "Picture 1 — the product", file: path.join(assets, "product.png") }, ...(top.file ? [{ label: "Picture 2 — the article photo", file: top.file }] : [])], "high"), 30000).catch((e) => { result.directorProblem = String(e.message).slice(0, 200); return null; });
         const by = brief ? "AI" : "rules";
         if (!brief || !DEVICES.includes(brief.device)) brief = { device: deviceFor({ style, hook, category: plan.category }), message: copy.headline, base: result.brandLook.colour, accent: result.brandLook.accent, product_fx: ["shine", "rim"] };
-        brief.message = words(brief.message || copy.headline, 6);
-        if (brief.kicker) brief.kicker = words(brief.kicker, 3);
+        // a line over its length is dropped, never cut mid-phrase ("Badal Life Ki Raftaar" → "Badal Life Ki")
+        const fits = (t, max) => !!t && String(t).trim().split(/\s+/).length <= max;
+        if (!fits(brief.message, 6)) brief.message = copy.headline;
+        if (brief.kicker && !fits(brief.kicker, 3)) delete brief.kicker;
         result.director = { version: DIRECTOR_VERSION, by, recentDevices: recent, ...brief };
         // the device's own display font (spotlight: Playfair, shatter: Anton)
         // … and the end card's design, which follows the device

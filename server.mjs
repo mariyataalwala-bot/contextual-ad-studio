@@ -38,6 +38,14 @@ const FF = findFfmpeg();
 const ENV = { ...process.env, NODE_PATH: path.join(APP, "node_modules"), PYTHONIOENCODING: "utf-8" };
 if (FF) ENV.PATH = FF + path.delimiter + ENV.PATH;
 const PY = IS_WIN ? "python" : "python3";
+// Windows: an app started by a background launcher can inherit an old PATH without Python — find it in its usual
+// install folders so the cut-out and logo helpers still run
+if (IS_WIN && !String(ENV.PATH).split(path.delimiter).some((d) => d && fs.existsSync(path.join(d, "python.exe")))) {
+  const roots = [process.env.ProgramFiles, process.env.LOCALAPPDATA && path.join(process.env.LOCALAPPDATA, "Programs", "Python")].filter(Boolean);
+  const found = roots.flatMap((r) => { try { return fs.readdirSync(r).filter((x) => /^Python3\d+$/i.test(x)).map((x) => path.join(r, x)); } catch { return []; } })
+    .filter((d) => fs.existsSync(path.join(d, "python.exe"))).sort().pop();
+  if (found) ENV.PATH = found + path.delimiter + path.join(found, "Scripts") + path.delimiter + ENV.PATH;
+}
 
 // ---------- settings / AI providers (Gemini free tier or Claude) ----------
 const loadSettings = () => { try { return JSON.parse(fs.readFileSync(SETTINGS, "utf8")); } catch { return {}; } };
@@ -166,6 +174,8 @@ function run(cmd, args, { log, cwd, env, timeout = 10 * 60e3 } = {}) {   // no s
     p.stdout.on("data", (d) => { out += d; if (log) String(d).split(/\r?\n/).filter(Boolean).forEach(log); });
     p.stderr.on("data", (d) => { err += d; });
     p.on("close", (code) => { clearTimeout(kill); code === 0 ? resolve(out) : reject(new Error(`${path.basename(args[0] || cmd)} failed (${code}): ${(err || out).slice(-600)}`)); });
+    // a helper that cannot start (python / ffmpeg not on PATH) fails this step — without this the whole app crashed
+    p.on("error", (e) => { clearTimeout(kill); reject(new Error(`${cmd} could not be started (${/** @type {any} */ (e).code || e.message}) — is it installed and on PATH?`)); });
   });
 }
 const yt = (args, opts) => run("node", [path.join(PIPE, "scripts", "yt.js"), ...args], opts);

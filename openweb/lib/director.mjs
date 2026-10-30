@@ -14,7 +14,7 @@
 import { stripHtml, luminance, logoMode, STRIP_VERSION } from "./strip.mjs";
 import { storyHtml, STORY_MS, STORY_VERSION } from "./story.mjs";
 
-export const DIRECTOR_VERSION = "director.v1";
+export const DIRECTOR_VERSION = "director.v2";   // v2 (2026-10-30): no invented slogans; copy never ties to health, diet, fasting, religion, money or news
 export const DEVICES = ["frost", "pour", "spotlight", "portal", "shatter", "medallion"];
 export const FX = ["shine", "droplets", "rim", "reflection", "glints", "float"];
 
@@ -53,7 +53,8 @@ Invent ONE idea that makes ${product} look desirable and premium and connects to
 - medallion: a brand medallion with the product over frosted glass, then the message (a product that solves a problem shown in the photo)
 ${recent.length ? `Recent ads already used: ${recent.join(", ")} — choose a different device unless only one truly fits this product.\n` : ""}Return:
 device; big_idea (one sentence, the concept); why (how it ties product, brand and this article); base and accent (#rrggbb art-direction colours true to ${brand}); liquid (#rrggbb, pour only: the real colour of the product's liquid); sky_top and sky_bottom (#rrggbb, portal only); kicker (2–3 words shown first, optional); message (at most 6 words, the line of the idea — no prices, offers, numbers or claims the brand has not made); pass_from and pass_to (portal only, 1–2 words each, e.g. "Weekday" → "Anywhere"); product_fx (the beautification that suits this product: shine, droplets (cold only), rim (always when the product is dark or the scene is dark, so it never melts into the background), reflection, glints (jewellery, glass, metal), float).
-Copy in the brand's voice, English, sentence case. Current headline for reference: "${headline}".`;
+Copy in the brand's voice, English, sentence case. Current headline for reference: "${headline}".
+Never invent a slogan or tagline and never present a line as the brand's own. Tie the idea to the article's mood or setting (a breakfast table, a trip, a festive evening), never to health conditions, diets, fasting, religion, money worries or news events — those stay out of the copy even when the article is about them.`;
 }
 
 // a sensible device when the AI is not available
