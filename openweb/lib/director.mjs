@@ -85,7 +85,8 @@ const HERO_CSS = (rim) => `
 .dHero .dDew{background-size:16cqw;opacity:0}
 .dHero .dCs{position:absolute;left:12%;right:12%;bottom:-2.2cqh;height:5cqh;border-radius:50%;background:radial-gradient(closest-side,rgba(0,0,0,.42),transparent)}
 .dHero.dPh .dHb{border-radius:3cqw;overflow:hidden;box-shadow:0 1.4cqw 3cqw rgba(0,0,0,.35)}
-.dHero.dPh .dHi{object-fit:cover;object-position:center}
+.dHero.dPh .dHb{background:#fff}
+.dHero.dPh .dHi{object-fit:contain;object-position:center}
 .dHero.dLo{display:grid;place-items:center}.dHero.dLo img{max-width:80%;max-height:60%;object-fit:contain}
 .dGt{position:absolute;width:3.4cqw;height:3.4cqw;opacity:0;background:radial-gradient(circle,#fff 0 16%,transparent 18%),conic-gradient(from 45deg,transparent 0 10%,#fff 12% 13%,transparent 15% 35%,#fff 37% 38%,transparent 40% 60%,#fff 62% 63%,transparent 65% 85%,#fff 87% 88%,transparent 90%);filter:drop-shadow(0 0 .6cqw #fff)}
 :host([data-go]) .dHero .dSpec{animation:dSpec 1.2s var(--sd,2.6s) ease-in-out forwards}
