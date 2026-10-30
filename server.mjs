@@ -318,6 +318,13 @@ const say = (job, msg) => {
   job.step = msg; job.log.push(new Date().toLocaleTimeString() + "  " + msg);
   const m = MILESTONES.find(([re]) => re.test(msg));
   if (m) { let [, a, b, dur, stage] = m; if (job.hdOnly && stage >= 3) { if (stage === 3) [a, b] = [2, 92]; else [a, b] = [92, 99]; } setBand(job, a, b, dur, stage); }
+  // a finished run (made, failed, or waiting for review) leaves its outcome next to its files: jobs live in memory only,
+  // so without this a failed run's reason is lost when the app restarts
+  if (job.work && job.status !== "running") {
+    const P = job.proposal;
+    try { fs.writeFileSync(path.join(job.work, "outcome.json"), JSON.stringify({ at: new Date().toISOString(), status: job.status, outcome: outcomeOf(job), step: job.step, brand: job.input?.brand, product: job.input?.product, ad: job.input?.adTitle,
+      video: P?.video ? { id: P.video.id, title: P.video.title, channel: P.video.channel } : null, aiError: job.aiError || null, output: job.output || null, log: job.log.slice(-25) }, null, 1)); } catch { /* the folder may be gone */ }
+  }
 };
 const outcomeOf = (job) => job.status === "done" ? "success" : job.status === "approve" ? "needs_review" : job.status === "failed" ? (/^No (video|more candidates) passed/.test(job.step || "") ? "no_match" : "failed") : job.status;
 const progressOf = (job) => ({ pct: Math.round(pctOf(job)), stage: job.status === "done" ? 5 : job.prog.stage, hdOnly: !!job.hdOnly, preview: !!job.input?.preview,
