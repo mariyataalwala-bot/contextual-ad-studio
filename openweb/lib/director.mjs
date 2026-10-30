@@ -159,7 +159,7 @@ ${hero(o, t.fx, seed)}${n(2, (i) => `<i class="dVp" style="right:${12 + i * 10}c
     // light caustics, wobbling bubbles); the product rises out with a splash crown, droplets and the product's own
     // ingredients flying in arcs; the line wipes in on the liquid, the kicker sits in a frosted pill
     const liq = hex(b.liquid) || base, hiL = mix(liq, "#ffffff", 0.38), dkL = mix(liq, "#000000", 0.4), lInk = inkOn(liq);
-    const ing = INGREDIENTS[b.ingredients] ? b.ingredients : null;
+    const ing = null;   // drawn ingredients looked like clip-art: they come back only as photographic elements (brand kit / AI photo)
     const arc = (cls, k, x0, spread, up, delay0) => n(k, (i) => { const dx = (i / (k - 1 || 1) - 0.5) * spread + (r() - 0.5) * 6, h = up * (0.6 + r() * 0.5);
       return `<i class="${cls}" style="left:${(x0 + (r() - 0.5) * 6).toFixed(1)}%;--dx:${dx.toFixed(1)}cqw;--up:${h.toFixed(1)}cqh;--rot:${(r() * 540 - 270).toFixed(0)}deg;animation-delay:${(delay0 + r() * 0.15).toFixed(2)}s"><b${cls === "dIa" ? ` style="--s:${(6.5 + r() * 3).toFixed(1)}cqw"` : ""}>${cls === "dIa" ? `<svg viewBox="0 0 40 40"><use href="#dIng"/></svg>` : ""}</b></i>`; });
     return { css: `
@@ -225,12 +225,12 @@ ${hero(o, t.fx, seed)}${n(2, (i) => `<i class="dVp" style="right:${12 + i * 10}c
 @keyframes dWipe{to{clip-path:inset(0 0 0 0)}}
 @keyframes dRiseLiq{from{opacity:0;transform:translateY(58cqh) rotate(-10deg) scale(.92)}to{opacity:1;transform:rotate(-4deg)}}`,
       html: `<svg width="0" height="0" style="position:absolute"><defs>${ing ? INGREDIENTS[ing] : ""}</defs></svg>
-<div class="dSt"></div>${n(4, (i) => `<i class="dDp" style="left:${(73 + (i % 2) * 2.5).toFixed(1)}%;animation-delay:${(0.4 + i * 0.3).toFixed(1)}s"></i>`)}
+<div class="dSt"></div>
 <div class="dLq"><svg class="dWv dW1" viewBox="0 0 200 10" preserveAspectRatio="none"><path d="M0 5 Q12.5 0 25 5 T50 5 T75 5 T100 5 T125 5 T150 5 T175 5 T200 5 V10 H0Z"/></svg><svg class="dWv dW2" viewBox="0 0 200 10" preserveAspectRatio="none"><path d="M0 6 Q10 1 20 6 T40 6 T60 6 T80 6 T100 6 T120 6 T140 6 T160 6 T180 6 T200 6 V10 H0Z"/></svg><svg class="dWv dW3" viewBox="0 0 200 10" preserveAspectRatio="none"><path d="M0 5 Q8 9 16 5 T32 5 T48 5 T64 5 T80 5 T96 5 T112 5 T128 5 T144 5 T160 5 T176 5 T192 5 T200 5 V10 H0Z"/><path class="dCrest" d="M0 5 Q8 9 16 5 T32 5 T48 5 T64 5 T80 5 T96 5 T112 5 T128 5 T144 5 T160 5 T176 5 T192 5 T200 5"/></svg>
 ${n(14, (i) => `<i class="dBu" style="left:${(3 + i * 6.8 + r() * 3).toFixed(1)}%;animation-delay:${(1.2 + r() * 2.2).toFixed(1)}s;animation-duration:${(2.2 + r() * 1.4).toFixed(1)}s"><b style="--s:${(0.9 + r() * 1.9).toFixed(1)}cqw;animation-delay:${(r()).toFixed(2)}s"></b></i>`)}<div class="dGl"></div></div>
 ${ing ? n(5, (i) => `<i class="dIf" style="left:${[6, 22, 38, 86, 94][i]}%;bottom:${[34, 28, 36, 30, 38][i]}cqh;width:${(5 + r() * 2.5).toFixed(1)}cqw;animation-delay:${(1.6 + i * 0.15).toFixed(2)}s,${(1.6 + i * 0.15).toFixed(2)}s"><svg viewBox="0 0 40 40"><use href="#dIng"/></svg></i>`) : ""}
-<svg class="dCw" viewBox="0 0 100 40" overflow="visible"><defs><linearGradient id="dCwG" x1="0" y1="1" x2="0" y2="0"><stop offset="0" stop-color="${liq}"/><stop offset=".55" stop-color="${mix(liq, hiL, 0.6)}"/><stop offset="1" stop-color="${mix(hiL, "#ffffff", 0.35)}" stop-opacity=".85"/></linearGradient><radialGradient id="dCwD" cx=".35" cy=".3"><stop offset="0" stop-color="#fff"/><stop offset=".35" stop-color="${hiL}"/><stop offset="1" stop-color="${liq}"/></radialGradient></defs><path d="M10 40 C13 26 16 20 19 30 C21 16 25 8 28 24 C31 10 35 4 39 20 C42 6 47 2 50 18 C53 2 58 6 61 20 C64 8 68 12 71 24 C74 12 79 16 81 30 C84 22 87 26 90 40 Z"/>${[[28, 3], [39, -2], [50, -5], [61, -1], [71, 5], [19, 13], [81, 15]].map(([x, y], i) => `<circle cx="${x}" cy="${y}" r="${(1.6 + (i % 3) * 0.5).toFixed(1)}"/>`).join("")}</svg>
-${arc("dSd", 12, 56, 70, 34, 2.1)}${ing ? arc("dIa", 5, 56, 60, 40, 2.15) : ""}
+
+${ing ? arc("dIa", 5, 56, 60, 40, 2.15) : ""}
 ${hero(o, t.fx, seed)}<div class="dLg">${logo}</div><div class="dMsg">${b.kicker ? `<div class="dKk">${esc(b.kicker)}</div>` : ""}${msg(3.25, 0.12)}</div>` };
   }
   if (name === "spotlight") {
@@ -297,8 +297,6 @@ ${hero(o, t.fx, seed)}<div class="dLg">${logo}</div><div class="dMsg">${b.kicker
       html: `<div class="dVv"></div>${n(8, (i) => { const s = 5 + r() * 9; return `<i class="dBk" style="left:${(4 + r() * 50).toFixed(1)}%;top:${(8 + r() * 70).toFixed(1)}%;width:${s.toFixed(1)}cqw;height:${s.toFixed(1)}cqw;background:radial-gradient(circle,${i % 3 ? "rgba(232,198,117,.35)" : mix(base, "#ffffff", 0.4) + "55"},transparent 70%);animation-delay:${(0.6 + r() * 0.6).toFixed(1)}s,${(0.6 + r()).toFixed(1)}s"></i>`; })}
 <div class="dBm"><i></i><i></i></div>${n(20, () => `<i class="dMt" style="left:${(52 + r() * 28).toFixed(1)}%;top:${(10 + r() * 70).toFixed(1)}%;animation-delay:${(0.9 + r() * 3).toFixed(1)}s"></i>`)}
 <div class="dPed"></div>${hero(o, t.fx, seed)}
-${n(4, (i) => `<i class="dFlr" style="left:${[58, 72, 64, 78][i]}%;top:${[30, 44, 58, 26][i]}%;animation-delay:${(2.6 + i * 0.55).toFixed(2)}s"></i>`)}
-${n(14, () => `<i class="dFk" style="left:${(30 + r() * 66).toFixed(1)}%;--fx:${(r() * 10 - 5).toFixed(1)}cqw;animation-delay:${(1.6 + r() * 2.4).toFixed(1)}s"></i>`)}
 <svg class="dFrm" viewBox="0 0 100 56.25" preserveAspectRatio="none"><rect x="2.4" y="3.6" width="95.2" height="49" rx=".6"/>${[[2.4, 3.6], [97.6, 3.6], [2.4, 52.6], [97.6, 52.6]].map(([x, y]) => `<path d="M${x} ${y - 1.4} L${x + 1} ${y} L${x} ${y + 1.4} L${x - 1} ${y} Z"/>`).join("")}</svg>
 <div class="dMsg"><div class="dLg">${logo}</div>${b.kicker ? `<div class="dKk">${esc(b.kicker)}</div>` : ""}<div class="dRl"></div>${msg(3.4, 0.13)}</div>` };
   }
