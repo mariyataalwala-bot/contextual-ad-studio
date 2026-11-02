@@ -26,12 +26,12 @@ const mime = (f) => (/\.png$/i.test(f) ? "image/png" : "image/jpeg");
 
 // ---------- a model that exists ----------
 const NOT_CHAT = /whisper|tts|guard|embed|moderation|orpheus|playai|safeguard|rerank|transcrib|speech|image-gen|dall|flux|stable-diffusion|sdxl/i;
-const SEES = [/llama-4-maverick/i, /llama-4-scout/i, /pixtral/i, /llama-3\.2-90b-vision/i, /llama-3\.2-11b-vision/i, /qwen.*-vl/i, /gemma-?3/i, /gpt-4o|gpt-4\.1|gpt-5/i, /gemini/i, /llava|vision|[-_]vl\b/i];
+const SEES = [/llama-4-maverick/i, /llama-4-scout/i, /pixtral/i, /llama-3\.2-90b-vision/i, /llama-3\.2-11b-vision/i, /qwen.*-vl/i, /gemma-?3/i, /gpt-4o|gpt-4\.1|gpt-5/i, /gemini/i, /llava|vision|[-_]vl\b/i, /qwen-?3/i];
 const TEXT = [/gpt-oss/i, /llama-3\.3-70b/i, /llama-3\.1-70b/i, /qwen/i, /mistral|mixtral/i, /llama/i, /gemma/i, /deepseek/i];
 
 /** The best model among `ids` for this call: one that reads pictures when pictures are sent, else the best chat model; null if none fits. */
-export function pickModel(ids, needsVision) {
-  const chat = ids.filter((id) => !NOT_CHAT.test(id));
+export function pickModel(ids, needsVision, skip = []) {
+  const chat = ids.filter((id) => !NOT_CHAT.test(id) && !skip.includes(id));
   for (const re of SEES) { const hit = chat.find((id) => re.test(id)); if (hit) return hit; }
   if (needsVision) return null;
   for (const re of TEXT) { const hit = chat.find((id) => re.test(id)); if (hit) return hit; }
@@ -46,6 +46,8 @@ export async function listModels({ baseUrl, key, fetchImpl = globalThis.fetch })
   return (j.data || j.models || []).map((m) => m.id || m.name).filter(Boolean);
 }
 const swapped = new Map();   // "baseUrl|model|vision" → the model used instead (remembered for the life of the server)
+// a text-only model that was sent a picture
+const NO_PICTURES = /content must be a string|does not support (image|vision|multimodal)|image[_ ]input|multimodal.{0,30}not|only text/i;
 const GONE = /(model|deployment).{0,60}(does not exist|not found|decommission|deprecated|no longer|not supported|do not have access|unknown)|(does not exist|not found|decommission|deprecated).{0,60}model/i;
 
 /**
@@ -61,7 +63,7 @@ export async function askOpenAICompat({ baseUrl, key, model, system, text, schem
     user.push({ type: "image_url", image_url: { url: `data:${mime(im.file)};base64,${fs.readFileSync(im.file).toString("base64")}` } });
   }
   const sw = `${baseUrl}|${model}|${images.length ? "v" : "t"}`;
-  let use = swapped.get(sw) || model, retiredOnce = false;
+  let use = swapped.get(sw) || model, swaps = 0; const tried = new Set([model]);
   const ask = (structured) => ({ model: use, temperature: 0.2, messages: [
     { role: "system", content: system + (schema && !structured ? `\n\nReply with ONE JSON object only, no prose, matching this JSON Schema:\n${JSON.stringify(schema)}` : "") },
     { role: "user", content: [...user, { type: "text", text }] }],
@@ -81,10 +83,10 @@ export async function askOpenAICompat({ baseUrl, key, model, system, text, schem
     }
     const msg = String(j.error?.message || j.message || `HTTP ${r.status}`).slice(0, 200);
     // the model was retired or this key has no access to it: use the best model the key does have
-    if ((r.status === 404 || r.status === 400 || r.status === 403) && GONE.test(msg) && !retiredOnce) {
-      retiredOnce = true;
+    if ((r.status === 404 || r.status === 400 || r.status === 403) && (GONE.test(msg) || (images.length && NO_PICTURES.test(msg))) && swaps < 3) {
+      swaps++; tried.add(use);
       let ids; try { ids = await listModels({ baseUrl, key, fetchImpl }); } catch (e) { throw new Error(`The AI model “${use}” is not available and the key's model list could not be read (${e.message}). Set OPENAI_COMPAT_MODEL to a model your key can use.`); }
-      const next = pickModel(ids.filter((id) => id !== use), images.length > 0);
+      const next = pickModel(ids, images.length > 0, [...tried]);
       if (!next) throw new Error(`The AI model “${use}” is not available, and none of the key's models ${images.length ? "can read pictures" : "fits"}. Models on this key: ${ids.slice(0, 12).join(", ") || "none"}. Set OPENAI_COMPAT_MODEL to one that can.`);
       swapped.set(sw, next); use = next; attempt--; continue;
     }
@@ -94,6 +96,8 @@ export async function askOpenAICompat({ baseUrl, key, model, system, text, schem
       if (attempt < retries) { await sleep(Math.min(20000, (+r.headers?.get?.("retry-after") || 2 * (attempt + 1)) * 1000)); continue; }
       throw new Error(r.status === 429 ? `The free AI plan is out of quota or rate-limited right now (${msg}).` : `The AI provider had a problem (${msg}).`);
     }
+    // never trimmed silently: a check that looked at three of twelve frames would approve what it did not see
+    if (/too many images/i.test(msg)) throw new Error(`This free model reads only a few pictures per request (${msg.replace(/^.*?(This model supports up to \d+ images).*$/i, "$1")}), but this step needs more. In-Image and the video quality checks need a model with a larger picture limit: paste a Gemini key in Settings (free, from aistudio.google.com/apikey).`);
     throw new Error(`The AI provider refused the request (${msg}).`);
   }
   throw new Error(`The AI provider could not be reached (${lastErr}).`);

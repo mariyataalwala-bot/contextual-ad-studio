@@ -367,7 +367,7 @@ export const words = (s, n) => {
 /**
  * @param {{ brand: string, product: string, discovery?: { fc: any, campaigns?: (brand: string) => Promise<any> }|null, recentAds?: ((q: { brand: string, product?: string }) => Promise<any[]>)|null, offer?: string, productImage?: string, style?: string, brands?: any, clientAd?: { file: string, type: "image"|"video", name?: string, seconds?: number }|null, workDir: string, indexDir?: string, studio: any, cfg: any, store: any,
  *   ask: Function, fetchImpl?: any, py: (args: string[]) => Promise<string>, ffmpeg: (args: string[]) => Promise<any>, chromium?: any, firecrawl?: { key: string }|null, productFile?: string|null,
- *   signal?: AbortSignal, say?: (pct: number, stage: string, msg?: string) => void, qa?: boolean }} o
+ *   signal?: AbortSignal, say?: (pct: number, stage: string, msg?: string) => void, qa?: boolean, compact?: boolean }} o
  */
 export async function makeInImage(o) {
   const { brand, product, studio, cfg, store, ask, py, ffmpeg, workDir } = o;
@@ -438,7 +438,7 @@ export async function makeInImage(o) {
     const all = [...feedItems, ...searched, ...matchSlugs(older.filter((x) => !seenUrl.has(x.url) && !searched.some((y) => urlKey(y.url) === urlKey(x.url))), topicWords)];
     // speed and focus: rival headlines out before any AI reads the list, topic matches first, at most studio.listMax lines
     const hits = new Set([...matchSlugs(all, topicWords, 1e9).map((x) => x.url), ...searched.map((x) => x.url)]);
-    const items = all.filter((x) => !taken.has(urlKey(x.url)) && !early(x.title)).sort((a, b) => Number(hits.has(b.url)) - Number(hits.has(a.url))).slice(0, studio.listMax);
+    const items = all.filter((x) => !taken.has(urlKey(x.url)) && !early(x.title)).sort((a, b) => Number(hits.has(b.url)) - Number(hits.has(a.url))).slice(0, o.compact ? Math.min(studio.listMax, 70) : studio.listMax);
     result.articlesTakenByOtherBrands = all.filter((x) => taken.has(urlKey(x.url))).map((x) => ({ url: x.url, title: x.title, usedBy: taken.get(urlKey(x.url)) }));
     result.topicWords = topicWords;
     lap("search");
@@ -463,7 +463,7 @@ export async function makeInImage(o) {
       let f = await downloadImage(x.thumb, path.join(cand, `${pre}${i + 1}`), { fetchImpl, fs }).catch(() => null);
       if (f && f.endsWith(".webp")) { const png = f.replace(/\.webp$/, ".png"); f = await ffmpeg(["-loglevel", "error", "-y", "-i", f, png]).then(() => png, () => null); }
       return f && /\.(jpg|png)$/.test(f) ? { ...x, file: f, n: i + 1 } : null; }))).filter(Boolean);
-    let [pThumbs, lThumbs] = client ? [[], []] : await Promise.all([thumbs(products, "p", 10), thumbs(logos, "l")]);
+    let [pThumbs, lThumbs] = client ? [[], []] : await Promise.all([thumbs(products, "p", o.compact ? 4 : 10), thumbs(logos, "l", o.compact ? 3 : 8)]);
     // the image host sometimes refuses a burst of parallel requests: one calmer retry, a few at a time
     const calm = async (list, pre, n) => { const out = []; for (let i = 0; i < Math.min(n, list.length); i += 3) out.push(...await thumbs(list.slice(i, i + 3).map((x, j) => ({ ...x, _i: i + j })), pre + "r" + i + "_", 3)); return out.map((x, k) => ({ ...x, n: k + 1 })); };
     if (!client && !pThumbs.length && products.length) pThumbs = await calm(products, "p", 10);

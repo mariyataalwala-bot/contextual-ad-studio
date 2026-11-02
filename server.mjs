@@ -8,7 +8,7 @@ import { fileURLToPath } from "node:url";
 import Anthropic from "@anthropic-ai/sdk";
 import { GoogleGenAI } from "@google/genai";
 import { createOpenWeb } from "./openweb/routes.mjs";
-import { askOpenAICompat } from "./openweb/lib/openai-compat.mjs";
+import { askOpenAICompat, listModels, pickModel } from "./openweb/lib/openai-compat.mjs";
 import { accessMode } from "./openweb/lib/access.mjs";
 import { isLowMemory, LOW_MEMORY_WHY } from "./openweb/lib/hostmem.mjs";
 import { loadBrands, findBrand, brandBrief, bannedReason, ownNames } from "./openweb/lib/brands.mjs";
@@ -319,6 +319,19 @@ function wrongKeyField(b) {
   if (o && /^AIza/.test(o)) return "That looks like a Google (Gemini / YouTube) key. Paste it into the Gemini or YouTube field. Nothing was saved.";
   if (c && !/^sk-ant-/.test(c)) return "That does not look like a Claude key — they start with sk-ant-. Nothing was saved.";
   return "";
+}
+// In-Image reads pictures. A free key whose models cannot is told so before a run starts, not halfway through it.
+let visionMemo = null;
+async function aiPicturesProblem() {
+  if (provider() !== "openai") return null;
+  const k = `${compatBase()}|${compatKey()}`;
+  if (!visionMemo || visionMemo.k !== k || Date.now() - visionMemo.t > 600e3) {
+    let msg = null;
+    try { const ids = await listModels({ baseUrl: compatBase(), key: compatKey() }); if (!pickModel(ids, true)) msg = `The free AI key in use has no model that can read pictures (its models: ${ids.slice(0, 8).join(", ")}). In-Image needs one: paste a Gemini key in Settings (free, from aistudio.google.com/apikey), or use an OpenRouter key with a vision model.`; }
+    catch { /* the list could not be read: let the run try, it reports its own reason */ }
+    visionMemo = { k, t: Date.now(), msg };
+  }
+  return visionMemo.msg;
 }
 const slug = (s) => s.toLowerCase().normalize("NFKD").replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") || "brand";
 const vidOf = (s) => (String(s).match(/(?:v=|youtu\.be\/|shorts\/)([A-Za-z0-9_-]{11})/) || String(s).match(/^([A-Za-z0-9_-]{11})$/) || [])[1];
@@ -900,7 +913,7 @@ function saveData(dataUrl, file) { const m = /^data:[^;]+;base64,(.*)$/.exec(dat
 
 // Open Web contextual placement (openweb/): its own routes and data folder; if its config is broken only that tab is off
 let openweb = null, openwebError = "";
-try { openweb = createOpenWeb({ dataDir: path.join(OUT_ROOT, "openweb"), ask, provider, findAds, ytDetails, ffmpeg: (args) => run("ffmpeg", args, { timeout: 120000 }), embed: embedTexts,
+try { openweb = createOpenWeb({ dataDir: path.join(OUT_ROOT, "openweb"), ask, provider, findAds, ytDetails, aiPicturesProblem, ffmpeg: (args) => run("ffmpeg", args, { timeout: 120000 }), embed: embedTexts,
   firecrawlKey: () => loadSettings().firecrawlKey || process.env.FIRECRAWL_API_KEY || null,
   py: (args) => run(PY, [path.join(PIPE, "scripts", args[0]), ...args.slice(1)], { timeout: 120000 }) }); }
 catch (e) { openwebError = e.message; console.error("Open Web disabled:", e.message); }

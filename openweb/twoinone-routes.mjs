@@ -70,7 +70,7 @@ export function createTwoInOne(d) {
       else { say(3, "video", "Downloading the video from the link…"); const r = await downloadVideo(link, path.join(workDir, "assets", "upload"), { fetchImpl, maxBytes: tcfg.maxClientBytes }).catch((e) => { throw new StudioStop("failed", e.message); }); video = { kind: "file", file: r.file, name: path.basename(new URL(link).pathname) || "video" }; }
       let displayFile = null; if (dp) { displayFile = path.join(workDir, "assets", "display." + dp.ext); fs.writeFileSync(displayFile, dp.buf); }
       return makeTwoInOne({ brand, product, known, studio, cfg, store, ask, py, ffmpeg, fetchImpl, fc: fcFor(), firecrawlOpt: firecrawl(), indexDir: studioRoot, roots: [studioRoot, root], workDir, say, signal: ctl.signal,
-        video, displayFile, ytDetails, confirmBrand: !!b.confirmBrand, chromium, campaigns, record: !isLowMemory(), fileUrl: (rel) => "/api/ow/twoinone/file?path=" + encodeURIComponent(dirRel + "/" + rel) });
+        video, displayFile, ytDetails, confirmBrand: !!b.confirmBrand, chromium, campaigns, record: !isLowMemory(), compact: provider() === "openai", fileUrl: (rel) => "/api/ow/twoinone/file?path=" + encodeURIComponent(dirRel + "/" + rel) });
     })()
       .then((r) => { if (end("done", "success")) { j.result = r; j.pct = 100; log(j, `2-in-1 preview ready in ${r.seconds} s.`); } })
       .catch((e) => { if (end("failed", e.status || "failed", e.message)) log(j, `Stopped (${j.outcome}): ${e.message}`); try { if (!fs.existsSync(path.join(workDir, "result.json"))) fs.writeFileSync(path.join(workDir, "result.json"), JSON.stringify({ version: TWO_VERSION, brand, product, status: e.status || "failed", error: e.message, createdAt: new Date().toISOString() })); } catch { /* best effort */ } })

@@ -43,9 +43,9 @@ const countBy = (list, key) => { const m = {}; for (const x of list) m[key(x)] =
 const FILE_TYPES = { ".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".gif": "image/gif", ".webp": "image/webp", ".mp4": "video/mp4", ".webm": "video/webm", ".mov": "video/quicktime", ".json": "application/json" };
 
 /**
- * @param {{ dataDir: string, findAds?: ((q: { brand: string, product?: string }) => Promise<any[]>)|null, configDir?: string, ask?: Function|null, provider?: () => string, ffmpeg?: ((args: string[]) => Promise<any>)|null, fetchImpl?: any, chromium?: any, embed?: ((texts: string[], task: string, dims: number) => Promise<number[][]>)|null, py?: ((args: string[]) => Promise<string>)|null, studioDir?: string|null, firecrawlKey?: () => string|null|undefined, ytDetails?: ((ids: string[]) => Promise<Map<string, any>>)|null }} opts
+ * @param {{ dataDir: string, findAds?: ((q: { brand: string, product?: string }) => Promise<any[]>)|null, configDir?: string, ask?: Function|null, provider?: () => string, ffmpeg?: ((args: string[]) => Promise<any>)|null, fetchImpl?: any, chromium?: any, embed?: ((texts: string[], task: string, dims: number) => Promise<number[][]>)|null, py?: ((args: string[]) => Promise<string>)|null, studioDir?: string|null, firecrawlKey?: () => string|null|undefined, aiPicturesProblem?: (() => Promise<string|null>)|null, ytDetails?: ((ids: string[]) => Promise<Map<string, any>>)|null }} opts
  */
-export function createOpenWeb({ dataDir, ask = null, provider = () => "none", ffmpeg = null, fetchImpl = globalThis.fetch, chromium = null, configDir, embed = null, py = null, studioDir = null, firecrawlKey = () => null, findAds = null, ytDetails = null }) {
+export function createOpenWeb({ dataDir, ask = null, provider = () => "none", ffmpeg = null, fetchImpl = globalThis.fetch, chromium = null, configDir, embed = null, py = null, studioDir = null, firecrawlKey = () => null, findAds = null, ytDetails = null, aiPicturesProblem = null }) {
   const cfg = loadConfig(configDir);
   const studio = loadStudioConfig(configDir);
   const brands = loadBrands(configDir);
@@ -146,7 +146,7 @@ export function createOpenWeb({ dataDir, ask = null, provider = () => "none", ff
     const end = (status, outcome, error) => { if (j.status !== "running") return false; Object.assign(j, { status, outcome, tEnd: Date.now() }); if (error) j.error = error; if (studioBusy === j.id) studioBusy = null; return true; };
     const ctl = new AbortController(), limitS = studio.budgetSeconds + 75;
     const dog = setTimeout(() => { ctl.abort(); if (end("failed", "failed", `Stopped: the run took longer than ${limitS} s (last step: ${j.stage}). Nothing was placed.`)) log(j, j.error); }, limitS * 1000);
-    makeInImage({ discovery: { fc: fcFor(), campaigns: campaignsFor }, recentAds: findAds, brand, product, offer, productImage, style, clientAd, brands, workDir, indexDir: studioRoot, studio, cfg, store, ask, fetchImpl, py, ffmpeg, chromium, firecrawl: firecrawl(), signal: ctl.signal, say, productFile })
+    makeInImage({ compact: provider() === "openai", discovery: { fc: fcFor(), campaigns: campaignsFor }, recentAds: findAds, brand, product, offer, productImage, style, clientAd, brands, workDir, indexDir: studioRoot, studio, cfg, store, ask, fetchImpl, py, ffmpeg, chromium, firecrawl: firecrawl(), signal: ctl.signal, say, productFile })
       .then((r) => { if (end("done", r.status || "success")) { j.result = r; j.pct = 100; log(j, `Ad ready in ${r.seconds} s (${j.outcome}${r.status === "partial" ? ": " + r.statusWhy : ""}).`); } })
       .catch((e) => { if (end("failed", e.status || "failed", e.message)) { j.needsInput = e.needsInput || null; log(j, `Stopped (${j.outcome}): ` + e.message); } try { fs.writeFileSync(path.join(workDir, "error.txt"), e.stack || e.message); } catch { /* best effort */ } })
       .finally(() => clearTimeout(dog));
@@ -168,7 +168,11 @@ export function createOpenWeb({ dataDir, ask = null, provider = () => "none", ff
       if (!brand) return send(res, 400, { error: "Give a brand (…/discover?brand=Zomato)." });
       return send(res, 200, await discoverReport({ brand, product, days: Math.min(365, +u.searchParams.get("days") || 0), months: Math.min(36, +u.searchParams.get("months") || 0) }));
     }
-    if (p === "/studio/start" && req.method === "POST") { const r = studioStart(await body(req)); return send(res, r.code, r.body); }
+    if (p === "/studio/start" && req.method === "POST") {
+      const sb = await body(req), early = await (aiPicturesProblem ? aiPicturesProblem() : Promise.resolve(null)).catch(() => null);   // a key that cannot read pictures stops here, with the reason, not halfway through a run
+      if (early && !isLowMemory()) return send(res, 400, { error: early });
+      const r = studioStart(sb); return send(res, r.code, r.body);
+    }
     if (p === "/studio/list") {   // earlier mocks (newest first), read back from their result.json files
       const out = [];
       try { for (const b of fs.readdirSync(studioRoot).filter((x) => !x.startsWith("_"))) for (const t of fs.readdirSync(path.join(studioRoot, b))) {

@@ -313,7 +313,7 @@ export async function findArticles(o) {
   const all = [...feedItems, ...searched, ...matchSlugs(older.filter((x) => !seenUrl.has(x.url)), topicWords)];
   const taken = new Map(); for (const r of roots) for (const [k, v] of usedArticles(r, brand)) taken.set(k, v);
   const hits = new Set([...matchSlugs(all, topicWords, 1e9).map((x) => x.url), ...searched.map((x) => x.url)]);
-  const list = all.filter((x) => !taken.has(urlKey(x.url)) && !rivals(x.title)).sort((a, b) => Number(hits.has(b.url)) - Number(hits.has(a.url))).slice(0, studio.listMax);
+  const list = all.filter((x) => !taken.has(urlKey(x.url)) && !rivals(x.title)).sort((a, b) => Number(hits.has(b.url)) - Number(hits.has(a.url))).slice(0, o.compact ? Math.min(studio.listMax, 70) : studio.listMax);   // a small free model gets a shorter list
   if (!all.length) throw new Error("None of the media-plan publisher feeds answered just now. Try again in a minute.");
   say(38, "articles", `${list.length} recent articles to choose from — shortlisting the ones that fit ${product}…`);
   const numbered = list.map((x, i) => `${i + 1}. [${x.section}] ${x.title}`).join("\n");
