@@ -89,7 +89,7 @@ ${hw ? `<h2>${hw}</h2>` : `<h2><span class="w"><i style="--k:0">${esc(P.productN
 <div class="unit" id="unit"><div class="vid">${player}</div><div class="disp">${panel}</div></div></div></div>`;
   const css = `
 .veil{position:${fixed ? "fixed" : "absolute"};inset:0;background:rgba(7,10,20,.74);-webkit-backdrop-filter:blur(5px);backdrop-filter:blur(5px);display:grid;place-items:center;opacity:0;pointer-events:none;transition:opacity .35s;z-index:${fixed ? "2147483647" : "5"};font-family:system-ui,"Segoe UI",sans-serif;line-height:1.3;color:#fff}
-.veil *{box-sizing:border-box}.veil.open{opacity:1;pointer-events:auto}
+.veil *,.pn *{text-decoration:none!important}.veil *{box-sizing:border-box}.veil.open{opacity:1;pointer-events:auto}
 /* 1) the opening */
 .intro{position:absolute;inset:0;pointer-events:none;display:grid;place-items:center;transition:opacity .45s}
 .intro.done{opacity:0}
@@ -250,7 +250,7 @@ p{margin:0 0 14px}
 .slot{margin:6px 0 18px;border:1px solid #e4e7ee;border-radius:12px;padding:8px 10px 10px;font-family:system-ui,sans-serif;background:#fafbfd;cursor:pointer;text-align:left;width:100%}
 .slot .adv{display:block;font:600 10px system-ui,sans-serif;letter-spacing:.12em;text-transform:uppercase;color:#98a1b3;margin-bottom:6px}
 .slot .tile{display:flex;align-items:center;gap:10px;border-radius:9px;padding:10px 12px;font:700 15px system-ui,sans-serif}
-.slot .tile em{font:500 12px system-ui,sans-serif;opacity:.85;margin-left:auto;font-style:normal;text-decoration:underline}
+.slot .tile em{font:500 12px system-ui,sans-serif;opacity:.85;margin-left:auto;font-style:normal}
 .again{position:absolute;left:50%;bottom:34px;transform:translateX(-50%);font:600 12px system-ui,sans-serif;border:0;border-radius:99px;padding:9px 16px;background:#0b6ff0;color:#fff;cursor:pointer;display:none;z-index:3}
 .again.show{display:block}
 .mock{position:absolute;left:0;right:0;bottom:0;background:#0b0f19;color:#c8cfdd;font:600 10.5px system-ui,sans-serif;letter-spacing:.05em;padding:5px 12px;text-align:center;z-index:6}

@@ -90,6 +90,7 @@ export function storyHtml(o) {
     return `<svg class="f${s.pop ? " pop" : ""}${s.buzz ? " buzz" : ""}" style="${v}" viewBox="0 0 40 40"><use href="#k"/></svg>`;
   }).join("");
   const story = `<style>
+*{text-decoration:none!important}
 .sw{position:absolute;inset:0;container-type:size;overflow:hidden;font-family:Poppins,system-ui,sans-serif;-webkit-font-smoothing:antialiased;pointer-events:none}
 .w>.ad,.w>.x{display:none}
 .fr{position:absolute;inset:0;opacity:0;-webkit-backdrop-filter:blur(1.5cqw) saturate(1.15);backdrop-filter:blur(1.5cqw) saturate(1.15);background:radial-gradient(ellipse at 50% 55%,rgba(255,255,255,.18),rgba(255,255,255,.42) 75%),linear-gradient(180deg,${c}14,${c}30)}

@@ -509,3 +509,11 @@ test("director: recentDevices lists the newest ads' devices, skipping withdrawn 
   put("_index", "x", { createdAt: "2026-10-29T13:00:00Z", director: { device: "shatter" } });
   assert.deepEqual(recentDevices(root), ["portal", "frost"]);
 });
+
+test("no underline in any ad: every design carries a no-underline rule and none of the ad CSS underlines or draws a bar under the headline", () => {
+  for (const style of STYLES) {
+    const html = stripHtml({ brand: "B", headline: "Break Hai Toh Vibe Hai", cta: "Shop now", colour: "#e31b23", productUrl: "/a/p.png", productMode: "photo", style });
+    assert.match(html, /\*\{text-decoration:none!important\}/, `${style}: no underline`);
+    assert.doesNotMatch(html, /text-decoration:\s*underline/, `${style}: nothing underlines`);
+  }
+});

@@ -422,7 +422,7 @@ export function sceneHtml(o, brief) {
   const end = endCard(dev, brief, base);
   const strip = stripHtml({ ...o, ...end.look, style: endStyle(dev, o.style) }).split(":host([data-go])").join(":host([data-go2])");
   return `${strip}
-<style>${end.css}
+<style>*{text-decoration:none!important}${end.css}
 .dz{position:absolute;inset:0;container-type:size;overflow:hidden;font-family:Poppins,system-ui,sans-serif;-webkit-font-smoothing:antialiased;pointer-events:none}
 .w>.ad,.w>.x{display:none}
 .dMw,.dKw{display:inline-block;opacity:0;transform:translateY(45%)}

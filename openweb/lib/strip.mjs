@@ -205,6 +205,7 @@ export function stripHtml(o) {
   const halo = style === "luxe" ? "#f4e7cf" : mix(c, "#ffffff", 0.86);
   const back = style === "bold" ? `${scene ? "" : panel ? `<div class="pn"></div>` : ""}<div class="ring"></div>` : style === "luxe" ? `<div class="ring"></div>` : "";
   return `<style>
+*{text-decoration:none!important}
 :host{display:block}
 .w{position:absolute;inset:0;container-type:size;overflow:hidden;font-family:Poppins,system-ui,sans-serif;-webkit-font-smoothing:antialiased;--sh:max(46cqh,26cqw)}
 .s{position:absolute;left:0;right:0;bottom:0;height:max(46cqh,26cqw);max-height:56cqh;background:linear-gradient(105deg,${c} 0%,${c} 52%,${deep} 100%);box-shadow:0 -1cqw 3.4cqw rgba(0,0,0,.28);transform:translateY(105%)}
