@@ -319,7 +319,7 @@ export async function findArticles(o) {
   const numbered = list.map((x, i) => `${i + 1}. [${x.section}] ${x.title}`).join("\n");
   const plan = await withTimeout(ask("You pick articles for contextual video ads from the list given only.",
     `Brand: ${brand}. Product: ${product}.\n${known ? brandBrief(known) + "\n" : ""}Video ad title: “${video.title || ""}”${video.campaign ? `; campaign: “${video.campaign}”` : ""}.\nPick up to ${studio.shortlist} article numbers whose topic is a DIRECT fit for this product (its category, or the main thing people buy it for), best first, with why. Never an article about ${brand} itself or a competitor, and none on crime, death, disaster, conflict or politics.\n\n${numbered}`,
-    SHORT_SCHEMA, [], "medium"), 60000, "Shortlisting").catch((e) => { flags.push("shortlist failed: " + e.message); return { shortlist: [] }; });
+    SHORT_SCHEMA, [], "medium"), 60000, "Shortlisting").catch((e) => { throw new StudioStop("failed", `The AI service could not shortlist articles: ${String(e.message).replace(/^The AI provider /, "the provider ").slice(0, 260)}`); });
   const picked = (plan.shortlist || []).map((s) => ({ ...list[s.n - 1], why: s.why })).filter((x) => x.url && !rivals(x.title));
   if (!picked.length) return { items: [], rejected: [], review: [], topicWords, flags, listed: list.length };
 
