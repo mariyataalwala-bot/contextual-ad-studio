@@ -11,6 +11,7 @@ import { createOpenWeb } from "./openweb/routes.mjs";
 import { askOpenAICompat, listModels, pickModel } from "./openweb/lib/openai-compat.mjs";
 import { accessMode } from "./openweb/lib/access.mjs";
 import { isLowMemory, LOW_MEMORY_WHY } from "./openweb/lib/hostmem.mjs";
+import { setImageSearchConfig } from "./openweb/lib/websearch.mjs";
 import { loadBrands, findBrand, brandBrief, bannedReason, ownNames } from "./openweb/lib/brands.mjs";
 import { rivalMatcher } from "./openweb/lib/studio.mjs";
 
@@ -313,13 +314,15 @@ async function peekBody(req) { if (!peeked.has(req)) peeked.set(req, await body(
 // Gemini and YouTube keys start with AIza; Groq keys with gsk_; Claude keys with sk-ant-. A key in the wrong field would replace a working one.
 function wrongKeyField(b) {
   const bad = (v) => (v ? String(v).trim() : "");
-  const g = bad(b.geminiKey), y = bad(b.youtubeKey), o = bad(b.openaiKey), c = bad(b.apiKey);
+  const g = bad(b.geminiKey), y = bad(b.youtubeKey), o = bad(b.openaiKey), c = bad(b.apiKey), gc = bad(b.googleCseKey);
+  if (gc && !/^AIza/.test(gc)) return "That does not look like a Google API key — they start with AIza. Nothing was saved.";
   if (g && !/^AIza/.test(g)) return /^gsk_/.test(g) ? "That is a Groq key (it starts with gsk_). Paste it into “Free key from another AI service”, not the Gemini field. The Gemini key starts with AIza." : "That does not look like a Gemini key — they start with AIza. Nothing was saved.";
   if (y && !/^AIza/.test(y)) return "That does not look like a YouTube Data API key — they start with AIza. Nothing was saved.";
   if (o && /^AIza/.test(o)) return "That looks like a Google (Gemini / YouTube) key. Paste it into the Gemini or YouTube field. Nothing was saved.";
   if (c && !/^sk-ant-/.test(c)) return "That does not look like a Claude key — they start with sk-ant-. Nothing was saved.";
   return "";
 }
+setImageSearchConfig(() => ({ googleKey: loadSettings().googleCseKey || process.env.GOOGLE_CSE_KEY || "", googleCx: loadSettings().googleCseCx || process.env.GOOGLE_CSE_CX || "" }));
 // In-Image reads pictures. A free key whose models cannot is told so before a run starts, not halfway through it.
 let visionMemo = null;
 async function aiPicturesProblem() {
@@ -952,7 +955,7 @@ http.createServer(async (req, res) => {
     if (u.pathname === "/openweb" || u.pathname === "/inimage" || u.pathname === "/twoinone" || u.pathname.startsWith("/api/ow/")) return openweb ? await openweb.handle(req, res, u, { local }) : send(res, 503, { error: "Open Web is unavailable: " + openwebError });
     if (u.pathname === "/api/status") return send(res, 200, { local, queue: waiting, hasKey: provider() !== "none", articleSearch: !!(loadSettings().firecrawlKey || process.env.FIRECRAWL_API_KEY), provider: provider(), youtube: youtubeKey() ? (Date.now() > ytApiDisabledUntil ? "api" : "browser (API paused)") : "browser", keyFromEnv: !!(process.env.ANTHROPIC_API_KEY || process.env.GEMINI_API_KEY), ffmpeg: !!FF || !IS_WIN, hosted: !IS_WIN, outDir: OUT_ROOT });
     if (req.method === "POST" && u.pathname === "/api/settings" && local) { const peek = await peekBody(req); const wrong = wrongKeyField(peek); if (wrong) return send(res, 400, { error: wrong }); }
-    if (req.method === "POST" && u.pathname === "/api/settings") { if (!local) return send(res, 403, { error: "Settings can only be changed on the computer running the app." }); const b = await peekBody(req); const s = loadSettings(); if (b.apiKey) s.apiKey = b.apiKey.trim(); if (b.geminiKey) s.geminiKey = b.geminiKey.trim(); if (b.youtubeKey) { s.youtubeKey = b.youtubeKey.trim(); ytApiDisabledUntil = 0; } if (b.firecrawlKey) s.firecrawlKey = b.firecrawlKey.trim(); if (b.openaiKey) s.openaiKey = b.openaiKey.trim(); if (b.openaiBaseUrl) s.openaiBaseUrl = b.openaiBaseUrl.trim(); if (b.openaiModel) s.openaiModel = b.openaiModel.trim(); if (b.provider) s.provider = b.provider; fs.writeFileSync(SETTINGS, JSON.stringify(s)); return send(res, 200, { ok: true, provider: provider() }); }
+    if (req.method === "POST" && u.pathname === "/api/settings") { if (!local) return send(res, 403, { error: "Settings can only be changed on the computer running the app." }); const b = await peekBody(req); const s = loadSettings(); if (b.apiKey) s.apiKey = b.apiKey.trim(); if (b.geminiKey) s.geminiKey = b.geminiKey.trim(); if (b.youtubeKey) { s.youtubeKey = b.youtubeKey.trim(); ytApiDisabledUntil = 0; } if (b.firecrawlKey) s.firecrawlKey = b.firecrawlKey.trim(); if (b.openaiKey) s.openaiKey = b.openaiKey.trim(); if (b.googleCseKey) s.googleCseKey = b.googleCseKey.trim(); if (b.googleCseCx) s.googleCseCx = b.googleCseCx.trim(); if (b.openaiBaseUrl) s.openaiBaseUrl = b.openaiBaseUrl.trim(); if (b.openaiModel) s.openaiModel = b.openaiModel.trim(); if (b.provider) s.provider = b.provider; fs.writeFileSync(SETTINGS, JSON.stringify(s)); return send(res, 200, { ok: true, provider: provider() }); }
     if (req.method === "POST" && u.pathname === "/api/ads") {   // runs in the background (share links cut requests at ~100 s)
       const b = await body(req);
       const k = BRANDS && findBrand(BRANDS, b.brand || "", b.product || ""), why = bannedReason(k, b.product || "");

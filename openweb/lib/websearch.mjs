@@ -47,8 +47,31 @@ export async function ddgImages(q, { transparent = false, fetchImpl = globalThis
   return out;
 }
 
+// Google's Programmable Search (the official image search; a free key and search-engine id give 100 searches a day). Set with
+// setImageSearchConfig(() => ({ googleKey, googleCx })) — or GOOGLE_CSE_KEY / GOOGLE_CSE_CX in the environment.
+/** @type {() => { googleKey?: string, googleCx?: string }} */
+let searchConfig = () => ({ googleKey: process.env.GOOGLE_CSE_KEY || "", googleCx: process.env.GOOGLE_CSE_CX || "" });
+export const setImageSearchConfig = (/** @type {() => { googleKey?: string, googleCx?: string }} */ fn) => { searchConfig = fn; };
+
+/** @param {string} q @param {{ key: string, cx: string, transparent?: boolean, fetchImpl?: typeof fetch }} o */
+export async function googleImages(q, { key, cx, transparent = false, fetchImpl = globalThis.fetch }) {
+  const qs = new URLSearchParams({ key, cx, q, searchType: "image", num: "10", gl: "in", safe: "active", ...(transparent ? { imgColorType: "trans" } : {}) });
+  const r = await fetchImpl("https://www.googleapis.com/customsearch/v1?" + qs, { signal: AbortSignal.timeout(20000) });
+  const j = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(`Google image search → ${String(j.error?.message || "HTTP " + r.status).slice(0, 120)}`);
+  const out = [], seen = new Set();
+  for (const x of j.items || []) {
+    if (!x.link || seen.has(x.link)) continue;
+    const page = x.image?.contextLink || x.link; let host; try { host = new URL(page).host.replace(/^www\./, ""); } catch { continue; }
+    seen.add(x.link); out.push({ url: x.link, thumb: x.image?.thumbnailLink || null, page, host, title: String(x.title || "").trim() });
+  }
+  return out;
+}
+
 // mkt: the market whose results are wanted — Indian packs and Indian shops (en-IN), not the US / EU versions
 export async function imageSearch(q, { transparent = false, fetchImpl = globalThis.fetch, count = 35, mkt = "en-IN" } = {}) {
+  const g = searchConfig();
+  if (g.googleKey && g.googleCx) { try { const r = await googleImages(q, { key: g.googleKey, cx: g.googleCx, transparent, fetchImpl }); if (r.length && relevantResults(r, q)) return r; } catch { /* the scraped pages below */ } }
   const qs = new URLSearchParams({ q, form: "IRFLTR", first: "1", count: String(count), mkt, cc: mkt.split("-")[1] || "IN" });
   if (transparent) qs.set("qft", "+filterui:photo-transparent");
   const r = await fetchImpl("https://www.bing.com/images/search?" + qs, { headers: { "User-Agent": UA, "Accept-Language": "en-IN,en;q=0.9" }, signal: AbortSignal.timeout(20000) });
@@ -57,8 +80,8 @@ export async function imageSearch(q, { transparent = false, fetchImpl = globalTh
   if (/captcha|unusual traffic/i.test(html.slice(0, 20000)) && !/ m="\{/.test(html)) throw new Error("Image search asked for a bot check — not bypassed");
   const found = parseBingImages(html);
   if (relevantResults(found, q)) return found;
-  try { const d = await ddgImages(q, { transparent, fetchImpl }); if (d.length && relevantResults(d, q)) return d; } catch { /* keep Bing's list, as before */ }
-  return found;
+  try { const d = await ddgImages(q, { transparent, fetchImpl }); if (d.length && relevantResults(d, q)) return d; } catch { /* nothing better */ }
+  return [];   // unrelated pictures are worse than none: the ad is then made without a product picture, and says so
 }
 
 // The brand's own sites rank first (bata.com, maggi.in …), then the rest in search order.

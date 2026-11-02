@@ -38,5 +38,5 @@ test("image search: Bing's list is used when it answers the query; junk from Bin
   const junk = await imageSearch("Maaza juice", { fetchImpl: mk([["Ali G poster", "https://b/1.jpg", "https://imdb.com/x"], ["Parrot drawing", "https://b/2.jpg", "https://d.com/y"]]) });
   assert.deepEqual(junk.map((x) => x.host), ["amazon.in", "enjoymaaza.com"], "unrelated Bing pictures are replaced");
   const bothBad = await imageSearch("Maaza juice", { fetchImpl: async (url, init) => (String(url).startsWith("https://www.bing.com/") ? new Response(bingHtml([["Ali G poster", "https://b/1.jpg", "https://imdb.com/x"]]), { status: 200 }) : ddgFetch(R, { status: 403 })(url, init)) });
-  assert.equal(bothBad[0].url, "https://b/1.jpg", "with no better answer the earlier list is returned, as before");
+  assert.deepEqual(bothBad, [], "no relevant answer anywhere: nothing — never a list of unrelated pictures (the ad is then made without a product picture, and says so)");
 });

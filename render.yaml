@@ -25,6 +25,10 @@ services:
         sync: false
       - key: LITE_MODE          # optional: 1 = never open a browser (auto-on below ~1.2 GB of memory). Free plan = lite: YouTube search needs YOUTUBE_API_KEY, no In-Image / video recording
         sync: false
+      - key: GOOGLE_CSE_KEY     # optional: Google Programmable Search key (free, 100 searches a day) — reliable product pictures; with GOOGLE_CSE_CX
+        sync: false
+      - key: GOOGLE_CSE_CX
+        sync: false
       - key: YOUTUBE_API_KEY    # optional YouTube Data API key (faster, more reliable video search)
         sync: false
       - key: FIRECRAWL_API_KEY  # optional: renders JavaScript-built article pages (never refused or paywalled ones)
