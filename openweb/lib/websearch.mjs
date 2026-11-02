@@ -1,5 +1,7 @@
 // Product pictures found online: Bing image search (the public results page, read like a browser would; nothing is
-// bypassed — a bot-check page is reported as an error). Each result keeps the page it came from, so every picture
+// bypassed — a bot-check page is reported as an error). When Bing answers with pictures that have nothing to do with the query
+// (it does that to scripted requests, whatever was asked — Nov 2026: Ali G posters for "Maaza juice"), DuckDuckGo's public image
+// results are used instead. Each result keeps the page it came from, so every picture
 // used in a mock can be traced back to its source.
 const UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0 Safari/537.36";
 const unent = (s) => s.replace(/&quot;/g, '"').replace(/&amp;/g, "&").replace(/&#39;/g, "'").replace(/&lt;/g, "<").replace(/&gt;/g, ">");
@@ -18,6 +20,33 @@ export function parseBingImages(html) {
   return out;
 }
 
+// Does this result list answer the query at all? Words of the query (4+ letters) must appear in the titles, pages or addresses of
+// several of the first results. A list of unrelated pictures is worse than none: the AI would reject every one of them.
+const GENERIC = new Set(["with", "from", "india", "indian", "product", "photo", "image", "pack", "packshot", "official", "png", "logo", "transparent", "new"]);
+export function relevantResults(results, q) {
+  const words = [...new Set(String(q).toLowerCase().replace(/[^a-z0-9]+/g, " ").split(" ").filter((w) => w.length >= 4 && !GENERIC.has(w)))];
+  if (!words.length) return results.length > 0;
+  const hit = results.slice(0, 12).filter((r) => { const t = `${r.title} ${r.page} ${r.url}`.toLowerCase(); return words.some((w) => t.includes(w)); }).length;
+  return hit >= Math.min(3, Math.max(1, results.length));
+}
+
+// DuckDuckGo images: the page gives a token (vqd), the JSON endpoint gives the pictures — the same two requests its own page makes.
+export async function ddgImages(q, { transparent = false, fetchImpl = globalThis.fetch } = {}) {
+  const ua = { "User-Agent": UA, "Accept-Language": "en-IN,en;q=0.9" };
+  const page = await (await fetchImpl("https://duckduckgo.com/?" + new URLSearchParams({ q, iax: "images", ia: "images" }), { headers: ua, signal: AbortSignal.timeout(20000) })).text();
+  const vqd = (/vqd=["']?([\d-]+)/.exec(page) || [])[1];
+  if (!vqd) throw new Error("DuckDuckGo gave no token");
+  const r = await fetchImpl("https://duckduckgo.com/i.js?" + new URLSearchParams({ l: "in-en", o: "json", q, vqd, f: transparent ? ",,,transparent,," : ",,,,,", p: "1" }), { headers: { ...ua, Referer: "https://duckduckgo.com/", Accept: "application/json" }, signal: AbortSignal.timeout(20000) });
+  if (!r.ok) throw new Error(`DuckDuckGo images → HTTP ${r.status}`);
+  const out = [], seen = new Set();
+  for (const x of (await r.json()).results || []) {
+    if (!x.image || !x.url || seen.has(x.image)) continue;
+    let host; try { host = new URL(x.url).host.replace(/^www\./, ""); } catch { continue; }
+    seen.add(x.image); out.push({ url: x.image, thumb: x.thumbnail || null, page: x.url, host, title: String(x.title || "").trim() });
+  }
+  return out;
+}
+
 // mkt: the market whose results are wanted — Indian packs and Indian shops (en-IN), not the US / EU versions
 export async function imageSearch(q, { transparent = false, fetchImpl = globalThis.fetch, count = 35, mkt = "en-IN" } = {}) {
   const qs = new URLSearchParams({ q, form: "IRFLTR", first: "1", count: String(count), mkt, cc: mkt.split("-")[1] || "IN" });
@@ -26,7 +55,10 @@ export async function imageSearch(q, { transparent = false, fetchImpl = globalTh
   const html = await r.text();
   if (!r.ok) throw new Error(`Image search → HTTP ${r.status}`);
   if (/captcha|unusual traffic/i.test(html.slice(0, 20000)) && !/ m="\{/.test(html)) throw new Error("Image search asked for a bot check — not bypassed");
-  return parseBingImages(html);
+  const found = parseBingImages(html);
+  if (relevantResults(found, q)) return found;
+  try { const d = await ddgImages(q, { transparent, fetchImpl }); if (d.length && relevantResults(d, q)) return d; } catch { /* keep Bing's list, as before */ }
+  return found;
 }
 
 // The brand's own sites rank first (bata.com, maggi.in …), then the rest in search order.
