@@ -253,7 +253,6 @@ ${hero(o, t.fx, seed)}<div class="dLg">${logo}</div><div class="dMsg">${b.kicker
 .dPed:after{content:"";position:absolute;left:8%;right:8%;top:22%;height:30%;border-radius:50%;border-top:.25cqw solid rgba(255,230,170,.55);filter:blur(.15cqw)}
 .dHero{left:66%;bottom:13cqh;width:42cqw;height:68cqh;margin-left:-21cqw;--enter:dGlow;--ein:1.45s;--ed:1.4s;--sd:3.1s}
 .dHero .dHb{animation:dTurn 5s 2.8s ease-in-out infinite alternate}
-.dHero.dPh .dHb{background:transparent;border-radius:50%;-webkit-mask-image:radial-gradient(closest-side,#000 50%,transparent 94%);mask-image:radial-gradient(closest-side,#000 50%,transparent 94%);box-shadow:none;filter:brightness(.95) contrast(1.1) saturate(1.1)}
 .dFlr{position:absolute;width:3cqw;height:3cqw;opacity:0}
 .dFlr:before{content:"";position:absolute;left:50%;top:50%;width:26cqw;height:.3cqw;margin:-.15cqw 0 0 -13cqw;background:linear-gradient(90deg,transparent,rgba(255,244,214,.9),transparent);filter:blur(.08cqw)}
 .dFlr:after{content:"";position:absolute;inset:0;background:radial-gradient(circle,#fff 0 14%,transparent 18%),conic-gradient(from 45deg,transparent 0 10%,#fff 12% 13%,transparent 15% 35%,#fff 37% 38%,transparent 40% 60%,#fff 62% 63%,transparent 65% 85%,#fff 87% 88%,transparent 90%);filter:drop-shadow(0 0 .8cqw #fff3cf)}
@@ -416,8 +415,8 @@ export function sceneHtml(o, brief) {
   const fx = (brief.product_fx || []).filter((x) => FX.includes(x));
   // the logo as it reads on the scene behind it (frost and pour: light; spotlight: dark; shatter: the base colour)
   const behind = { frost: "#e6f4fc", pour: mix(hex(brief.liquid) || base, "#ffffff", 0.2), spotlight: "#08070b", portal: hex(brief.sky_top) || mix(base, "#ffffff", 0.35), shatter: base }[dev];
-  const lmode = o.logoUrl ? logoMode({ kind: o.logoKind || "mark", ink: o.logoInk, light: o.logoLight || 0, behind, style: dev === "spotlight" ? "luxe" : "bold", reverse: !!o.logoReverseUrl }) : "text";
-  const logo = o.logoUrl ? `<span class="dLm ${lmode}"><img src="${esc(lmode === "reverse" ? o.logoReverseUrl : o.logoUrl)}" alt=""></span>` : `<b class="dLt">${esc(o.brand)}</b>`;
+  const lmode = o.logoUrl ? logoMode({ kind: o.logoKind || "mark", ink: o.logoInk, behind }) : "text";
+  const logo = o.logoUrl ? `<span class="dLm ${lmode}"><img src="${esc(o.logoUrl)}" alt=""></span>` : `<b class="dLt">${esc(o.brand)}</b>`;
   const d = device(dev, o, { ...brief, message: brief.message || o.headline }, { base, deepBase, logo, seed, fx, photoUrl: o.photoUrl, kickAt: 2.7 });
   if (!d) return storyHtml(o);
   const end = endCard(dev, brief, base);
@@ -429,7 +428,7 @@ export function sceneHtml(o, brief) {
 .dMw,.dKw{display:inline-block;opacity:0;transform:translateY(45%)}
 :host([data-go]) .dMw,:host([data-go]) .dKw{animation:dWord .5s cubic-bezier(.2,1.3,.4,1) forwards}
 .dLm{display:inline-flex;height:100%}.dLm img{height:100%;width:auto;max-width:26cqw;object-fit:contain}
-.dLm.white img{filter:brightness(0) invert(1)}.dLm.black img{filter:brightness(0)}
+.dLm.chip{background:#fff;padding:.5cqw 1.2cqw;border-radius:1.2cqw;box-shadow:0 .2cqw .8cqw rgba(0,0,0,.25)}.dLm.chipd{background:#14171f;padding:.5cqw 1.2cqw;border-radius:1.2cqw;box-shadow:0 .2cqw .8cqw rgba(0,0,0,.25)}
 .dLt{font:700 3.2cqw/1 Poppins,system-ui;letter-spacing:.04em}
 .dAd{position:absolute;right:5.8cqw;top:1.75cqw;font:600 1.8cqw/1 system-ui;letter-spacing:.08em;color:#fff;background:rgba(0,0,0,.32);padding:.55cqw .95cqw;border-radius:.8cqw;opacity:0;z-index:9}
 .dX{position:absolute;right:1.4cqw;top:1.4cqw;width:3.6cqw;height:3.6cqw;border-radius:50%;background:rgba(0,0,0,.32);color:#fff;font:500 2.8cqw/3.5cqw system-ui;text-align:center;opacity:0;z-index:9}

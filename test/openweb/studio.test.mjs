@@ -135,36 +135,40 @@ test("strip creative: copy is escaped, the layout follows the product picture, l
   assert.ok(!one.includes('class="sb"') && one.includes('class="tx one"'));
 });
 
-test("no white patches: in every design the logo sits on the ad itself and a product photo melts into a glow (no card)", () => {
+test("every design: no product card class; the product photo is never blended into a glow (accuracy over effect)", () => {
   for (const style of STYLES) for (const productMode of /** @type {("plain-bg"|"photo")[]} */ (["plain-bg", "photo"])) {
     const html = stripHtml({ brand: "B", headline: "H", subline: "S", cta: "Shop now", colour: "#e31b23", accent: "#ffd400", productUrl: "https://a.test/p.png", productMode, logoUrl: "https://a.test/l.png", logoKind: "mark", logoInk: "#e31b23", style });
-    const lgRules = html.match(/\.lg[^{]*\{[^}]*\}/g).join(" ");
-    assert.ok(!/background:#fff/.test(lgRules), `${style}: the logo has no white pill`);
     assert.ok(!/class="p card"/.test(html) && !/\.p\.card/.test(html), `${style}: no product card`);
-    assert.ok(/mix-blend-mode:multiply/.test(html), `${style}: a product photo blends into its glow`);
+    assert.ok(!/mix-blend-mode:multiply/.test(html), `${style}: the product photo is not blended`);
   }
 });
 
-test("logo display: reversed (white / black) for a one-colour logo that would not stand out, colours kept when it does or when it has light parts, badges as they are, a frosted chip only as a last resort", () => {
-  assert.equal(logoMode({ kind: "mark", ink: "#cb2129", behind: "#e31b23", style: "bold" }), "white");          // red Bata logo on a red strip
-  assert.equal(logoMode({ kind: "mark", ink: "#111111", behind: "#ffd100", style: "bold" }), "colour");        // dark logo on yellow
-  assert.equal(logoMode({ kind: "mark", ink: "#ffd100", behind: "#ffe14d", style: "fresh" }), "black");        // yellow on yellow
-  assert.equal(logoMode({ kind: "mark", ink: "#e8e9e9", light: 0.36, behind: "#0f9a4a", style: "fresh" }), "colour");   // Sprite: white outline kept
-  assert.equal(logoMode({ kind: "badge", ink: "#e21f26", behind: "#ffd100", style: "fresh" }), "badge");       // Maggi's oval
-  assert.equal(logoMode({ kind: "photo", ink: "#888888", behind: "#222222", style: "bold" }), "chip");
-  assert.equal(logoMode({ kind: "mark", ink: "#4a0e2e", behind: "#2a0819", style: "luxe" }), "white");
-  // Swiggy (2026-10-29): an orange logo with a white S on the orange strip vanished on a frosted chip; it is now its
-  // reversed copy (white, the S cut through to the orange); without that copy the chip is still the fallback
-  assert.equal(logoMode({ kind: "mark", ink: "#fe5005", light: 0.135, behind: "#ff5200", style: "journey", reverse: true }), "reverse");
-  assert.equal(logoMode({ kind: "mark", ink: "#fe5005", light: 0.135, behind: "#ff5200", style: "journey" }), "chip");
-  assert.equal(logoMode({ kind: "mark", ink: "#fe5005", light: 0.135, behind: "#ffffff", style: "fresh", reverse: true }), "colour");
-  assert.equal(logoMode({ kind: "mark", ink: "#ffd100", light: 0.2, behind: "#ffe14d", style: "fresh", reverse: true }), "chip", "white on yellow would not stand out either");
-  const html = stripHtml({ brand: "Swiggy", headline: "Freshness delivered in minutes", cta: "Order now", colour: "#ff5200", productUrl: "/a/product.png", productMode: "none",
-    logoUrl: "/a/logo.png", logoReverseUrl: "/a/logo_reverse.png", logoKind: "mark", logoInk: "#fe5005", logoLight: 0.135, style: "journey" });
-  assert.match(html, /<div class="lg reverse"><img src="\/a\/logo_reverse.png"/);
+test("logo display: the logo is never recoloured — own colours when it stands out, otherwise unchanged on an opaque plate; badges as they are", () => {
+  assert.equal(logoMode({ kind: "mark", ink: "#cb2129", behind: "#e31b23" }), "chip");          // red Bata logo on a red strip: white plate, not an all-white logo
+  assert.equal(logoMode({ kind: "mark", ink: "#111111", behind: "#ffd100" }), "colour");        // dark logo on yellow
+  assert.equal(logoMode({ kind: "mark", ink: "#ffd100", behind: "#ffe14d" }), "chipd");
+  assert.equal(logoMode({ kind: "mark", ink: "#17a84b", behind: "#d6ece0" }), "chip", "Sprite (Nov 2026): green on pale green went flat black — now unchanged on a plate");
+  assert.equal(logoMode({ kind: "mark", ink: "#e8e9e9", behind: "#0f9a4a" }), "colour");
+  assert.equal(logoMode({ kind: "mark", ink: "#f4f4f4", behind: "#f0f0f0" }), "chipd", "a light logo on a light strip gets a dark plate");
+  assert.equal(logoMode({ kind: "badge", ink: "#e21f26", behind: "#ffd100" }), "badge");       // Maggi's oval
+  assert.equal(logoMode({ kind: "photo", ink: "#888888", behind: "#222222" }), "chip");
+  for (const [ink, behind] of [["#17a84b", "#d6ece0"], ["#cb2129", "#e31b23"], ["#4a0e2e", "#2a0819"], ["#fe5005", "#ff5200"]]) {
+    const html = stripHtml({ brand: "B", headline: "h", cta: "Shop now", colour: behind, productUrl: "/a/p.png", productMode: "none", logoUrl: "/a/logo.png", logoKind: "mark", logoInk: ink, style: "fresh" });
+    assert.doesNotMatch(html, /\.lg[^{]*img\{[^}]*(brightness|invert|grayscale|hue-rotate|sepia)/, "no filter ever recolours the logo");
+    assert.match(html, /<img src="\/a\/logo\.png"/);
+  }
+});
+
+test("product photo: shown as supplied — no blend, no faded edges, no colour filter", () => {
+  const html = stripHtml({ brand: "B", headline: "h", cta: "Shop now", colour: "#0f9a4a", productUrl: "/a/p.jpg", productMode: "photo", style: "fresh" });
+  const rule = (html.match(/\.p\.photo img\{[^}]*\}/) || [""])[0];
+  assert.ok(rule, "photo rule present"); assert.doesNotMatch(rule, /mix-blend-mode|mask-image|filter/);
+  const swiggy = stripHtml({ brand: "Swiggy", headline: "Freshness delivered in minutes", cta: "Order now", colour: "#ff5200", productUrl: "/a/product.png", productMode: "none", logoUrl: "/a/logo.png", logoKind: "mark", logoInk: "#fe5005", style: "journey" });
+  assert.match(swiggy, /<div class="lg chip"><img src="\/a\/logo\.png"/);
+  const html2 = swiggy;
   // the journey route is not drawn over a real photo (its pin landed on a person's face)
   const scene = stripHtml({ brand: "Swiggy", headline: "h", cta: "Order now", colour: "#ff5200", productUrl: "/a/p.png", productMode: "scene", style: "journey", motif: "pin" });
-  assert.match(scene, /\.rt\{display:none\}/); assert.doesNotMatch(html, /\.rt\{display:none\}/);
+  assert.match(scene, /\.rt\{display:none\}/); assert.doesNotMatch(html2, /\.rt\{display:none\}/);
 });
 
 test("topic matching over sitemap URLs: words taken from the URL, more matches rank first, then newer", () => {

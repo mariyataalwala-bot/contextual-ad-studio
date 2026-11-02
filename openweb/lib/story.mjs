@@ -78,10 +78,10 @@ export function storyHtml(o) {
   const longest = Math.max(...line.split(/\s+/).map((w) => w.length), 1);
   const fs = Math.max(3.8, Math.min(8.4, 60 / Math.max(longest + 1, Math.sqrt(line.length) * 3.1)));
   const backInk = luminance(deep) > 0.55 ? "#141414" : "#ffffff";
-  const lmode = o.logoUrl ? logoMode({ kind: o.logoKind || "mark", ink: o.logoInk, light: o.logoLight || 0, behind: deep, style: "tech", reverse: !!o.logoReverseUrl }) : "text";
-  const logo = o.logoUrl ? `<div class="bl ${lmode}"><img src="${esc(lmode === "reverse" ? o.logoReverseUrl : o.logoUrl)}" alt=""></div>` : `<div class="bl blt">${esc(o.brand)}</div>`;
+  const lmode = o.logoUrl ? logoMode({ kind: o.logoKind || "mark", ink: o.logoInk, behind: deep }) : "text";
+  const logo = o.logoUrl ? `<div class="bl ${lmode}"><img src="${esc(o.logoUrl)}" alt=""></div>` : `<div class="bl blt">${esc(o.brand)}</div>`;
   const front = bare
-    ? (o.logoUrl ? `<div class="fl"><img src="${esc(o.logoUrl)}" alt=""></div>` : `<div class="fl blt">${esc(o.brand)}</div>`)
+    ? (o.logoUrl ? `<div class="fl ${lmode}"><img src="${esc(o.logoUrl)}" alt=""></div>` : `<div class="fl blt">${esc(o.brand)}</div>`)
     : cut ? `<div class="pi"><img src="${esc(o.productUrl)}" alt=""></div>` : `<div class="pc"><img src="${esc(o.productUrl)}" alt=""></div>`;
   const words = line.split(/\s+/).map((w, i) => `<span class="cw" style="animation-delay:${(4.4 + i * 0.09).toFixed(2)}s">${esc(w)}</span>`).join(" ");
   const sp = sprites(c, accent), flyers = paths(hook, rnd).map((s) => {
@@ -106,10 +106,11 @@ export function storyHtml(o) {
 .pc{position:absolute;inset:7%;border-radius:50%;overflow:hidden;opacity:0;transform:scale(.7)}
 .pc img{width:100%;height:100%;object-fit:cover;display:block}
 .fl{position:absolute;inset:22%;display:grid;place-items:center;opacity:0}
-.fl img{max-width:100%;max-height:100%;object-fit:contain;filter:brightness(0) invert(1) drop-shadow(0 .3cqw .8cqw rgba(0,0,0,.3))}
+.fl img{max-width:100%;max-height:100%;object-fit:contain;filter:drop-shadow(0 .3cqw .8cqw rgba(0,0,0,.3))}
+.fl.chip img{background:#fff;padding:2cqw;border-radius:2cqw}.fl.chipd img{background:#14171f;padding:2cqw;border-radius:2cqw}
 .bl{height:calc(var(--d) * .13);display:flex;align-items:center;opacity:0}
 .bl img{height:100%;width:auto;max-width:calc(var(--d) * .5);object-fit:contain}
-.bl.white img{filter:brightness(0) invert(1)}.bl.black img{filter:brightness(0)}
+.bl.chip{background:#fff;padding:.5cqw 1.2cqw;border-radius:1.2cqw}.bl.chipd{background:#14171f;padding:.5cqw 1.2cqw;border-radius:1.2cqw}
 .blt{font:700 calc(var(--d) * .08)/1 Poppins,system-ui;letter-spacing:.04em;color:${backInk};text-transform:uppercase}
 .cl{font:700 ${fs.toFixed(2)}cqw/1.06 Poppins,system-ui;letter-spacing:-.01em;text-wrap:balance;text-shadow:0 .3cqw 1.2cqw rgba(0,0,0,.25)}
 .cw{display:inline-block;opacity:0;transform:translateY(40%) scale(.85)}

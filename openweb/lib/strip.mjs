@@ -23,19 +23,16 @@ export const luminance = (h) => { const [r, g, b] = rgb(h).map((v) => v / 255); 
 // WCAG contrast between two colours (relative luminance, gamma-corrected)
 const relLum = (h) => { const [r, g, b] = rgb(h).map((v) => { v /= 255; return v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4; }); return 0.2126 * r + 0.7152 * g + 0.0722 * b; };
 export const contrast = (a, b) => { const x = relLum(a), y = relLum(b); return (Math.max(x, y) + 0.05) / (Math.min(x, y) + 0.05); };
-// how the logo is shown on the colour behind it: "colour" (stands out as it is), "white" / "black" (reversed, one colour),
-// "badge" (a filled logo with its own background, e.g. Maggi's oval), "chip" (could not be separated: faint frosted chip)
-// A logo with light parts (Sprite's white outline, a white letter inside a coloured disc) loses them when shown
-// all-white, so it keeps its colours; when its colour is the strip's own (Swiggy's orange logo on an orange strip) it is
-// shown reversed: white, with the light parts cut through to the strip ("reverse"); a faint frosted chip is the last resort.
-export function logoMode({ kind, ink, light = 0, behind, style, reverse = false }) {
+// how the logo is shown on the colour behind it. The logo is the brand's own artwork: it is NEVER recoloured (no all-white,
+// all-black or cut-through copy — Sprite's green and yellow lemon went flat black that way, Nov 2026). It shows in its own
+// colours: "colour" when it stands out, "badge" (a filled logo with its own background, e.g. Maggi's oval) as it is, and when
+// it would not stand out on the strip it sits unchanged on an opaque plate: "chip" (white plate, for dark and mid colours) or
+// "chipd" (dark plate, for a light logo).
+export function logoMode({ kind, ink, behind }) {
   if (kind === "badge") return "badge";
-  if (kind === "photo") return "chip";
   const k = hex(ink) || "#222222";
-  if (light >= 0.08) return contrast(k, behind) >= 2.6 ? "colour" : reverse && contrast("#ffffff", behind) >= 2.2 ? "reverse" : "chip";
-  if ((style === "tech" || style === "luxe") && relLum(behind) < 0.25) return "white";   // sleek and elegant designs: one-colour logo
-  if (contrast(k, behind) >= 3.2) return "colour";
-  return relLum(behind) < 0.4 ? "white" : "black";
+  if (kind !== "photo" && contrast(k, behind) >= 3) return "colour";
+  return relLum(k) > 0.6 ? "chipd" : "chip";
 }
 // fine film grain over the strips (print-like texture instead of flat digital colour)
 const GRAIN = `url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='180' height='180'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='.85' numOctaves='2' stitchTiles='stitch'/><feColorMatrix values='0 0 0 0 1 0 0 0 0 1 0 0 0 0 1 0 0 0 .6 0'/></filter><rect width='100%' height='100%' filter='url(%23n)'/></svg>")`;
@@ -203,8 +200,8 @@ export function stripHtml(o) {
   const ctaBg = light ? "#141414" : "#ffffff", ctaInk = light ? "#ffffff" : contrast(c, "#ffffff") >= 3 ? c : "#141414";
   // the colour right behind the logo in each design, for the contrast check
   const behind = { bold: c, luxe: mix(c, "#000000", luminance(c) > 0.5 ? 0.55 : 0.25), sport: mix(c, "#000000", 0.15), fresh: mix(c, "#ffffff", 0.12), tech: "#0b0e15", journey: c }[style];
-  const lmode = o.logoUrl ? logoMode({ kind: o.logoKind || "mark", ink: o.logoInk, light: o.logoLight || 0, behind, style, reverse: !!o.logoReverseUrl }) : "text";
-  const logo = o.logoUrl ? `<div class="lg ${lmode}"><img src="${esc(lmode === "reverse" ? o.logoReverseUrl : o.logoUrl)}" alt="${esc(o.brand)}"></div>` : `<div class="lg lgt">${esc(o.brand)}</div>`;
+  const lmode = o.logoUrl ? logoMode({ kind: o.logoKind || "mark", ink: o.logoInk, behind }) : "text";
+  const logo = o.logoUrl ? `<div class="lg ${lmode}"><img src="${esc(o.logoUrl)}" alt="${esc(o.brand)}"></div>` : `<div class="lg lgt">${esc(o.brand)}</div>`;
   const halo = style === "luxe" ? "#f4e7cf" : mix(c, "#ffffff", 0.86);
   const back = style === "bold" ? `${scene ? "" : panel ? `<div class="pn"></div>` : ""}<div class="ring"></div>` : style === "luxe" ? `<div class="ring"></div>` : "";
   return `<style>
@@ -220,11 +217,9 @@ export function stripHtml(o) {
 .lg{position:absolute;left:3.6cqw;top:2.3cqw;height:5.2cqw;box-sizing:border-box;display:flex;align-items:center;opacity:0;transform:translateY(35%);transform-origin:left center;z-index:2}
 .lg img{height:100%;width:auto;max-width:28cqw;object-fit:contain;display:block}
 .lg.colour img{filter:drop-shadow(0 .2cqw .6cqw rgba(0,0,0,.18))}
-.lg.white img{filter:brightness(0) invert(1) drop-shadow(0 .2cqw .7cqw rgba(0,0,0,.28))}
-.lg.black img{filter:brightness(0);opacity:.86}
-.lg.reverse img{filter:drop-shadow(0 .2cqw .7cqw rgba(0,0,0,.28))}
 .lg.badge img{filter:drop-shadow(0 .35cqw .9cqw rgba(0,0,0,.3))}
-.lg.chip{padding:.5cqw 1.4cqw;border-radius:1.2cqw;background:rgba(255,255,255,.14);border:.15cqw solid rgba(255,255,255,.32);-webkit-backdrop-filter:blur(.8cqw);backdrop-filter:blur(.8cqw)}
+.lg.chip{padding:.5cqw 1.4cqw;border-radius:1.2cqw;background:#fff;box-shadow:0 .2cqw .8cqw rgba(0,0,0,.25)}
+.lg.chipd{padding:.5cqw 1.4cqw;border-radius:1.2cqw;background:#14171f;box-shadow:0 .2cqw .8cqw rgba(0,0,0,.25)}
 .lgt{font:800 3.5cqw/1 Poppins,system-ui;color:${ink};letter-spacing:.03em;text-shadow:0 .2cqw .8cqw rgba(0,0,0,.2)}
 .tx{position:absolute;left:3.6cqw;width:${bare ? 74 : 52}cqw;top:8.7cqw;color:${ink}}
 .hd,.sb{position:absolute;left:0;right:0;top:0;text-wrap:balance;font-weight:700;font-size:var(--fs,${d.fs}cqw);line-height:1.08;letter-spacing:-.01em;text-shadow:${light && style === "bold" ? "none" : "0 .3cqw 1.2cqw rgba(0,0,0,.22)"}}
@@ -244,7 +239,7 @@ export function stripHtml(o) {
 /* a product photo that could not be cut out: it melts into a soft brand-tinted glow — no card, no rectangle */
 .p.photo{height:calc(var(--sh) - 4cqw);max-height:48cqh;aspect-ratio:1/1;bottom:2cqw;right:4cqw;display:grid;place-items:center;isolation:isolate}
 .p.photo:before{content:"";position:absolute;inset:-14%;border-radius:50%;background:radial-gradient(closest-side,${halo} 0%,${halo}f2 34%,${halo}80 58%,${halo}00 100%);filter:blur(.4cqw)}
-.p.photo img{position:relative;width:100%;height:100%;max-width:none;object-fit:contain;object-position:center;mix-blend-mode:multiply;-webkit-mask-image:radial-gradient(closest-side,#000 58%,transparent 92%);mask-image:radial-gradient(closest-side,#000 58%,transparent 92%)}
+.p.photo img{position:relative;width:100%;height:100%;max-width:none;object-fit:contain;object-position:center;background:#fff;border-radius:2cqw;box-shadow:0 1.2cqw 2.4cqw rgba(0,0,0,.28)}
 .sc{position:absolute;right:0;top:0;bottom:0;width:50%;overflow:hidden;-webkit-mask-image:linear-gradient(90deg,transparent 0,#000 34%);mask-image:linear-gradient(90deg,transparent 0,#000 34%);opacity:0;transform:scale(1.12)}
 .sc img{width:100%;height:100%;object-fit:cover;display:block}
 :host([data-go]) .sc{animation:scene 1.1s .3s cubic-bezier(.2,.8,.3,1) forwards,drift 9s 1.4s ease-in-out infinite alternate}
