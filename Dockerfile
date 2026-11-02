@@ -11,6 +11,9 @@ WORKDIR /app
 COPY package.json package-lock.json* ./
 RUN npm ci --omit=dev || npm install --omit=dev
 COPY . .
-ENV NODE_ENV=production OUT_DIR=/app/output CAPTURE_PARALLEL=2
-EXPOSE 10000
+# Render sets its own PORT (10000) at run time; Hugging Face Spaces expects 7860 (see README.md: app_port). Files are written to OUT_DIR, which must be
+# writable by whatever user the host runs the container as.
+ENV NODE_ENV=production OUT_DIR=/app/output CAPTURE_PARALLEL=2 PORT=7860
+RUN mkdir -p /app/output && chmod -R a+rwX /app/output
+EXPOSE 7860 10000
 CMD ["node", "server.mjs"]
