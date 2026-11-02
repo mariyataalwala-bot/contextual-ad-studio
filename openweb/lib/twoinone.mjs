@@ -20,8 +20,8 @@ import { analyseUrl } from "./pipeline.mjs";
 import { makeReader, withTimeout } from "./reader.mjs";
 import { EXTRACT_VERSION } from "./extract.mjs";
 import { downloadImage } from "./websearch.mjs";
-import { StudioStop, sectionItems, sitemapIndex, matchSlugs, rivalMatcher, usedArticles, topicHit, feedFetcher } from "./studio.mjs";
-import { previewHtml, unitParts } from "./twoinone-preview.mjs";
+import { styleFonts, StudioStop, sectionItems, sitemapIndex, matchSlugs, rivalMatcher, usedArticles, topicHit, feedFetcher } from "./studio.mjs";
+import { previewHtml, unitParts, INTRO_SECONDS } from "./twoinone-preview.mjs";
 import { recordTwoInOne } from "./twoinone-export.mjs";
 import { ASSET_URL } from "./mock.mjs";
 import { runQa } from "./qa.mjs";
@@ -354,6 +354,16 @@ export async function findArticles(o) {
  * @param {Record<string, any>} o  brand, product, known, studio, cfg, store, ask, ffmpeg, py, fetchImpl, fc, firecrawlOpt, indexDir, roots, workDir, say, signal,
  *   video: { kind: "file", file, name } | { kind: "youtube", id, clientSupplied?, record?, details?, probe? }, displayFile?, fileUrl(rel), dirRel, probe?, ytDetails?
  */
+const FONT_FAMILY = { luxe: "Playfair Display", sport: "Anton", fresh: "Baloo 2", tech: "Space Grotesk" };
+/** The brand's text theme: the typeface of its design style (Google Fonts, cached as local files, copied next to the unit). Null: system font. */
+async function panelFont(style, workDir, indexDir, fetchImpl) {
+  const family = FONT_FAMILY[style]; if (!family) return null;
+  const f = await styleFonts(style, path.join(indexDir, "_fonts"), fetchImpl); if (!f) return null;
+  const dir = path.join(workDir, "fonts"); fs.mkdirSync(dir, { recursive: true });
+  for (const [name, file] of Object.entries(f.files)) fs.copyFileSync(file, path.join(dir, name));
+  return { family, css: (/** @type {(r: string) => string|null} */ at) => f.css.replace(/url\([^)]*?(gf-[\w-]+\.woff2)\)/g, (_, n) => `url(${at("fonts/" + n)})`) };
+}
+
 export async function makeTwoInOne(o) {
   const { brand, product, known, studio, workDir } = o, tcfg = cfgOf(studio), fetchImpl = o.fetchImpl || globalThis.fetch, now = o.now || Date.now();
   const say = (pct, stage, msg) => { if (o.signal?.aborted) throw new StudioStop("failed", "Stopped: the run went over its time limit."); (o.say || (() => {}))(pct, stage, msg); };
@@ -448,13 +458,15 @@ export async function makeTwoInOne(o) {
     say(88, "render", "Finishing the product panel…");
     const pa = await panelP;
     const site = known?.domains?.[0];
+    // the brand's text theme: its design style's typeface (Google Fonts, kept as local files and served with the unit)
+    const brandFont = await panelFont(pa?.style, workDir, o.indexDir || path.join(workDir, '..', '..'), fetchImpl).catch(() => null);
     const relOf = (f) => (f ? "assets/" + path.basename(f) : null);
     /** the page's input, with every picture and the client's video addressed through `u` */
     const inputFor = (/** @type {(rel: string) => string} */ u) => { const at = (/** @type {string|null} */ r) => (r ? u(r) : null);
       return { brand, product, publisher: best.publisher, article: { headline: a.headline, url: a.url, published: a.published || null, paragraphs, hero: at(heroRel) },
         video: /** @type {any} */ (o.video.kind === "file" ? { kind: "file", src: u(videoRel || ""), title: result.video.name } : player),
         panel: { colour: pa?.colour || known?.colours?.primary || null, accent: pa?.accent || known?.colours?.accent || null, logo: at(relOf(pa?.logo)), logoInk: pa?.logoInk || null, chips: pa?.highlights || [], hero: at(relOf(pa?.hero)), product: at(relOf(pa?.product)),
-          productMode: pa?.productInfo?.method === "photo" ? "photo" : "cut", image: at(displayRel), productName: pa?.productInfo?.name || product, headline: pa?.copy?.headline || "", subline: pa?.copy?.subline || "", cta: pa?.copy?.cta || (site ? "Know more" : null), ctaUrl: site ? `https://${site}` : null } }; };
+          productMode: pa?.productInfo?.method === "photo" ? "photo" : "cut", image: at(displayRel), productName: pa?.productInfo?.name || product, opener: pa?.copy?.opener || "", fontFamily: brandFont?.family || null, fontCss: brandFont ? brandFont.css(at) : "", headline: pa?.copy?.headline || "", subline: pa?.copy?.subline || "", cta: pa?.copy?.cta || (site ? "Know more" : null), ctaUrl: site ? `https://${site}` : null } }; };
     const display = inputFor(() => "").panel, displayImg = displayRel;
     const html = previewHtml(inputFor(o.fileUrl));
     fs.writeFileSync(path.join(workDir, "preview.html"), html);
@@ -472,8 +484,8 @@ export async function makeTwoInOne(o) {
     if (o.record !== false) {
       say(92, "render", "Recording the mobile video…");
       try {
-        const vsec = result.video?.facts?.duration ?? secs(result.video?.length) ?? 20, seconds = 2.3 + Math.min(vsec || 20, 28) + 3.5, atAsset = (/** @type {string} */ r) => ASSET_URL + r;
-        const ex = await withTimeout(recordTwoInOne({ articleUrl: a.url, parts: unitParts(inputFor(atAsset), { fixed: true }), fallbackHtml: previewHtml(inputFor(atAsset)), assetsDir: workDir, outBase: path.join(workDir, "twoinone"),
+        const vsec = result.video?.facts?.duration ?? secs(result.video?.length) ?? 20, seconds = INTRO_SECONDS + Math.min(vsec || 20, 28) + 3.5, atAsset = (/** @type {string} */ r) => ASSET_URL + r;
+        const ex = await withTimeout(recordTwoInOne({ fontCss: inputFor(atAsset).panel.fontCss || "", introSeconds: INTRO_SECONDS, articleUrl: a.url, parts: unitParts(inputFor(atAsset), { fixed: true }), fallbackHtml: previewHtml(inputFor(atAsset)), assetsDir: workDir, outBase: path.join(workDir, "twoinone"),
           seconds, ffmpeg: o.ffmpeg, chromium: o.chromium, say: (m) => say(94, "render", m) }), 150000, "Recording the video");
         result.files.video = "twoinone.mp4"; result.files.still = "twoinone.png";
         // the creative guidelines' checks over the finished file: nothing is exported as approved until they pass
@@ -481,7 +493,7 @@ export async function makeTwoInOne(o) {
         const last = ex.geometry.at(-1)?.geom, sc = 3, region = last?.video ? { x: Math.round(last.video.x * sc), y: Math.round(last.video.y * sc), w: Math.round(last.video.w * sc) & ~1, h: Math.round(last.video.h * sc) & ~1 } : null;
         const dis = inputFor(atAsset).panel, said = [{ where: "headline", text: dis.headline }, { where: "subline", text: dis.subline }, { where: "button", text: dis.cta || "" }, ...(dis.chips || []).map((c) => ({ where: "chip", text: c }))].filter((x) => x.text);
         result.qa = await withTimeout(runQa({ file: ex.mp4, kind: "2in1", ask: o.ask, workDir, brand, product, brandNames: brandNames({ brand, known }), productNames: [product, pa?.productInfo?.name || ""].filter(Boolean), texts: said,
-          allowedSource: `${product} ${vInfo.title || ""} ${vInfo.description || ""} ${known ? brandBrief(known) : ""}`, expected: { width: 1080, height: 1920, minSeconds: seconds - 2.5 }, geometry: ex.geometry, transitions: [2.3], introSeconds: 2.3, settleAt: 4.8, region,
+          allowedSource: `${product} ${vInfo.title || ""} ${vInfo.description || ""} ${known ? brandBrief(known) : ""}`, expected: { width: 1080, height: 1920, minSeconds: seconds - 2.5 }, geometry: ex.geometry, transitions: [INTRO_SECONDS], introSeconds: INTRO_SECONDS, settleAt: INTRO_SECONDS + 2.5, expectProduct: !!pa?.product, region,
           refs: { logo: pa?.logo || null, product: pa?.product || null }, safety: { status: j.safe ? "safe" : "unsafe", reasons: a.safety?.reasons || [] },
           notes: [...(o.video.kind === "youtube" ? ["The original ad is shown through YouTube's official embed and recorded for a pitch preview. Confirm the brand's permission before the video is distributed or placed live."] : []), ...(pa?.product ? [] : ["No product picture passed its check, so the panel has no product animation: it animates the brand (logo, colours, words). Upload the pack photo to add the product animation. A frame of the video is never used in place of the product."])],
           reviewNotes: "Top: the original 16:9 video ad. Below it: the MediaKart panel (logo, headline, subline, button) and a strip of chips.", frames: 12 }), 170000, "The quality checks")

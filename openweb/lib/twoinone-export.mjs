@@ -17,7 +17,7 @@ export const SCREEN = { w: 360, h: 640, scale: 3 };   // CSS pixels × device sc
  *   ffmpeg: (a: string[]) => Promise<any>, chromium?: any, navTimeoutMs?: number, say?: (m: string) => void }} o
  * @returns {Promise<{ mp4: string, png: string, page: "article"|"fallback", why?: string, seconds: number, geometry: { t: number, geom: any }[] }>}
  */
-export async function recordTwoInOne({ articleUrl, parts, fallbackHtml, assetsDir, outBase, seconds, ffmpeg, chromium = null, navTimeoutMs = 40000, say = () => {} }) {
+export async function recordTwoInOne({ fontCss = "", introSeconds = 2.3, articleUrl, parts, fallbackHtml, assetsDir, outBase, seconds, ffmpeg, chromium = null, navTimeoutMs = 40000, say = () => {} }) {
   chromium = chromium || (await import("playwright")).chromium;
   const browser = await chromium.launch({ args: ["--autoplay-policy=no-user-gesture-required"] });
   const vdir = outBase + "_rec";
@@ -41,6 +41,7 @@ export async function recordTwoInOne({ articleUrl, parts, fallbackHtml, assetsDi
       if (!ok) { which = "fallback"; why = "the article page was empty in the browser"; await page.setContent(fallbackHtml, { waitUntil: "load" }); await page.waitForTimeout(800); }
       else { await page.evaluate(tidyPage).catch(() => {}); await page.evaluate(() => window.scrollTo({ top: 320, behavior: "smooth" })).catch(() => {}); await page.waitForTimeout(1400); await page.evaluate(tidyPage).catch(() => {}); }
     }
+    if (fontCss) { await page.addStyleTag({ content: fontCss }).catch(() => {}); await page.evaluate(() => document.fonts.ready).catch(() => {}); }
     // the unit lives in a shadow root over the page, so the publisher's own styles never touch it; Runtime.evaluate is not subject to the page's CSP
     if (which === "article") {
       await page.evaluate(`(()=>{const host=document.createElement("div");host.id="mk-2in1";host.style.cssText="all:initial;position:fixed;inset:0;z-index:2147483647";document.body.appendChild(host);
@@ -52,7 +53,7 @@ export async function recordTwoInOne({ articleUrl, parts, fallbackHtml, assetsDi
       const started = Date.now();
       await page.evaluate("window.__mk.open()");
       // the layout is measured while it plays: once the words have arrived, again when the chips are in, and just before the end
-      for (const at of [4.6, 7.6, Math.max(8.4, seconds - 1.2)].filter((x) => x < seconds)) {
+      for (const at of [introSeconds + 2.3, introSeconds + 5.3, Math.max(introSeconds + 6.1, seconds - 1.2)].filter((x) => x < seconds)) {
         const wait = at * 1000 - (Date.now() - started); if (wait > 0) await page.waitForTimeout(wait);
         geometry.push({ t: at, geom: await page.evaluate("window.__mk.geom()").catch(() => null) });
       }

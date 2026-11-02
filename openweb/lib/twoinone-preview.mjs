@@ -55,6 +55,9 @@ export function textSizes(headline, subline) {
  * @param {PreviewInput} o @param {{ fixed?: boolean }} [opt]
  * @returns {{ css: string, html: string, js: string }}
  */
+/** how long the story-led opening runs before the unit appears (seconds) — the recorder and the quality checks follow it */
+export const INTRO_SECONDS = 4.2;
+
 export function unitParts(o, { fixed = false } = {}) {
   const P = o.panel || /** @type {any} */ (o).display || {};
   const bg = hex(P.colour, "#101828"), ink = inkOn(bg), acc = hex(P.accent, ""), btn = acc && contrast(acc, bg) >= 3 ? acc : ink, btnInk = inkOn(btn);
@@ -64,6 +67,7 @@ export function unitParts(o, { fixed = false } = {}) {
   const { hs, ss } = textSizes(P.headline, P.subline);
   const hw = String(P.headline || "").split(/\s+/).filter(Boolean).map((w, k) => `<span class="w"><i style="--k:${k}">${esc(w)}</i></span>`).join(" ");
   const cta = P.cta ? (safeUrl(P.ctaUrl) ? `<a class="cta" href="${esc(safeUrl(P.ctaUrl))}" target="_blank" rel="noopener sponsored">${esc(P.cta)} &rarr;</a>` : `<span class="cta">${esc(P.cta)} &rarr;</span>`) : "";
+  const ff = P.fontFamily ? `'${String(P.fontFamily).replace(/[^\w \-]/g, "")}',system-ui,sans-serif` : "system-ui,sans-serif";
   const kind = P.product ? "prod" : P.hero ? "hero" : "nop";
   // a logo in nearly the panel's own colour is shown all-white (or all-black on a light panel); on the dark opening it is white if it is dark
   const inkOk = /^#[0-9a-f]{6}$/i.test(String(P.logoInk || ""));
@@ -79,34 +83,52 @@ export function unitParts(o, { fixed = false } = {}) {
     : `<div class="glow"></div><i class="orbit"></i><i class="orbit o2"></i>${P.logo ? `<img class="pwm" src="${esc(P.logo)}" alt="">` : ""}${SPARKS.map(([x, y, d]) => `<i class="spk" style="--x:${x}%;--y:${y}%;--d:${d}s"></i>`).join("")}`;
   const panel = P.image
     ? `<div class="pn img"><img class="dimg" src="${esc(P.image)}" alt="${esc(o.brand)} — ${esc(P.productName || o.product)}"></div>`
-    : `<div class="pn k-${kind}${chips.length ? " has-strip" : ""}" style="--hs:${hs}cqw;--ss:${ss}cqw"><div class="decor"><div class="mesh"><i></i><i></i><i></i></div><div class="bokeh">${bokeh}</div><div class="beam"></div><div class="beam b2"></div></div>
+    : `<div class="pn k-${kind}${chips.length ? " has-strip" : ""}${P.fontFamily === "Anton" ? " f400" : ""}" style="--hs:${hs}cqw;--ss:${ss}cqw;--ff:${ff}"><div class="decor"><div class="mesh"><i></i><i></i><i></i></div><div class="bokeh">${bokeh}</div><div class="beam"></div><div class="beam b2"></div></div>
 <div class="ptop">${P.logo ? `<img class="plogo${logoTone ? " " + logoTone : ""}" src="${esc(P.logo)}" alt="${esc(o.brand)}">` : `<div class="plogo word">${esc(o.brand)}</div>`}
 ${hw ? `<h2>${hw}</h2>` : `<h2><span class="w"><i style="--k:0">${esc(P.productName || o.product)}</i></span></h2>`}${P.subline ? `<p class="psub">${esc(P.subline)}</p>` : ""}${cta}</div>
 <div class="vis">${vis}</div>${strip}</div>`;
+  const openWords = String(P.opener || "").split(/\s+/).filter(Boolean).slice(0, 6);
+  const iline = openWords.length ? `<p class="iline">${openWords.map((w, k) => `<span class="iw" style="--k:${k}">${esc(w)}</span>`).join(" ")}</p>` : "";
   const introVisual = P.product ? `<img class="ip ${P.productMode === "photo" ? "photo" : "cut"}" src="${esc(P.product)}" alt="">` : P.hero ? `<img class="ip photo" src="${esc(P.hero)}" alt="">` : "";
   const introLogo = P.logo ? `<img class="il${introTone ? " " + introTone : ""}" src="${esc(P.logo)}" alt="${esc(o.brand)}">` : `<div class="il word">${esc(o.brand)}</div>`;
-  const html = `<div class="veil" id="veil" role="dialog" aria-modal="true" aria-label="Advertisement"><div class="intro" id="intro"><div class="burst"></div><div class="ring"></div>${introLogo}${introVisual}</div>
+  const html = `<div class="veil" id="veil" role="dialog" aria-modal="true" aria-label="Advertisement"><div class="intro${P.product ? "" : " nop"}" id="intro" style="--ic:${bg};--ic2:color-mix(in srgb,${bg} 55%,#000);--ink:${ink};--ff:${ff}"><div class="ibg"></div><div class="burst"></div><div class="ring"></div><i class="iorb"></i><i class="iorb o2"></i>${iline}${introVisual}${introLogo}${SPARKS.map(([x, y, d]) => `<i class="spk" style="--x:${x}%;--y:${y}%;--d:${d}s"></i>`).join("")}</div>
 <div class="wrap" id="wrap"><span class="tag">Advertisement</span><button class="x" id="x" aria-label="Close advertisement">&times; Close</button>
 <div class="unit" id="unit"><div class="vid">${player}</div><div class="disp">${panel}</div></div></div></div>`;
   const css = `
 .veil{position:${fixed ? "fixed" : "absolute"};inset:0;background:rgba(7,10,20,.74);-webkit-backdrop-filter:blur(5px);backdrop-filter:blur(5px);display:grid;place-items:center;opacity:0;pointer-events:none;transition:opacity .35s;z-index:${fixed ? "2147483647" : "5"};font-family:system-ui,"Segoe UI",sans-serif;line-height:1.3;color:#fff}
 .veil *,.pn *{text-decoration:none!important}.veil *{box-sizing:border-box}.veil.open{opacity:1;pointer-events:auto}
-/* 1) the opening */
-.intro{position:absolute;inset:0;pointer-events:none;display:grid;place-items:center;transition:opacity .45s}
+/* 1) the opening: a story in three beats — the opener line, the product spins in, the logo lands — on the brand's colours */
+.intro{position:absolute;inset:0;pointer-events:none;display:grid;place-items:center;transition:opacity .45s;overflow:hidden;perspective:1200px}
 .intro.done{opacity:0}
-.il{position:absolute;top:15%;left:50%;width:52%;max-height:16%;object-fit:contain;transform:translateX(-50%);opacity:0;filter:drop-shadow(0 6px 20px rgba(0,0,0,.35))}
+.ibg{position:absolute;inset:0;background:radial-gradient(120% 80% at 50% 38%,var(--ic),var(--ic2));opacity:0}
+.iline{position:absolute;top:8%;left:7%;right:7%;margin:0;text-align:center;font:800 clamp(24px,8.6vw,42px)/1.1 var(--ff,system-ui,sans-serif);letter-spacing:-.02em;color:var(--ink);z-index:3;opacity:1}
+.iw{display:inline-block;opacity:0;transform:translateY(60%) rotate(4deg)}
+.il{position:absolute;bottom:6%;left:50%;width:46%;max-height:13%;object-fit:contain;transform:translateX(-50%);opacity:0;z-index:3;filter:drop-shadow(0 6px 20px rgba(0,0,0,.35))}
 .il.light{background:#fff;padding:14px 22px;border-radius:18px;box-sizing:content-box;box-shadow:0 6px 20px rgba(0,0,0,.35)}
-.il.word{width:auto;max-width:80%;font:800 clamp(30px,11vw,52px)/1.05 system-ui,sans-serif;color:#fff;text-align:center;letter-spacing:-.02em}
-.ip{position:absolute;bottom:-3%;left:50%;width:76%;max-height:58%;object-fit:contain;opacity:0;transform:translateX(-50%)}
-.ip.photo{width:70%;height:42%;object-fit:cover;border-radius:18px;box-shadow:0 30px 60px -20px #000;bottom:12%}
-.burst{position:absolute;top:15%;left:50%;width:90%;aspect-ratio:1;margin-top:-30%;transform:translateX(-50%) scale(.2);background:radial-gradient(closest-side,rgba(255,255,255,.5),rgba(255,255,255,0));opacity:0}
-.ring{position:absolute;top:15%;left:50%;width:30%;aspect-ratio:1;margin-top:-4%;transform:translateX(-50%) scale(.3);border:2px solid rgba(255,255,255,.7);border-radius:50%;opacity:0}
-.intro.go .il{animation:ilIn .9s cubic-bezier(.2,.8,.2,1) .1s both}
-.intro.go .ip{animation:ipIn 1.15s cubic-bezier(.2,.8,.2,1) .35s both}
-.intro.go .burst{animation:burst 1.4s ease-out .05s both}
-.intro.go .ring{animation:ringOut 1.5s ease-out .2s both}
+.il.word{width:auto;max-width:80%;font:800 clamp(30px,11vw,52px)/1.05 var(--ff,system-ui,sans-serif);color:var(--ink);text-align:center;letter-spacing:-.02em}
+.intro.nop .il{bottom:auto;top:46%;width:58%;max-height:22%;transform:translate(-50%,-50%)}
+.ip{position:absolute;bottom:22%;left:50%;width:66%;max-height:46%;object-fit:contain;opacity:0;transform:translateX(-50%);z-index:2;filter:drop-shadow(0 14px 14px rgba(0,0,0,.35))}
+.ip.photo{width:56%;height:36%;object-fit:cover;border-radius:18px;box-shadow:0 30px 60px -20px #000}
+.burst{position:absolute;top:50%;left:50%;width:100%;aspect-ratio:1;margin-top:-50%;transform:translateX(-50%) scale(.2);background:radial-gradient(closest-side,rgba(255,255,255,.55),rgba(255,255,255,0));opacity:0}
+.ring{position:absolute;top:50%;left:50%;width:30%;aspect-ratio:1;margin-top:-15%;transform:translateX(-50%) scale(.3);border:2px solid rgba(255,255,255,.7);border-radius:50%;opacity:0}
+.iorb{position:absolute;left:50%;top:50%;width:92%;aspect-ratio:1;margin:-46% 0 0 -46%;border-radius:50%;border:2px dashed rgba(255,255,255,.35);opacity:0;transform:rotateX(74deg)}.iorb.o2{width:66%;margin:-33% 0 0 -33%;border-style:solid;border-color:rgba(255,255,255,.2)}
+.intro.go .ibg{animation:ibgIn .5s ease both}
+.intro.go .iw{animation:iwIn .6s cubic-bezier(.2,.9,.3,1) calc(.25s + var(--k) * .12s) both}
+.intro.go .iline{animation:ilineOut .5s ease 2.7s forwards}
+.intro.go .ip{animation:ipIn 1.3s cubic-bezier(.2,.8,.2,1) 1s both,ipFloat 3s ease-in-out 2.3s infinite alternate}
+.intro.go .il{animation:ilIn .9s cubic-bezier(.2,.8,.2,1) 2.4s both}
+.intro.nop.go .il{animation:ilInC 1s cubic-bezier(.2,.8,.2,1) 1.2s both}
+.intro.go .burst{animation:burst 1.5s ease-out .9s both}
+.intro.go .ring{animation:ringOut 1.6s ease-out 1.1s both}
+.intro.go .iorb{animation:fadeIn .8s ease .9s both,orbitSpin 14s linear 1s infinite}.intro.go .iorb.o2{animation:fadeIn .8s ease 1.1s both,orbitSpin 9s linear 1s infinite reverse}
+.intro.go .spk{animation:spark 2.6s ease-in-out calc(1s + var(--d) * .8s) infinite}
+@keyframes ibgIn{from{opacity:0}to{opacity:1}}
+@keyframes iwIn{from{opacity:0;transform:translateY(60%) rotate(4deg)}to{opacity:1;transform:none}}
+@keyframes ilineOut{to{opacity:0;transform:translateY(-30%)}}
 @keyframes ilIn{from{opacity:0;transform:translateX(-50%) scale(.82)}to{opacity:1;transform:translateX(-50%) scale(1)}}
-@keyframes ipIn{from{opacity:0;transform:translateX(-50%) translateY(14%) scale(.9) rotate(-3deg)}to{opacity:1;transform:translateX(-50%) none}}
+@keyframes ilInC{from{opacity:0;transform:translate(-50%,-50%) scale(.7)}to{opacity:1;transform:translate(-50%,-50%) scale(1)}}
+@keyframes ipIn{0%{opacity:0;transform:translateX(-50%) translateY(12%) rotateY(-110deg) scale(.8)}60%{opacity:1}100%{opacity:1;transform:translateX(-50%) none}}
+@keyframes ipFloat{from{transform:translateX(-50%) translateY(0)}to{transform:translateX(-50%) translateY(-2.5%)}}
 @keyframes burst{0%{opacity:0;transform:translateX(-50%) scale(.2)}35%{opacity:1}100%{opacity:0;transform:translateX(-50%) scale(1.3)}}
 @keyframes ringOut{0%{opacity:.9;transform:translateX(-50%) scale(.3)}100%{opacity:0;transform:translateX(-50%) scale(3.2)}}
 /* 2) the unit: a 9:16 card — 16:9 video on top, the product panel in the rest */
@@ -122,6 +144,7 @@ ${hw ? `<h2>${hw}</h2>` : `<h2><span class="w"><i style="--k:0">${esc(P.productN
 /* the product panel: rows — [logo, headline, subline, button] / [picture] / [chips] — so nothing can overlap */
 .pn{--c:${bg};--c2:color-mix(in srgb,${bg} 55%,#000);--lite:color-mix(in srgb,${bg} 55%,#fff);--ink:${ink};--btn:${btn};--btnink:${btnInk};position:absolute;inset:0;overflow:hidden;display:grid;grid-template-rows:auto minmax(0,1fr) auto;background:linear-gradient(165deg,var(--c) 0%,var(--c2) 100%);color:var(--ink);font-family:system-ui,"Segoe UI",sans-serif}
 .pn.img{display:block}
+.pn.f400 h2,.pn.f400 .cta,.pn.f400 .strip span,.pn.f400 .plogo.word{font-weight:400}
 .decor{grid-area:1/1;position:relative;overflow:hidden;z-index:0;pointer-events:none}   /* same grid cell as the words, so the effects can never reach the picture row */
 .decor:after{content:"";position:absolute;inset:0;background:linear-gradient(105deg,transparent 38%,rgba(255,255,255,.16) 50%,transparent 62%);transform:translateX(-130%)}
 .mesh,.bokeh,.beam{pointer-events:none}.mesh{position:absolute;inset:0;z-index:0}
@@ -136,11 +159,11 @@ ${hw ? `<h2>${hw}</h2>` : `<h2><span class="w"><i style="--k:0">${esc(P.productN
 .ptop{grid-area:1/1;position:relative;z-index:4;padding:5cqw 7cqw 3cqw;display:flex;flex-direction:column;align-items:flex-start;gap:2.4cqw}
 .plogo{height:8cqw;max-width:34cqw;object-fit:contain;opacity:0;transform-origin:left center}
 .plogo.light{background:#fff;padding:1.4cqw 2.4cqw;border-radius:2cqw;box-sizing:content-box;box-shadow:0 .6cqw 2cqw rgba(0,0,0,.3)}.plogo.dark{background:#14171f;padding:1.4cqw 2.4cqw;border-radius:2cqw;box-sizing:content-box}
-.plogo.word{height:auto;font:800 6.4cqw/1 system-ui,sans-serif;letter-spacing:-.02em}
-.ptop h2{margin:0;width:86cqw;font:800 var(--hs)/1.04 system-ui,sans-serif;letter-spacing:-.025em}
+.plogo.word{height:auto;font:800 6.4cqw/1 var(--ff,system-ui,sans-serif);letter-spacing:-.02em}
+.ptop h2{margin:0;width:86cqw;font:800 var(--hs)/1.04 var(--ff,system-ui,sans-serif);letter-spacing:-.025em}
 .w{position:relative;display:inline-block;overflow:hidden;vertical-align:top;padding-bottom:.1em}.w>i{position:relative;z-index:1;display:inline-block;font-style:normal;transform:translateY(112%)}
-.psub{margin:0;width:86cqw;font:500 var(--ss)/1.36 system-ui,sans-serif;opacity:0}
-.cta{position:relative;overflow:hidden;display:inline-block;margin-top:.8cqw;font:700 3.8cqw/1 system-ui,sans-serif;text-decoration:none;color:var(--btnink);background:var(--btn);padding:2.8cqw 5.4cqw;border-radius:99px;opacity:0;box-shadow:0 8px 22px -8px rgba(0,0,0,.45)}
+.psub{margin:0;width:86cqw;font:500 var(--ss)/1.36 var(--ff,system-ui,sans-serif);opacity:0}
+.cta{position:relative;overflow:hidden;display:inline-block;margin-top:.8cqw;font:700 3.8cqw/1 var(--ff,system-ui,sans-serif);text-decoration:none;color:var(--btnink);background:var(--btn);padding:2.8cqw 5.4cqw;border-radius:99px;opacity:0;box-shadow:0 8px 22px -8px rgba(0,0,0,.45)}
 .cta:after{content:"";position:absolute;inset:0;background:linear-gradient(105deg,transparent 35%,rgba(255,255,255,.55) 50%,transparent 65%);transform:translateX(-140%)}
 /* the picture row: the product in a light pool, or a frame of the brand's own ad — it can never reach the words above */
 .vis{grid-row:2;position:relative;min-height:0;overflow:hidden;z-index:2}
@@ -158,7 +181,7 @@ ${hw ? `<h2>${hw}</h2>` : `<h2><span class="w"><i style="--k:0">${esc(P.productN
 .pwm{position:absolute;inset:0;margin:auto;width:auto;height:auto;max-height:62%;max-width:62%;opacity:.14;object-fit:contain;z-index:3}   /* the whole logo, never cropped */
 .pn.img .dimg{width:100%;height:100%;object-fit:cover;display:block}
 .strip{grid-row:3;position:relative;z-index:5;height:13cqw;background:var(--btn);color:var(--btnink);display:flex;align-items:center;gap:3.4cqw;padding:0 6cqw;transform:translateY(101%);overflow:hidden;box-shadow:0 -2cqw 6cqw -2cqw rgba(0,0,0,.35)}
-.strip span{display:inline-flex;align-items:center;gap:1.4cqw;font:700 var(--cf,3.6cqw)/1 system-ui,sans-serif;white-space:nowrap;opacity:0;transform:translateY(60%) scale(.9)}
+.strip span{display:inline-flex;align-items:center;gap:1.4cqw;font:700 var(--cf,3.6cqw)/1 var(--ff,system-ui,sans-serif);white-space:nowrap;opacity:0;transform:translateY(60%) scale(.9)}
 .strip span:before{content:"";width:2.1cqw;height:2.1cqw;border-radius:50%;background:currentColor;opacity:.85}
 .strip:after{content:"";position:absolute;inset:0;background:linear-gradient(105deg,transparent 35%,rgba(255,255,255,.5) 50%,transparent 65%);transform:translateX(-140%)}
 /* motion — starts when the unit opens */
@@ -220,7 +243,7 @@ ${hw ? `<h2>${hw}</h2>` : `<h2><span class="w"><i style="--k:0">${esc(P.productN
 `;
   // runs against a document or a shadow root; returns { open, close }
   const js = `function mkInit(root){const q=(i)=>root.getElementById(i),veil=q("veil"),intro=q("intro"),unit=q("unit"),wrap=q("wrap"),yt=q("yt"),vid=q("vid"),rp=q("replay");
-const calm=matchMedia("(prefers-reduced-motion: reduce)").matches,INTRO=calm?0:2300;let t2,onClose=null;
+const calm=matchMedia("(prefers-reduced-motion: reduce)").matches,INTRO=calm?0:${INTRO_SECONDS * 1000};let t2,onClose=null;
 function startVideo(){if(yt&&!yt.src)yt.src=yt.dataset.src;if(vid){vid.currentTime=0;vid.play().catch(()=>{});}if(rp)rp.hidden=true;}
 function open(){clearTimeout(t2);unit.classList.remove("in");wrap.classList.remove("in");intro.classList.remove("go","done");void intro.offsetWidth;veil.classList.add("open");
  const go=()=>{intro.classList.add("done");unit.classList.add("in");wrap.classList.add("in");startVideo();};
@@ -248,7 +271,7 @@ export function previewHtml(o) {
   const date = o.article.published ? new Date(o.article.published).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" }) : "";
   const { css, html, js } = unitParts(o);
   return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="referrer" content="no-referrer">
-<title>2-in-1 preview — ${esc(o.brand)}</title><style>
+<title>2-in-1 preview — ${esc(o.brand)}</title><style>${o.panel?.fontCss || ""}
 *{box-sizing:border-box}html,body{margin:0;height:100%}body{font:15px/1.6 Georgia,"Times New Roman",serif;color:#1d2433;background:#e9ecf2;display:grid;place-items:center}
 .phone{position:relative;aspect-ratio:9/16;height:min(100vh,calc(100vw * 16 / 9),860px);width:auto;background:#fff;overflow:hidden}
 @media(min-width:480px){.phone{border-radius:30px;box-shadow:0 30px 70px -28px rgba(11,18,32,.55),0 0 0 9px #0b0f19}}

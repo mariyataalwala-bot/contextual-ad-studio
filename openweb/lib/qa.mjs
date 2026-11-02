@@ -106,6 +106,24 @@ const label = (k) => (k === "close" ? "the Close button" : k === "tag" ? "the Ad
  * boxes the page reports (see unitParts → geom). `samples` = [{ t, geom }] taken while the unit is on screen.
  * @param {{ t: number, geom: any }[]} samples @returns {Issue[]}
  */
+/**
+ * The product animation, judged from the page measurements: at every sample the product is on screen inside the card
+ * (critical, with the timestamp), and across the samples it moves (major — a still picture is not an animation).
+ * @param {{ t: number, geom: any }[]} samples
+ */
+export function productIssues(samples) {
+  const out = /** @type {Issue[]} */ ([]);
+  const live = samples.filter((x) => x.geom);
+  for (const { t, geom: g } of live) {
+    const p = g.product, c = g.card;
+    if (!p || p.w < 8 || p.h < 8) out.push(issue("logo_product_obstruction", "critical", t, "The product is not on screen", "Check the product picture and the panel layout.", "geometry"));
+    else if (c && (p.x < c.x - 1 || p.x + p.w > c.x + c.w + 1 || p.y < c.y - 1 || p.y + p.h > c.y + c.h + 1)) out.push(issue("logo_product_obstruction", "critical", t, "The product is cut off by the edge of the ad", "Keep the whole product inside the ad.", "geometry"));
+  }
+  const ys = live.map((x) => x.geom.product).filter(Boolean).map((p) => Math.round((p.y + p.h / 2) * 20) / 20);
+  if (ys.length >= 3 && ys.every((y) => y === ys[0]) && !out.length) out.push(issue("consistency", "major", live[0].t, "The product does not move: it is a still picture, not an animation", "The product must spin in and float; check the animation CSS.", "geometry"));
+  return out;
+}
+
 export function geometryIssues(samples) {
   const out = /** @type {Issue[]} */ ([]), seen = new Set();
   const add = (/** @type {Issue} */ i) => { const k = i.check + i.what; if (!seen.has(k)) { seen.add(k); out.push(i); } };
@@ -242,7 +260,8 @@ export async function runQa(o) {
   // 6 spelling + brand names
   issues.push(...textIssues(o.texts || [], { brandNames: o.brandNames, productNames: o.productNames }));
   // 2–5 layout measured in the page
-  if (o.geometry?.length) issues.push(...geometryIssues(o.geometry));   // a video without page measurements (In-Image) is judged by eye, from its frames (below)
+  if (o.geometry?.length) issues.push(...geometryIssues(o.geometry));
+  if (o.expectProduct && o.geometry?.length) issues.push(...productIssues(o.geometry));   // a video without page measurements (In-Image) is judged by eye, from its frames (below)
   // 1–4, 6, 7 the AI's look at the frames
   let frames = /** @type {{ t: number, file: string }[]} */ ([]), review = null, aiError = "";
   try {
