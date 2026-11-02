@@ -123,7 +123,7 @@ async function askGemini(system, text, schema, images, fast = false, grace = 0) 
     const finish = (fn, v) => { if (done) return; done = over = true; clearInterval(timer); clearTimeout(graceT); stop.abort(); fn(v); };
     const launch = () => {
       if (done) return;
-      if (i >= models.length) { if (!running) liteAns ? finish(resolve, liteAns) : finish(reject, new AIError(quota && quota >= models.length - 1 ? "All free Gemini models are out of quota for now (it resets daily, ~12:30 pm IST). Add a Claude key in Settings for faster, unlimited picks." : "Gemini is busy right now: " + last.slice(0, 160))); return; }
+      if (i >= models.length) { if (!running) liteAns ? finish(resolve, liteAns) : finish(reject, new AIError(quota && quota >= models.length - 1 ? "All free Gemini models are out of quota for now (it resets daily, ~12:30 pm IST). Add a Claude key in Settings for faster, unlimited picks." : (/API key not valid|API_KEY_INVALID|INVALID_ARGUMENT[^]{0,40}API key/i.test(last) ? "The Gemini key in Settings is not valid. Paste a valid Gemini key (from aistudio.google.com/apikey) in Settings, or choose the other free key (Groq) under Use." : "Gemini is busy right now: " + last.slice(0, 160)))); return; }
       const model = models[i++]; running++; active.add(model);
       one(model).then((r) => {
         active.delete(model); running--;
@@ -306,6 +306,19 @@ async function ytJson(args) {
     } catch (e) { console.error("enrich failed:", e.message); }
   }
   return rows;
+}
+// the settings form posts JSON once; keep what was read so the real handler can read it again
+const peeked = new WeakMap();
+async function peekBody(req) { if (!peeked.has(req)) peeked.set(req, await body(req)); return peeked.get(req); }
+// Gemini and YouTube keys start with AIza; Groq keys with gsk_; Claude keys with sk-ant-. A key in the wrong field would replace a working one.
+function wrongKeyField(b) {
+  const bad = (v) => (v ? String(v).trim() : "");
+  const g = bad(b.geminiKey), y = bad(b.youtubeKey), o = bad(b.openaiKey), c = bad(b.apiKey);
+  if (g && !/^AIza/.test(g)) return /^gsk_/.test(g) ? "That is a Groq key (it starts with gsk_). Paste it into “Free key from another AI service”, not the Gemini field. The Gemini key starts with AIza." : "That does not look like a Gemini key — they start with AIza. Nothing was saved.";
+  if (y && !/^AIza/.test(y)) return "That does not look like a YouTube Data API key — they start with AIza. Nothing was saved.";
+  if (o && /^AIza/.test(o)) return "That looks like a Google (Gemini / YouTube) key. Paste it into the Gemini or YouTube field. Nothing was saved.";
+  if (c && !/^sk-ant-/.test(c)) return "That does not look like a Claude key — they start with sk-ant-. Nothing was saved.";
+  return "";
 }
 const slug = (s) => s.toLowerCase().normalize("NFKD").replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") || "brand";
 const vidOf = (s) => (String(s).match(/(?:v=|youtu\.be\/|shorts\/)([A-Za-z0-9_-]{11})/) || String(s).match(/^([A-Za-z0-9_-]{11})$/) || [])[1];
@@ -925,7 +938,8 @@ http.createServer(async (req, res) => {
     const local = !req.headers["cf-connecting-ip"] && !req.headers["x-forwarded-for"] && /^(::1|127\.0\.0\.1|::ffff:127\.0\.0\.1)$/.test(req.socket.remoteAddress || "");
     if (u.pathname === "/openweb" || u.pathname === "/inimage" || u.pathname === "/twoinone" || u.pathname.startsWith("/api/ow/")) return openweb ? await openweb.handle(req, res, u, { local }) : send(res, 503, { error: "Open Web is unavailable: " + openwebError });
     if (u.pathname === "/api/status") return send(res, 200, { local, queue: waiting, hasKey: provider() !== "none", articleSearch: !!(loadSettings().firecrawlKey || process.env.FIRECRAWL_API_KEY), provider: provider(), youtube: youtubeKey() ? (Date.now() > ytApiDisabledUntil ? "api" : "browser (API paused)") : "browser", keyFromEnv: !!(process.env.ANTHROPIC_API_KEY || process.env.GEMINI_API_KEY), ffmpeg: !!FF || !IS_WIN, hosted: !IS_WIN, outDir: OUT_ROOT });
-    if (req.method === "POST" && u.pathname === "/api/settings") { if (!local) return send(res, 403, { error: "Settings can only be changed on the computer running the app." }); const b = await body(req); const s = loadSettings(); if (b.apiKey) s.apiKey = b.apiKey.trim(); if (b.geminiKey) s.geminiKey = b.geminiKey.trim(); if (b.youtubeKey) { s.youtubeKey = b.youtubeKey.trim(); ytApiDisabledUntil = 0; } if (b.firecrawlKey) s.firecrawlKey = b.firecrawlKey.trim(); if (b.openaiKey) s.openaiKey = b.openaiKey.trim(); if (b.openaiBaseUrl) s.openaiBaseUrl = b.openaiBaseUrl.trim(); if (b.openaiModel) s.openaiModel = b.openaiModel.trim(); if (b.provider) s.provider = b.provider; fs.writeFileSync(SETTINGS, JSON.stringify(s)); return send(res, 200, { ok: true, provider: provider() }); }
+    if (req.method === "POST" && u.pathname === "/api/settings" && local) { const peek = await peekBody(req); const wrong = wrongKeyField(peek); if (wrong) return send(res, 400, { error: wrong }); }
+    if (req.method === "POST" && u.pathname === "/api/settings") { if (!local) return send(res, 403, { error: "Settings can only be changed on the computer running the app." }); const b = await peekBody(req); const s = loadSettings(); if (b.apiKey) s.apiKey = b.apiKey.trim(); if (b.geminiKey) s.geminiKey = b.geminiKey.trim(); if (b.youtubeKey) { s.youtubeKey = b.youtubeKey.trim(); ytApiDisabledUntil = 0; } if (b.firecrawlKey) s.firecrawlKey = b.firecrawlKey.trim(); if (b.openaiKey) s.openaiKey = b.openaiKey.trim(); if (b.openaiBaseUrl) s.openaiBaseUrl = b.openaiBaseUrl.trim(); if (b.openaiModel) s.openaiModel = b.openaiModel.trim(); if (b.provider) s.provider = b.provider; fs.writeFileSync(SETTINGS, JSON.stringify(s)); return send(res, 200, { ok: true, provider: provider() }); }
     if (req.method === "POST" && u.pathname === "/api/ads") {   // runs in the background (share links cut requests at ~100 s)
       const b = await body(req);
       const k = BRANDS && findBrand(BRANDS, b.brand || "", b.product || ""), why = bannedReason(k, b.product || "");
