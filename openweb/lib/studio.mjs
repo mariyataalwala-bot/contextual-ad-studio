@@ -354,7 +354,7 @@ const reEsc = (t) => String(t).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 // become "Zomato" in "Order fresh food on Zomato").
 export const withRealName = (text, typed, found, brand) => {
   const real = String(found || "").replace(new RegExp(`^${reEsc(brand)}\\s*`, "i"), "").trim();
-  if (!real || !typed || String(found).toLowerCase() === String(typed).toLowerCase() || real.toLowerCase() === String(brand).toLowerCase()) return text;
+  if (!real || real.split(/\s+/).length > 5 || /^(explore|discover|shop|buy|order|try|get|taste|enjoy|see|find|new|various)\b/i.test(real) || !typed || String(found).toLowerCase() === String(typed).toLowerCase() || real.toLowerCase() === String(brand).toLowerCase()) return text;
   return String(text).replace(new RegExp(`(^|[^\\w])${reEsc(typed)}(?=$|[^\\w])`, "ig"), (_, pre) => pre + real);
 };
 // copy kept to about n words without cutting a phrase in half: up to two extra words are allowed (the strip fits text

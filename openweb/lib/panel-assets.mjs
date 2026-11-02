@@ -172,7 +172,7 @@ export async function preparePanel(o) {
   const button = ctaFor({ rules: studio.copy.ctaRules, ctas, known, product, aiCategory: plan?.category || "", aiCta: plan?.cta || "" });
   const copy = plan ? { headline: cleanCopy(words(named(plan.headline), studio.copy.maxHeadlineWords)), subline: cleanCopy(words(named(plan.subline), studio.copy.maxSublineWords)), cta: button.cta } : { headline: "", subline: "", cta: button.cta };
   // no checked product picture: a frame of the brand's own video ad is the visual (its key visual, not a made-up one)
-  const hero = !productFile && o.heroFile && fs.existsSync(o.heroFile) ? o.heroFile : null;
-  if (hero) flags.push("The visual is a frame of the brand's own video ad — no product picture passed its check.");
+  const hero = null;   // never a frame or thumbnail of the video in place of the product: the panel then animates the brand (logo, colours, copy) and says no product picture passed
+  if (!productFile) flags.push("No product picture passed its check — the panel animates the brand only; upload the pack photo to get the product animation.");
   return { logoInk: logoFile ? logoInk : null, highlights, hero, product: productFile, logo: logoFile, colour, accent, copy, productInfo, logoInfo, flags, checks };
 }

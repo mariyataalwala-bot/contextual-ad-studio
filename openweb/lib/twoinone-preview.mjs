@@ -71,11 +71,12 @@ export function unitParts(o, { fixed = false } = {}) {
   const chips = fitChips(Array.isArray(P.chips) ? P.chips : []);
   const cf = chipSize(chips);
   const strip = chips.length ? `<div class="strip" style="--cf:${cf}cqw">${chips.map((c, k) => `<span style="--k:${k}">${esc(c)}</span>`).join("")}</div>` : "";
+  const SPARKS = [[22, 22, 1.6], [78, 30, 2.1], [30, 62, 2.6], [72, 70, 1.9], [50, 12, 3.1]];
   const bokeh = BOKEH.map(([x, s, d, dl]) => `<b style="--x:${x}%;--s:${s}cqw;--d:${d}s;--dl:${dl}s"></b>`).join("");
   const vis = kind === "prod"
-    ? `<div class="glow"></div><i class="rip"></i><i class="rip"></i><i class="rip"></i><div class="pshadow"></div><img class="pprod ${P.productMode === "photo" ? "photo" : "cut"}" src="${esc(P.product)}" alt="${esc(P.productName || o.product)}">`
+    ? `<div class="glow"></div><i class="orbit"></i><i class="orbit o2"></i><i class="rip"></i><i class="rip"></i><i class="rip"></i><div class="pshadow"></div><div class="pstage"><img class="pprod ${P.productMode === "photo" ? "photo" : "cut"}" src="${esc(P.product)}" alt="${esc(P.productName || o.product)}">${P.productMode === "photo" ? "" : `<i class="pshine" style="--pu:url('${esc(P.product).replace(/'/g, "%27")}')"></i>`}</div>${SPARKS.map(([x, y, d]) => `<i class="spk" style="--x:${x}%;--y:${y}%;--d:${d}s"></i>`).join("")}`
     : kind === "hero" ? `<figure class="hero"><img src="${esc(P.hero)}" alt=""></figure>`
-    : P.logo ? `<img class="pwm" src="${esc(P.logo)}" alt="">` : "";
+    : `<div class="glow"></div><i class="orbit"></i><i class="orbit o2"></i>${P.logo ? `<img class="pwm" src="${esc(P.logo)}" alt="">` : ""}${SPARKS.map(([x, y, d]) => `<i class="spk" style="--x:${x}%;--y:${y}%;--d:${d}s"></i>`).join("")}`;
   const panel = P.image
     ? `<div class="pn img"><img class="dimg" src="${esc(P.image)}" alt="${esc(o.brand)} — ${esc(P.productName || o.product)}"></div>`
     : `<div class="pn k-${kind}${chips.length ? " has-strip" : ""}" style="--hs:${hs}cqw;--ss:${ss}cqw"><div class="decor"><div class="mesh"><i></i><i></i><i></i></div><div class="bokeh">${bokeh}</div><div class="beam"></div><div class="beam b2"></div></div>
@@ -94,7 +95,7 @@ ${hw ? `<h2>${hw}</h2>` : `<h2><span class="w"><i style="--k:0">${esc(P.productN
 .intro{position:absolute;inset:0;pointer-events:none;display:grid;place-items:center;transition:opacity .45s}
 .intro.done{opacity:0}
 .il{position:absolute;top:15%;left:50%;width:52%;max-height:16%;object-fit:contain;transform:translateX(-50%);opacity:0;filter:drop-shadow(0 6px 20px rgba(0,0,0,.35))}
-.il.light{filter:brightness(0) invert(1) drop-shadow(0 6px 20px rgba(0,0,0,.35))}
+.il.light{background:#fff;padding:14px 22px;border-radius:18px;box-sizing:content-box;box-shadow:0 6px 20px rgba(0,0,0,.35)}
 .il.word{width:auto;max-width:80%;font:800 clamp(30px,11vw,52px)/1.05 system-ui,sans-serif;color:#fff;text-align:center;letter-spacing:-.02em}
 .ip{position:absolute;bottom:-3%;left:50%;width:76%;max-height:58%;object-fit:contain;opacity:0;transform:translateX(-50%)}
 .ip.photo{width:70%;height:42%;object-fit:cover;border-radius:18px;box-shadow:0 30px 60px -20px #000;bottom:12%}
@@ -134,7 +135,7 @@ ${hw ? `<h2>${hw}</h2>` : `<h2><span class="w"><i style="--k:0">${esc(P.productN
 .beam.b2{width:8cqw}
 .ptop{grid-area:1/1;position:relative;z-index:4;padding:5cqw 7cqw 3cqw;display:flex;flex-direction:column;align-items:flex-start;gap:2.4cqw}
 .plogo{height:8cqw;max-width:34cqw;object-fit:contain;opacity:0;transform-origin:left center}
-.plogo.light{filter:brightness(0) invert(1)}.plogo.dark{filter:brightness(0)}
+.plogo.light{background:#fff;padding:1.4cqw 2.4cqw;border-radius:2cqw;box-sizing:content-box;box-shadow:0 .6cqw 2cqw rgba(0,0,0,.3)}.plogo.dark{background:#14171f;padding:1.4cqw 2.4cqw;border-radius:2cqw;box-sizing:content-box}
 .plogo.word{height:auto;font:800 6.4cqw/1 system-ui,sans-serif;letter-spacing:-.02em}
 .ptop h2{margin:0;width:86cqw;font:800 var(--hs)/1.04 system-ui,sans-serif;letter-spacing:-.025em}
 .w{position:relative;display:inline-block;overflow:hidden;vertical-align:top;padding-bottom:.1em}.w>i{position:relative;z-index:1;display:inline-block;font-style:normal;transform:translateY(112%)}
@@ -146,11 +147,15 @@ ${hw ? `<h2>${hw}</h2>` : `<h2><span class="w"><i style="--k:0">${esc(P.productN
 .glow{position:absolute;left:50%;bottom:-18cqw;width:84cqw;aspect-ratio:1;margin-left:-42cqw;border-radius:50%;background:radial-gradient(closest-side,rgba(255,255,255,.5),rgba(255,255,255,0));opacity:0}
 .rip{position:absolute;left:50%;bottom:6cqw;width:18cqw;aspect-ratio:1;margin-left:-9cqw;border-radius:50%;border:.6cqw solid rgba(255,255,255,.5);opacity:0}
 .pshadow{position:absolute;left:50%;bottom:1.5cqw;width:50cqw;height:5cqw;margin-left:-25cqw;border-radius:50%;background:radial-gradient(closest-side,rgba(0,0,0,.45),transparent);opacity:0}
-.pprod{position:absolute;left:0;right:0;margin:0 auto;bottom:4cqw;width:auto;height:auto;max-width:86%;max-height:calc(100% - 5cqw);object-fit:contain;opacity:0;filter:drop-shadow(0 5cqw 4cqw rgba(0,0,0,.3));transform-origin:50% 100%}
+.pstage{position:absolute;left:0;right:0;bottom:4cqw;top:0;display:flex;justify-content:center;align-items:flex-end;perspective:120cqw;z-index:2}
+.pstage .pshine{position:absolute;left:0;right:0;bottom:0;top:0;opacity:0;pointer-events:none}
+.orbit{position:absolute;left:50%;bottom:-8cqw;width:74cqw;height:74cqw;margin-left:-37cqw;border-radius:50%;border:.5cqw dashed rgba(255,255,255,.32);opacity:0;transform:rotateX(74deg)}.orbit.o2{width:54cqw;height:54cqw;margin-left:-27cqw;bottom:-3cqw;border-style:solid;border-color:rgba(255,255,255,.2)}
+.spk{position:absolute;left:var(--x);top:var(--y);width:2.6cqw;height:2.6cqw;margin:-1.3cqw;opacity:0;z-index:3;background:radial-gradient(circle,#fff 0 22%,transparent 24%),conic-gradient(from 45deg,transparent 0 10%,#fff 12% 13%,transparent 15% 35%,#fff 37% 38%,transparent 40% 60%,#fff 62% 63%,transparent 65% 85%,#fff 87% 88%,transparent 90%);filter:drop-shadow(0 0 .8cqw rgba(255,255,255,.9))}
+.pprod{position:relative;margin:0;bottom:auto;width:auto;height:auto;max-width:86%;max-height:calc(100% - 5cqw);object-fit:contain;opacity:0;filter:drop-shadow(0 5cqw 4cqw rgba(0,0,0,.3));transform-origin:50% 100%}
 .pprod.photo{max-width:62%;border-radius:4cqw;object-fit:cover;filter:none;box-shadow:0 5cqw 9cqw -3cqw rgba(0,0,0,.55)}
 .hero{position:absolute;inset:0;margin:0;overflow:hidden;opacity:0;background:var(--c2)}
 .hero img{width:100%;height:100%;object-fit:cover;object-position:75% 30%;display:block;transform:scale(1.5);transform-origin:75% 30%}   /* zoomed on the subject, away from the captions a YouTube frame carries at its lower left */
-.pwm{position:absolute;right:-6cqw;bottom:-8cqw;height:90%;max-width:75%;opacity:.14;object-fit:contain}
+.pwm{position:absolute;inset:0;margin:auto;width:auto;height:auto;max-height:62%;max-width:62%;opacity:.14;object-fit:contain;z-index:3}   /* the whole logo, never cropped */
 .pn.img .dimg{width:100%;height:100%;object-fit:cover;display:block}
 .strip{grid-row:3;position:relative;z-index:5;height:13cqw;background:var(--btn);color:var(--btnink);display:flex;align-items:center;gap:3.4cqw;padding:0 6cqw;transform:translateY(101%);overflow:hidden;box-shadow:0 -2cqw 6cqw -2cqw rgba(0,0,0,.35)}
 .strip span{display:inline-flex;align-items:center;gap:1.4cqw;font:700 var(--cf,3.6cqw)/1 system-ui,sans-serif;white-space:nowrap;opacity:0;transform:translateY(60%) scale(.9)}
@@ -170,7 +175,10 @@ ${hw ? `<h2>${hw}</h2>` : `<h2><span class="w"><i style="--k:0">${esc(P.productN
 .unit.in .cta:after{animation:shimmer 3.4s ease-in-out 2.2s infinite}
 .unit.in .glow{animation:fadeIn 1s ease .6s both,breathe 5s ease-in-out 1.6s infinite alternate}
 .unit.in .rip{animation:ripple 4.4s ease-out 1.4s infinite}.unit.in .rip:nth-of-type(2){animation-delay:2.9s}.unit.in .rip:nth-of-type(3){animation-delay:4.4s}
-.unit.in .pprod{animation:prodIn 1.05s cubic-bezier(.2,.8,.2,1) .45s both,floaty 5.5s ease-in-out 1.6s infinite alternate}
+.unit.in .pprod{animation:prodIn 1.2s cubic-bezier(.2,.8,.2,1) .45s both,floaty 5.5s ease-in-out 1.7s infinite alternate}
+.unit.in .orbit{animation:fadeIn 1s ease .7s both,orbitSpin 14s linear 1.7s infinite}.unit.in .orbit.o2{animation:fadeIn 1s ease .9s both,orbitSpin 9s linear 1.7s infinite reverse}
+.unit.in .pshine{-webkit-mask:var(--pu) center bottom/contain no-repeat;mask:var(--pu) center bottom/contain no-repeat;background:linear-gradient(105deg,transparent 35%,rgba(255,255,255,.85) 50%,transparent 65%) -150% 0/250% 100% no-repeat;animation:fadeIn .2s ease 1.7s both,shineSweep 3.6s ease-in-out 1.8s infinite}
+.unit.in .spk{animation:spark 2.6s ease-in-out var(--d) infinite}
 .unit.in .pshadow{animation:fadeIn .8s ease 1s both,shadowPulse 5.5s ease-in-out 1.6s infinite alternate}
 .unit.in .hero{animation:heroIn 1.1s cubic-bezier(.2,.8,.2,1) .4s both}
 .unit.in .hero img{animation:kbh 16s ease-out .4s both}
@@ -194,7 +202,10 @@ ${hw ? `<h2>${hw}</h2>` : `<h2><span class="w"><i style="--k:0">${esc(P.productN
 @keyframes pop{from{opacity:0;transform:scale(.7)}to{opacity:1;transform:none}}
 @keyframes pulse{0%,100%{box-shadow:0 8px 22px -8px rgba(0,0,0,.45),0 0 0 0 rgba(255,255,255,0)}50%{box-shadow:0 8px 22px -8px rgba(0,0,0,.45),0 0 0 2.2cqw rgba(255,255,255,.14)}}
 @keyframes shimmer{0%,55%{transform:translateX(-140%)}100%{transform:translateX(140%)}}
-@keyframes prodIn{from{opacity:0;transform:translateY(18%) scale(.88) rotate(-4deg)}to{opacity:1;transform:none}}
+@keyframes prodIn{0%{opacity:0;transform:translateY(14%) rotateY(-110deg) scale(.82)}60%{opacity:1}100%{opacity:1;transform:none}}
+@keyframes orbitSpin{to{transform:rotateX(74deg) rotateZ(360deg)}}
+@keyframes shineSweep{0%,35%{background-position:-150% 0}70%,100%{background-position:150% 0}}
+@keyframes spark{0%,100%{opacity:0;transform:scale(.3) rotate(0)}50%{opacity:1;transform:scale(1) rotate(90deg)}}
 @keyframes floaty{from{transform:translateY(0) rotate(0)}to{transform:translateY(-2cqw) rotate(1.2deg)}}
 @keyframes breathe{from{transform:scale(.94);opacity:.8}to{transform:scale(1.06);opacity:1}}
 @keyframes ripple{0%{transform:scale(.4);opacity:.5}100%{transform:scale(4.2);opacity:0}}
