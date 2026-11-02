@@ -138,7 +138,6 @@ ${hw ? `<h2>${hw}</h2>` : `<h2><span class="w"><i style="--k:0">${esc(P.productN
 .plogo.word{height:auto;font:800 6.4cqw/1 system-ui,sans-serif;letter-spacing:-.02em}
 .ptop h2{margin:0;width:86cqw;font:800 var(--hs)/1.04 system-ui,sans-serif;letter-spacing:-.025em}
 .w{position:relative;display:inline-block;overflow:hidden;vertical-align:top;padding-bottom:.1em}.w>i{position:relative;z-index:1;display:inline-block;font-style:normal;transform:translateY(112%)}
-.w:last-child:before{content:"";position:absolute;left:0;right:0;bottom:.1em;height:.26em;background:var(--btn);opacity:.9;transform:scaleX(0);transform-origin:left}
 .psub{margin:0;width:86cqw;font:500 var(--ss)/1.36 system-ui,sans-serif;opacity:0}
 .cta{position:relative;overflow:hidden;display:inline-block;margin-top:.8cqw;font:700 3.8cqw/1 system-ui,sans-serif;text-decoration:none;color:var(--btnink);background:var(--btn);padding:2.8cqw 5.4cqw;border-radius:99px;opacity:0;box-shadow:0 8px 22px -8px rgba(0,0,0,.45)}
 .cta:after{content:"";position:absolute;inset:0;background:linear-gradient(105deg,transparent 35%,rgba(255,255,255,.55) 50%,transparent 65%);transform:translateX(-140%)}
@@ -166,7 +165,6 @@ ${hw ? `<h2>${hw}</h2>` : `<h2><span class="w"><i style="--k:0">${esc(P.productN
 .unit.in .beam{animation:beam 7s ease-in-out 2s infinite}.unit.in .beam.b2{animation:beam 7s ease-in-out 4.6s infinite}
 .unit.in .plogo{animation:fadeL .8s cubic-bezier(.2,.8,.2,1) .15s both}
 .unit.in .w>i{animation:rise .75s cubic-bezier(.2,.8,.2,1) both;animation-delay:calc(.35s + var(--k)*.09s)}
-.unit.in .w:last-child:before{animation:bar .7s cubic-bezier(.3,.8,.3,1) 1.3s both}
 .unit.in .psub{animation:fadeUp .7s ease .95s both}
 .unit.in .cta{animation:pop .55s cubic-bezier(.3,1.5,.5,1) 1.25s both,pulse 2.6s ease-in-out 2.3s infinite}
 .unit.in .cta:after{animation:shimmer 3.4s ease-in-out 2.2s infinite}
