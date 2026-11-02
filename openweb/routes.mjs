@@ -18,6 +18,7 @@ import { loadBrands, findBrand, namesBrand } from "./lib/brands.mjs";
 import { makeFirecrawl, discoverArticles, discoverCampaigns } from "./lib/discover.mjs";
 import { makeReader, withTimeout } from "./lib/reader.mjs";
 import { createTwoInOne } from "./twoinone-routes.mjs";
+import { isLowMemory, LOW_MEMORY_WHY } from "./lib/hostmem.mjs";
 
 // A creative file the client supplies, sent from the page as a data: URL. Its type is read from the file's own bytes
 // (not from the name): PNG, JPEG, GIF, WebP pictures; MP4, WebM videos. At most 40 MB.
@@ -117,6 +118,7 @@ export function createOpenWeb({ dataDir, ask = null, provider = () => "none", ff
 
   // In-Image Studio: brand + product → product found online → strip creative → relevant article picture → mock video
   function studioStart(b) {
+    if (isLowMemory()) return { code: 503, body: { error: "In-Image records its video in a browser. " + LOW_MEMORY_WHY } };
     const brand = String(b.brand || "").trim().slice(0, 60), product = String(b.product || "").trim().slice(0, 100), offer = String(b.offer || "").trim().slice(0, 60), productImage = String(b.productImage || "").trim().slice(0, 2000);
     if (!brand || !product) return { code: 400, body: { error: "Type the brand and the product." } };
     if (productImage && !/^https:\/\//i.test(productImage)) return { code: 400, body: { error: "The product photo link must start with https://" } };

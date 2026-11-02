@@ -468,6 +468,7 @@ export async function makeTwoInOne(o) {
       unit: { layout: "2-in-1: a 9:16 card over the dimmed article, opened from an in-article slot — a short opening, then the 16:9 video ad on top and the animated product panel in the rest of the space", disclosure: "“Advertisement” label above the unit and a mock-preview bar; close button; sound off until the viewer unmutes", live: false },
     };
     // 5) the downloadable video: the unit recorded over the real article in a phone browser (9:16)
+    if (o.record === false) result.export = { status: "skipped", error: "The video is not recorded on this server: it has too little memory to open a browser. The interactive preview below shows the same unit; run the app on your PC (or a 2 GB plan) to get the MP4." };
     if (o.record !== false) {
       say(92, "render", "Recording the mobile video…");
       try {

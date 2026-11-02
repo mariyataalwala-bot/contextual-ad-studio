@@ -23,6 +23,8 @@ services:
         sync: false
       - key: OPEN_ACCESS        # set to 1 ONLY if you want no login (anyone with the link can use the app and your AI key's quota); otherwise set APP_PASSWORD
         sync: false
+      - key: LITE_MODE          # optional: 1 = never open a browser (auto-on below ~1.2 GB of memory). Free plan = lite: YouTube search needs YOUTUBE_API_KEY, no In-Image / video recording
+        sync: false
       - key: YOUTUBE_API_KEY    # optional YouTube Data API key (faster, more reliable video search)
         sync: false
       - key: FIRECRAWL_API_KEY  # optional: renders JavaScript-built article pages (never refused or paywalled ones)

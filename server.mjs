@@ -10,6 +10,7 @@ import { GoogleGenAI } from "@google/genai";
 import { createOpenWeb } from "./openweb/routes.mjs";
 import { askOpenAICompat } from "./openweb/lib/openai-compat.mjs";
 import { accessMode } from "./openweb/lib/access.mjs";
+import { isLowMemory, LOW_MEMORY_WHY } from "./openweb/lib/hostmem.mjs";
 import { loadBrands, findBrand, brandBrief, bannedReason, ownNames } from "./openweb/lib/brands.mjs";
 import { rivalMatcher } from "./openweb/lib/studio.mjs";
 
@@ -296,6 +297,7 @@ async function ytJson(args) {
       if (e.reason === "keyInvalid" || e.reason === "API_KEY_INVALID" || e.reason === "accessNotConfigured" || e.reason === 403) ytApiDisabledUntil = Date.now() + 600e3;
     }
   }
+  if (isLowMemory()) throw new Error("YouTube search on this small server needs a YouTube Data API key (a browser would use up its memory and restart it). Add YOUTUBE_API_KEY under Environment, or run the app on your PC.");
   const rows = await ytBrowserJson(args);
   if (search && youtubeKey() && Date.now() > ytApiDisabledUntil && Array.isArray(rows) && rows.length) {
     try {   // browser search found the ids; the API fills in channel size, views, length, HD (so "big channels only" still works)
@@ -942,6 +944,7 @@ http.createServer(async (req, res) => {
       try { if (id) url = await channelLogo((await ytJson(["meta", id])).channelId); } catch {}
       return send(res, 200, { url, source: url ? "youtube" : null });
     }
+    if (req.method === "POST" && (u.pathname === "/api/prefetch" || u.pathname === "/api/start") && isLowMemory()) return send(res, 503, { error: LOW_MEMORY_WHY });   // the YouTube tool records and renders in a browser
     if (req.method === "POST" && u.pathname === "/api/prefetch") {   // start recording an ad the moment it's picked
       const id = vidOf((await body(req)).adId || ""); if (id && adRecs.size < 3) recordAd(id);
       return send(res, 200, { ok: !!id });
