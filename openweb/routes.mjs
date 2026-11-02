@@ -17,6 +17,7 @@ import { STYLES } from "./lib/strip.mjs";
 import { loadBrands, findBrand, namesBrand } from "./lib/brands.mjs";
 import { makeFirecrawl, discoverArticles, discoverCampaigns } from "./lib/discover.mjs";
 import { makeReader, withTimeout } from "./lib/reader.mjs";
+import { createTwoInOne } from "./twoinone-routes.mjs";
 
 // A creative file the client supplies, sent from the page as a data: URL. Its type is read from the file's own bytes
 // (not from the name): PNG, JPEG, GIF, WebP pictures; MP4, WebM videos. At most 40 MB.
@@ -41,9 +42,9 @@ const countBy = (list, key) => { const m = {}; for (const x of list) m[key(x)] =
 const FILE_TYPES = { ".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".gif": "image/gif", ".webp": "image/webp", ".mp4": "video/mp4", ".webm": "video/webm", ".mov": "video/quicktime", ".json": "application/json" };
 
 /**
- * @param {{ dataDir: string, findAds?: ((q: { brand: string, product?: string }) => Promise<any[]>)|null, configDir?: string, ask?: Function|null, provider?: () => string, ffmpeg?: ((args: string[]) => Promise<any>)|null, fetchImpl?: any, chromium?: any, embed?: ((texts: string[], task: string, dims: number) => Promise<number[][]>)|null, py?: ((args: string[]) => Promise<string>)|null, studioDir?: string|null, firecrawlKey?: () => string|null|undefined }} opts
+ * @param {{ dataDir: string, findAds?: ((q: { brand: string, product?: string }) => Promise<any[]>)|null, configDir?: string, ask?: Function|null, provider?: () => string, ffmpeg?: ((args: string[]) => Promise<any>)|null, fetchImpl?: any, chromium?: any, embed?: ((texts: string[], task: string, dims: number) => Promise<number[][]>)|null, py?: ((args: string[]) => Promise<string>)|null, studioDir?: string|null, firecrawlKey?: () => string|null|undefined, ytDetails?: ((ids: string[]) => Promise<Map<string, any>>)|null }} opts
  */
-export function createOpenWeb({ dataDir, ask = null, provider = () => "none", ffmpeg = null, fetchImpl = globalThis.fetch, chromium = null, configDir, embed = null, py = null, studioDir = null, firecrawlKey = () => null, findAds = null }) {
+export function createOpenWeb({ dataDir, ask = null, provider = () => "none", ffmpeg = null, fetchImpl = globalThis.fetch, chromium = null, configDir, embed = null, py = null, studioDir = null, firecrawlKey = () => null, findAds = null, ytDetails = null }) {
   const cfg = loadConfig(configDir);
   const studio = loadStudioConfig(configDir);
   const brands = loadBrands(configDir);
@@ -151,6 +152,7 @@ export function createOpenWeb({ dataDir, ask = null, provider = () => "none", ff
   }
 
   async function handle(req, res, u, { local = false } = {}) {
+    if (await twoIn.handle(req, res, u)) return;   // the 2-in-1 tab: /twoinone and /api/ow/twoinone/*
     if (req.method === "GET" && u.pathname === "/openweb") return send(res, 200, fs.readFileSync(path.join(HERE, "openweb.html")), "text/html; charset=utf-8");
     if (req.method === "GET" && u.pathname === "/inimage") {
       sectionItems(studio, feedFetcher(fetchImpl)).catch(() => {});   // read the publisher feeds now, so the first mock starts warm
@@ -300,5 +302,7 @@ export function createOpenWeb({ dataDir, ask = null, provider = () => "none", ff
       reader: makeReader({ fetcher: makeFetcher({ fetchImpl, gapMs: 1000 }), py, firecrawl: null, fetchImpl, timeoutMs: 15000, tmpDir: path.join(store.root, "tmp", "read") }) }), 25000, "Campaign discovery").catch(() => null);
     campaignMemo.set(k, { t: Date.now(), p }); p.then((v) => { if (!v) campaignMemo.delete(k); });
     return p; };
+  const twoIn = createTwoInOne({ studio, brands, cfg, store, ask, provider, py, ffmpeg, chromium, campaignsFor, fetchImpl, fcFor, firecrawl, findAds, ytDetails, jobs, job, log, send, body, inside, FILE_TYPES, HERE, clientCreative,
+    root: path.join(path.dirname(dataDir), "twoinone"), studioRoot });
   return { handle, cfg, store, campaignsFor };
 }

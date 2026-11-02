@@ -117,7 +117,7 @@ export function placeInPage({ format, src, isVideo, leadImage, html = null, stri
 }
 
 // Chrome DevTools screencast while `act` runs → [{ file, ts }] JPEG frames at device pixels.
-async function screencast(page, dir, act) {
+export async function screencast(page, dir, act, size = { w: 824, h: 1830 }) {
   fs.mkdirSync(dir, { recursive: true });
   const cdp = await page.context().newCDPSession(page), frames = /** @type {any} */ ([]);
   cdp.on("Page.screencastFrame", (f) => {
@@ -125,7 +125,7 @@ async function screencast(page, dir, act) {
     fs.writeFileSync(file, Buffer.from(f.data, "base64")); frames.push({ file, ts: f.metadata.timestamp });
     cdp.send("Page.screencastFrameAck", { sessionId: f.sessionId }).catch(() => {});
   });
-  await cdp.send("Page.startScreencast", { format: "jpeg", quality: 92, maxWidth: 824, maxHeight: 1830, everyNthFrame: 1 });
+  await cdp.send("Page.startScreencast", { format: "jpeg", quality: 92, maxWidth: size.w, maxHeight: size.h, everyNthFrame: 1 });
   try { await act(); } finally { await cdp.send("Page.stopScreencast").catch(() => {}); await cdp.detach().catch(() => {}); }
   frames.end = Date.now() / 1000;   // frames only arrive when the page changes: the last one is held until here
   return frames;
@@ -237,7 +237,7 @@ export async function renderMock({ articleUrl, leadImage, creativeFile = null, c
         const t = frames[0].ts + k / 25; while (j + 1 < frames.length && frames[j + 1].ts <= t) j++;
         fs.copyFileSync(frames[j].file, path.join(seq, `s${String(k).padStart(5, "0")}.jpg`));
       }
-      await ffmpeg(["-loglevel", "error", "-y", "-framerate", "25", "-i", path.join(seq, "s%05d.jpg"), "-vf", "scale=824:-2:flags=lanczos,format=yuv420p", "-c:v", "libx264", "-crf", "18", "-movflags", "+faststart", outBase + ".mp4"]);
+      await ffmpeg(["-loglevel", "error", "-y", "-framerate", "25", "-i", path.join(seq, "s%05d.jpg"), "-vf", "scale=824:-2:flags=lanczos:in_range=pc:out_range=tv,format=yuv420p", "-c:v", "libx264", "-crf", "18", "-movflags", "+faststart", outBase + ".mp4"]);
       out.mp4 = outBase + ".mp4";
     }
     return out;

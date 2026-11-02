@@ -8,6 +8,7 @@ import { fileURLToPath } from "node:url";
 import Anthropic from "@anthropic-ai/sdk";
 import { GoogleGenAI } from "@google/genai";
 import { createOpenWeb } from "./openweb/routes.mjs";
+import { askOpenAICompat } from "./openweb/lib/openai-compat.mjs";
 import { loadBrands, findBrand, brandBrief, bannedReason, ownNames } from "./openweb/lib/brands.mjs";
 import { rivalMatcher } from "./openweb/lib/studio.mjs";
 
@@ -51,7 +52,12 @@ if (IS_WIN && !String(ENV.PATH).split(path.delimiter).some((d) => d && fs.exists
 const loadSettings = () => { try { return JSON.parse(fs.readFileSync(SETTINGS, "utf8")); } catch { return {}; } };
 const geminiKey = () => loadSettings().geminiKey || process.env.GEMINI_API_KEY;
 const claudeKey = () => loadSettings().apiKey || process.env.ANTHROPIC_API_KEY;
-const provider = () => { const p = loadSettings().provider || process.env.AI_PROVIDER; if (p) return p; return geminiKey() ? "gemini" : claudeKey() ? "claude" : "none"; };
+// A free key from any OpenAI-compatible service (Groq, OpenRouter, Together, Mistral …) can replace Gemini: set AI_PROVIDER=openai + OPENAI_COMPAT_KEY
+// (+ OPENAI_COMPAT_BASE_URL and OPENAI_COMPAT_MODEL; the defaults are Groq's free Llama 4 Scout, which reads pictures).
+const compatKey = () => loadSettings().openaiKey || process.env.OPENAI_COMPAT_KEY;
+const compatBase = () => loadSettings().openaiBaseUrl || process.env.OPENAI_COMPAT_BASE_URL || "https://api.groq.com/openai/v1";
+const compatModel = () => loadSettings().openaiModel || process.env.OPENAI_COMPAT_MODEL || "meta-llama/llama-4-scout-17b-16e-instruct";
+const provider = () => { const p = loadSettings().provider || process.env.AI_PROVIDER; if (p) return p; return geminiKey() ? "gemini" : claudeKey() ? "claude" : compatKey() ? "openai" : "none"; };
 // fastest first (measured: 3.5/3.6-flash ~6 s, 3-flash-preview ~11 s; flash-latest and 3.8-flash can take 40–60 s+)
 const GEMINI_MODELS = () => [...new Set([loadSettings().geminiModel || process.env.GEMINI_MODEL, "gemini-3.5-flash", "gemini-3.6-flash", "gemini-3-flash-preview", "gemini-3.7-flash", "gemini-flash-lite-latest", "gemini-3.5-flash-lite", "gemini-3.8-flash", "gemini-flash-latest"].filter(Boolean))];
 const geminiOut = new Map();   // model → time its quota is expected back
@@ -65,7 +71,10 @@ class AIError extends Error {}
 async function ask(system, text, schema, images = [], effort = "high") {   // effort "medium" + no images → fast lite model first
   const p = provider();
   if (p === "none") throw new AIError("No AI key set — using manual mode.");
-  try { return p === "gemini" ? await askGemini(system, text, schema, images, !images.length && effort === "medium", images.length && effort === "high" ? 4000 : 0) : await askClaude(system, text, schema, images, effort); }
+  try {
+    if (p === "openai") return await askOpenAICompat({ baseUrl: compatBase(), key: compatKey(), model: compatModel(), system, text, schema, images });
+    return p === "gemini" ? await askGemini(system, text, schema, images, !images.length && effort === "medium", images.length && effort === "high" ? 4000 : 0) : await askClaude(system, text, schema, images, effort);
+  }
   catch (e) { if (e instanceof AIError) throw e; throw new AIError(e.message || String(e)); }
 }
 async function askGemini(system, text, schema, images, fast = false, grace = 0) {
@@ -178,7 +187,7 @@ function run(cmd, args, { log, cwd, env, timeout = 10 * 60e3 } = {}) {   // no s
     p.on("error", (e) => { clearTimeout(kill); reject(new Error(`${cmd} could not be started (${/** @type {any} */ (e).code || e.message}) — is it installed and on PATH?`)); });
   });
 }
-const yt = (args, opts) => run("node", [path.join(PIPE, "scripts", "yt.js"), ...args], opts);
+const yt = (args, opts) => run(process.execPath, [path.join(PIPE, "scripts", "yt.js"), ...args], opts);
 const ytBrowserJson = async (args) => { const s = (await yt(args, { timeout: 120000 })).trim(); const i = [s.indexOf("["), s.indexOf("{")].filter((x) => x >= 0); return JSON.parse(s.slice(Math.min(...i))); };
 
 // ---------- YouTube Data API v3 (official): search + video details without a browser ----------
@@ -258,6 +267,17 @@ async function ytApiMeta(id) {
   return { channelId: v.snippet.channelId, title: v.snippet.title, channel: v.snippet.channelTitle, views: v.statistics.viewCount, length: isoSec(v.contentDetails.duration), keywords: v.snippet.tags || [],
     chapters: chapters.length >= 2 && chapters[0][0] === 0 ? chapters : [], captions: v.contentDetails.caption === "true" ? ["available"] : [],
     size: playerSize(v), description: desc.slice(0, 800) };
+}
+// What the 2-in-1 tool needs to know before it shows a YouTube ad: when it was published, whether the owner allows
+// embedding, its description and length. API key only; without one the tool uses YouTube's public oEmbed instead.
+async function ytDetails(ids) {
+  if (!youtubeKey() || Date.now() < ytApiDisabledUntil) return null;
+  const out = new Map();
+  for (let i = 0; i < ids.length; i += 50) {
+    const j = await ytApi("videos", { part: "snippet,contentDetails,status", id: ids.slice(i, i + 50).join(",") });
+    for (const v of j.items || []) out.set(v.id, { publishedAt: v.snippet.publishedAt, description: String(v.snippet.description || "").slice(0, 600), embeddable: v.status?.embeddable ?? null, seconds: isoSec(v.contentDetails.duration), privacy: v.status?.privacyStatus || null });
+  }
+  return out;
 }
 // searchjson / meta go through the official API when a key is set; everything else (and any API failure) uses the browser.
 // The free key allows ~100 searches a day: searches are cached for a day, and once the daily search limit is hit, searches go
@@ -783,7 +803,7 @@ async function renderMux(job, kind) {
   const W = job.work, I = job.input, prev = kind === "preview";
   say(job, prev ? "Rendering the 720p preview (about 15 seconds)…" : "Rendering full HD (about 30 seconds)…");
   const raw = path.join(W, prev ? "out_preview_noaudio.mp4" : "out_noaudio.mp4");
-  await run("node", [path.join(PIPE, "scripts", "render.js"), path.join(W, "dist", "contextual-ad.html"), raw, "25", I.hq && !prev ? "4" : (process.env.RENDER_SUBFRAMES || "1"), prev ? "0.6667" : "1"],
+  await run(process.execPath, [path.join(PIPE, "scripts", "render.js"), path.join(W, "dist", "contextual-ad.html"), raw, "25", I.hq && !prev ? "4" : (process.env.RENDER_SUBFRAMES || "1"), prev ? "0.6667" : "1"],
     { log: (l) => { const m = l.match(/frame (\d+) \/ (\d+)/); if (m) { job.step = `Rendering${prev ? " preview" : ""}… ${Math.round((100 * m[1]) / m[2])}% of frames`; job.prog.frac = m[1] / m[2]; } } });
   say(job, "Adding music and the ad's sound…");
   const final = path.join(W, `${slug(I.brand)}-contextual-ad${prev ? "-preview" : ""}.mp4`);
@@ -864,7 +884,7 @@ function saveData(dataUrl, file) { const m = /^data:[^;]+;base64,(.*)$/.exec(dat
 
 // Open Web contextual placement (openweb/): its own routes and data folder; if its config is broken only that tab is off
 let openweb = null, openwebError = "";
-try { openweb = createOpenWeb({ dataDir: path.join(OUT_ROOT, "openweb"), ask, provider, findAds, ffmpeg: (args) => run("ffmpeg", args, { timeout: 120000 }), embed: embedTexts,
+try { openweb = createOpenWeb({ dataDir: path.join(OUT_ROOT, "openweb"), ask, provider, findAds, ytDetails, ffmpeg: (args) => run("ffmpeg", args, { timeout: 120000 }), embed: embedTexts,
   firecrawlKey: () => loadSettings().firecrawlKey || process.env.FIRECRAWL_API_KEY || null,
   py: (args) => run(PY, [path.join(PIPE, "scripts", args[0]), ...args.slice(1)], { timeout: 120000 }) }); }
 catch (e) { openwebError = e.message; console.error("Open Web disabled:", e.message); }
@@ -899,9 +919,9 @@ http.createServer(async (req, res) => {
   try {
     if (req.method === "GET" && u.pathname === "/") return send(res, 200, fs.readFileSync(path.join(APP, "ui.html")), "text/html; charset=utf-8");
     const local = !req.headers["cf-connecting-ip"] && !req.headers["x-forwarded-for"] && /^(::1|127\.0\.0\.1|::ffff:127\.0\.0\.1)$/.test(req.socket.remoteAddress || "");
-    if (u.pathname === "/openweb" || u.pathname === "/inimage" || u.pathname.startsWith("/api/ow/")) return openweb ? await openweb.handle(req, res, u, { local }) : send(res, 503, { error: "Open Web is unavailable: " + openwebError });
+    if (u.pathname === "/openweb" || u.pathname === "/inimage" || u.pathname === "/twoinone" || u.pathname.startsWith("/api/ow/")) return openweb ? await openweb.handle(req, res, u, { local }) : send(res, 503, { error: "Open Web is unavailable: " + openwebError });
     if (u.pathname === "/api/status") return send(res, 200, { local, queue: waiting, hasKey: provider() !== "none", articleSearch: !!(loadSettings().firecrawlKey || process.env.FIRECRAWL_API_KEY), provider: provider(), youtube: youtubeKey() ? (Date.now() > ytApiDisabledUntil ? "api" : "browser (API paused)") : "browser", keyFromEnv: !!(process.env.ANTHROPIC_API_KEY || process.env.GEMINI_API_KEY), ffmpeg: !!FF || !IS_WIN, hosted: !IS_WIN, outDir: OUT_ROOT });
-    if (req.method === "POST" && u.pathname === "/api/settings") { if (!local) return send(res, 403, { error: "Settings can only be changed on the computer running the app." }); const b = await body(req); const s = loadSettings(); if (b.apiKey) s.apiKey = b.apiKey.trim(); if (b.geminiKey) s.geminiKey = b.geminiKey.trim(); if (b.youtubeKey) { s.youtubeKey = b.youtubeKey.trim(); ytApiDisabledUntil = 0; } if (b.firecrawlKey) s.firecrawlKey = b.firecrawlKey.trim(); if (b.provider) s.provider = b.provider; fs.writeFileSync(SETTINGS, JSON.stringify(s)); return send(res, 200, { ok: true, provider: provider() }); }
+    if (req.method === "POST" && u.pathname === "/api/settings") { if (!local) return send(res, 403, { error: "Settings can only be changed on the computer running the app." }); const b = await body(req); const s = loadSettings(); if (b.apiKey) s.apiKey = b.apiKey.trim(); if (b.geminiKey) s.geminiKey = b.geminiKey.trim(); if (b.youtubeKey) { s.youtubeKey = b.youtubeKey.trim(); ytApiDisabledUntil = 0; } if (b.firecrawlKey) s.firecrawlKey = b.firecrawlKey.trim(); if (b.openaiKey) s.openaiKey = b.openaiKey.trim(); if (b.openaiBaseUrl) s.openaiBaseUrl = b.openaiBaseUrl.trim(); if (b.openaiModel) s.openaiModel = b.openaiModel.trim(); if (b.provider) s.provider = b.provider; fs.writeFileSync(SETTINGS, JSON.stringify(s)); return send(res, 200, { ok: true, provider: provider() }); }
     if (req.method === "POST" && u.pathname === "/api/ads") {   // runs in the background (share links cut requests at ~100 s)
       const b = await body(req);
       const k = BRANDS && findBrand(BRANDS, b.brand || "", b.product || ""), why = bannedReason(k, b.product || "");

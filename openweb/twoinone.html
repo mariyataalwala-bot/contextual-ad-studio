@@ -1,0 +1,228 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>2-in-1 Studio</title>
+<link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+<style>
+:root{--p:#0B6FF0;--m:#E8337F;--ink:#14152B;--mute:#6B6F80;--line:#E6E7EF;--bg:#F6F8FB;--ok:#1FA81A;--bad:#D33;
+  --grad:linear-gradient(135deg,#0B6FF0 0%,#1E63E9 55%,#E8337F 100%);--sh:0 1px 2px rgba(20,21,43,.04),0 8px 28px rgba(20,21,43,.06);--r:20px}
+*{box-sizing:border-box}
+body{margin:0;font-family:Poppins,system-ui,sans-serif;color:var(--ink);background:var(--bg);min-height:100vh;
+  background-image:radial-gradient(900px 420px at 85% -120px,rgba(232,51,127,.10),transparent 70%),radial-gradient(800px 420px at 0% -160px,rgba(11,111,240,.14),transparent 70%);background-repeat:no-repeat}
+a{color:var(--p)}
+header{position:sticky;top:0;z-index:20;backdrop-filter:saturate(1.4) blur(12px);background:rgba(255,255,255,.78);border-bottom:1px solid var(--line)}
+.hin{max-width:1120px;margin:0 auto;display:flex;align-items:center;gap:12px;padding:14px 20px;flex-wrap:wrap}
+.logo{width:42px;height:42px;border-radius:13px;background:radial-gradient(circle at 35% 30%,#E59BFF 0,#9B2BE0 40%,#4A0A8C 78%,#23004D);display:grid;place-items:center;color:#fff;font-size:20px;box-shadow:0 6px 18px rgba(11,111,240,.35)}
+h1{font-size:19px;margin:0;font-weight:700;letter-spacing:-.01em}header small{color:var(--mute);font-size:12.5px}.sp{flex:1}
+.navlink{font-size:13.5px;font-weight:600;text-decoration:none;padding:9px 14px;border-radius:12px;border:1.5px solid rgba(11,111,240,.35);background:#fff;white-space:nowrap}
+main{max-width:1120px;margin:22px auto 60px;padding:0 20px;display:grid;gap:18px}
+.card{background:#fff;border:1px solid var(--line);border-radius:var(--r);padding:26px;box-shadow:var(--sh)}
+.ch{display:flex;align-items:flex-start;gap:14px;margin-bottom:18px}
+.num{flex:none;display:grid;place-items:center;width:34px;height:34px;border-radius:11px;background:var(--grad);color:#fff;font-size:15px;font-weight:700}
+.card h2{margin:2px 0;font-size:18px;font-weight:700}.s{color:var(--mute);font-size:13.5px}
+.row{display:grid;grid-template-columns:1fr 1.4fr 1fr;gap:14px}
+.src{display:flex;gap:10px;flex-wrap:wrap;margin:0 0 16px}.src label{display:flex;align-items:center;gap:8px;margin:0;padding:10px 14px;border:1.5px solid var(--line);border-radius:12px;cursor:pointer;font-size:13.5px;font-weight:600;background:#FBFBFE}
+.src input{accent-color:var(--p)}.src label:has(input:checked){border-color:var(--p);background:#F5F9FF}
+select{width:100%;font:inherit;font-size:14.5px;padding:12px 14px;border:1.5px solid var(--line);border-radius:12px;background:#FBFBFE;color:var(--ink)}
+.drop{display:flex;align-items:center;gap:14px;padding:14px 16px;border:1.5px dashed #C9CBE0;border-radius:14px;background:#FBFBFE;cursor:pointer;position:relative}
+.drop input{position:absolute;inset:0;opacity:0;cursor:pointer}.drop b{font-size:13.5px}.drop img,.drop video{height:64px;border-radius:8px;border:1px solid var(--line);margin-left:auto}.row2{display:grid;grid-template-columns:1fr;gap:14px;margin-top:14px}
+label{display:block;font-size:12.5px;font-weight:600;margin:0 0 7px;color:#3A3C52}
+input{width:100%;font:inherit;font-size:14.5px;padding:12px 14px;border:1.5px solid var(--line);border-radius:12px;background:#FBFBFE;color:var(--ink)}
+input:focus{outline:none;border-color:var(--p);background:#fff;box-shadow:0 0 0 4px rgba(11,111,240,.13)}
+button,.btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;font:inherit;font-size:14.5px;border:0;border-radius:12px;padding:12px 22px;font-weight:600;cursor:pointer;background:var(--grad);color:#fff;box-shadow:0 6px 18px rgba(11,95,224,.28);text-decoration:none}
+button:disabled{opacity:.45;cursor:default}.ghost{background:#fff;color:var(--p);border:1.5px solid rgba(11,111,240,.45);box-shadow:none}
+.bar{display:flex;gap:12px;flex-wrap:wrap;margin-top:18px;align-items:center}
+.how{display:grid;grid-template-columns:repeat(5,1fr);gap:10px;margin-top:18px}
+.how div{border:1px solid var(--line);border-radius:14px;padding:12px;font-size:12.5px;color:var(--mute);background:#FBFBFE}.how b{display:block;color:var(--ink);font-size:13px;margin-bottom:2px}
+/* progress */
+.pbox{display:flex;align-items:center;gap:18px}
+.pct{font-size:44px;font-weight:700;letter-spacing:-.03em;background:var(--grad);-webkit-background-clip:text;background-clip:text;color:transparent;min-width:120px}
+.track{flex:1;height:12px;border-radius:99px;background:#EDF0F5;overflow:hidden;position:relative}
+.fill{height:100%;width:0;border-radius:99px;background:var(--grad);transition:width .6s cubic-bezier(.2,.8,.3,1);position:relative;overflow:hidden}
+.fill:after{content:"";position:absolute;inset:0;background:linear-gradient(100deg,transparent 20%,rgba(255,255,255,.45) 50%,transparent 80%);animation:sh 1.6s linear infinite}
+@keyframes sh{from{transform:translateX(-100%)}to{transform:translateX(100%)}}
+.steps{display:flex;gap:8px;margin-top:16px;flex-wrap:wrap}.steps span{font-size:12px;font-weight:600;padding:6px 11px;border-radius:99px;background:#F0F0F7;color:var(--mute)}
+.steps span.on{background:#EEF5FF;color:#0B6FF0}.steps span.ok{background:#E8F7E7;color:var(--ok)}.steps span.bad{background:#FDECEC;color:var(--bad)}
+/* a stopped run: the bar stops where it ended and turns red — never a frozen "in progress" */
+#prog.stopped .fill{background:var(--bad)}#prog.stopped .fill:after{display:none}#prog.stopped .pct{background:none;color:var(--bad)}
+.need{border-radius:14px;outline:2px solid var(--bad);outline-offset:6px}
+.up{display:flex;gap:10px;align-items:center;margin-top:8px;font-size:12.5px;color:var(--mute)}.up input{width:auto;padding:6px;font-size:12.5px}
+.log{margin-top:14px;font:12px/1.6 ui-monospace,Consolas,monospace;color:#555;max-height:150px;overflow:auto;background:#FAFAFD;border:1px solid var(--line);border-radius:12px;padding:10px 12px;white-space:pre-wrap}
+/* result */
+.res{display:grid;grid-template-columns:330px 1fr;gap:26px;align-items:start}
+.phone{border-radius:34px;padding:10px;background:#111;box-shadow:0 18px 50px rgba(20,21,43,.25)}
+.phone video{width:100%;display:block;border-radius:26px;background:#000}
+.art{border:1px solid var(--line);border-radius:14px;padding:14px 16px;background:#FBFBFE}.art b{font-size:15px;display:block;margin:2px 0 6px}
+.chk{display:flex;gap:10px;align-items:flex-start;padding:10px 0;border-bottom:1px dashed var(--line);font-size:13px}.chk:last-child{border:0}
+.chk i{flex:none;width:22px;height:22px;border-radius:50%;background:var(--ok);color:#fff;display:grid;place-items:center;font-style:normal;font-size:12px;font-weight:700}
+.kv{display:grid;grid-template-columns:120px 1fr;gap:6px 12px;font-size:13px;margin-top:8px}.kv span{color:var(--mute)}
+.assets{display:flex;gap:12px;margin-top:10px}.assets img{height:70px;max-width:140px;object-fit:contain;border:1px solid var(--line);border-radius:10px;background:repeating-conic-gradient(#f1f1f5 0 25%,#fff 0 50%) 0 0/14px 14px;padding:4px}
+.note{font-size:12px;color:var(--mute);margin-top:12px}
+.err{color:var(--bad);font-weight:600;font-size:14px}
+.gal{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:14px}
+.gal a{display:block;text-decoration:none;color:var(--ink);border:1px solid var(--line);border-radius:14px;overflow:hidden;background:#fff}
+.gal img{width:100%;height:180px;object-fit:cover;object-position:center 40%;display:block;background:#eee}.gal div{padding:9px 11px;font-size:12px}.gal b{display:block;font-size:13px}
+@media(max-width:820px){.row,.res,.how{grid-template-columns:1fr}.phone{max-width:330px;margin:auto}}
+</style>
+<link href="https://fonts.googleapis.com/css2?family=Funnel+Display:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/brand/mediakart.css"></head><body>
+<header><div class="hin"><a class="mk-brand" href="/" title="MediaKart"><img src="/brand/mediakart-logo.png" alt="MediaKart"></a><span class="mk-div"></span><div class="mk-prod"><b>2-in-1 Studio</b><small>A brand’s video ad and display panel, placed on the right article</small></div><div class="sp"></div><nav class="mk-nav"><a href="/"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2.5" y="5" width="19" height="14" rx="4"/><path d="M10 9.5v5l4.5-2.5z" fill="currentColor"/></svg><span>YouTube</span></a><a href="/inimage"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="3"/><path d="M3 14h18"/><circle cx="8.5" cy="9" r="1.6"/></svg><span>In-Image</span></a><a href="/twoinone" class="on"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="3"/><rect x="6" y="6" width="12" height="6" rx="1"/><path d="M6 15h12M6 18h7"/></svg><span>2-in-1</span></a><a href="/openweb"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3c2.6 2.8 2.6 15.2 0 18M12 3c-2.6 2.8-2.6 15.2 0 18"/></svg><span>Open Web</span></a></nav></div></header>
+<section class="mk-hero"><div class="in"><span class="mk-eyebrow">2-in-1 Studio</span><h2>One moment, <em>two ways to be seen.</em></h2><p>Bring the brand&rsquo;s video ad. We find a recent, brand-safe article it belongs beside, and show the video and display panel together over that article.</p><div class="mk-trust"><span>Video checked, never replaced</span><span>Real article, real date</span><span>Preview only &mdash; nothing goes live</span></div></div></section>
+<style>
+.vlist{display:grid;gap:12px;margin-top:16px}
+.vc{display:grid;grid-template-columns:200px 1fr auto;gap:16px;align-items:center;border:1px solid var(--line);border-radius:16px;padding:12px;background:#fff}
+.vc img{width:200px;aspect-ratio:16/9;object-fit:cover;border-radius:10px;background:#0b0f19;display:block}
+.vc b{font-size:14.5px;display:block;margin-bottom:3px}.vc .s{font-size:12.5px}
+.chips{display:flex;gap:6px;flex-wrap:wrap;margin-top:8px}.chip{font-size:11.5px;font-weight:600;padding:3px 9px;border-radius:99px;background:#ecfdf3;color:#067647}.chip.q{background:#fff7e6;color:#9a6700}.chip.n{background:#fdecec;color:#c0262d}
+.rej{margin-top:14px;font-size:12.5px;color:var(--mute)}.rej summary{cursor:pointer;font-weight:600}.rej li{margin:6px 0}
+.badge{display:inline-block;font-size:11.5px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;padding:4px 10px;border-radius:99px;background:#eef5ff;color:#0b6ff0}
+.badge.ok{background:#ecfdf3;color:#067647}.badge.bad{background:#fdecec;color:#c0262d}.badge.q{background:#fff7e6;color:#9a6700}
+.panel{border:1px solid var(--line);border-radius:16px;padding:16px 18px;background:#fff;margin-bottom:14px}.panel h3{margin:0 0 10px;font-size:13px;letter-spacing:.06em;text-transform:uppercase;color:#4a5468}
+.big{font-size:40px;font-weight:700;letter-spacing:-.03em;line-height:1}.bars{display:grid;gap:7px;margin-top:12px}.br{display:grid;grid-template-columns:150px 1fr 34px;gap:10px;align-items:center;font-size:12.5px}
+.bt{height:7px;border-radius:9px;background:#edf0f5;overflow:hidden}.bt i{display:block;height:100%;background:var(--mk-blue)}
+.ev{margin:12px 0 0;padding:10px 14px;border-left:3px solid var(--mk-blue);background:#f6f9ff;border-radius:0 10px 10px 0;font-size:13px}
+.pv{width:100%;max-width:360px;aspect-ratio:9/16;height:auto;border:0;border-radius:30px;background:#e9ecf2;box-shadow:0 30px 60px -28px rgba(11,18,32,.5);display:block;margin:auto}
+.sp2{display:flex;gap:10px;flex-wrap:wrap;margin-top:12px}
+.stat{font-size:15px;font-weight:700;margin:0 0 6px}
+@media(max-width:820px){.vc{grid-template-columns:1fr}.vc img{width:100%}.br{grid-template-columns:110px 1fr 30px}}
+</style>
+<main>
+<section class="card">
+  <div class="ch"><div class="num">1</div><div><h2>Choose the video ad</h2><p class="s">Use the client&rsquo;s own video, or let us find the brand&rsquo;s official ads on YouTube. The video is checked and shown as it is &mdash; never edited or replaced.</p></div></div>
+  <div class="src"><label><input type="radio" name="src" value="yt" checked> Find on YouTube</label><label><input type="radio" name="src" value="client"> Client&rsquo;s video</label></div>
+  <div class="row" style="grid-template-columns:1fr 1.4fr"><div><label for="brand">Brand</label><input type="text" id="brand" placeholder="e.g. Airtel" autocomplete="off" list="brandList"><datalist id="brandList"></datalist></div>
+    <div><label for="product">Product</label><input type="text" id="product" placeholder="e.g. Priority Postpaid" autocomplete="off"></div></div>
+  <div id="ytBox"><div class="bar"><button id="find">Find the brand&rsquo;s ads</button><span class="s" id="fhint">Searches YouTube, keeps only official, current, embeddable 16:9 ads.</span></div><div class="vlist" id="vlist"></div><details class="rej" id="rej" hidden></details></div>
+  <div id="clBox" hidden>
+    <div class="row2"><label class="drop"><input type="file" id="vfile" accept="video/mp4,video/webm"><div><b>Upload the brand&rsquo;s video ad</b><div class="s" id="vname">MP4 or WebM · 16:9 landscape · up to 40 MB · shown exactly as supplied</div></div></label></div>
+    <div class="row2"><label style="text-transform:none;letter-spacing:0;font-weight:500;display:flex;gap:8px;align-items:flex-start"><input type="checkbox" id="cconf" style="width:auto;margin-top:3px"> <span>Only if the video shows no logo: I confirm it is this brand&rsquo;s own ad. (Otherwise a video that does not show the brand is not placed.)</span></label></div>
+    <div class="row2"><div><label for="vurl">or paste a link</label><input type="text" id="vurl" placeholder="https://&hellip;/ad.mp4 or a YouTube link" autocomplete="off"></div></div>
+    <div class="row2"><label class="drop"><input type="file" id="dfile" accept="image/png,image/jpeg,image/gif,image/webp"><div><b>Display panel (optional)</b><div class="s" id="dname">The picture shown under the video. Without one, a brand card is built from the brand&rsquo;s name, colour and logo &mdash; no copy is written.</div></div></label></div>
+    <div class="bar"><button id="go">Create the 2-in-1 preview</button><span class="s" id="hint">Ready in about two minutes.</span></div>
+  </div>
+  <div class="how">
+    <div><b>1 · Video</b>Checked: right brand, 16:9, current, can be embedded</div>
+    <div><b>2 · Articles</b>Recent, readable articles on the media-plan publishers</div>
+    <div><b>3 · Match</b>Product, topic, message, recency and source &mdash; scored with evidence</div>
+    <div><b>4 · Safety</b>Page safety, rivals, sensitive topics &mdash; unsafe is never placed</div>
+    <div><b>5 · Preview</b>Video + display over the article, with close and disclosure</div>
+  </div>
+</section>
+<section class="card" id="prog" hidden>
+  <div class="pbox"><div class="pct" id="pct">0%</div><div class="track"><div class="fill" id="fill"></div></div></div>
+  <div class="steps" id="steps"><span data-k="video">Video</span><span data-k="articles">Articles</span><span data-k="match">Matching</span><span data-k="render">Preview</span></div>
+  <div class="log" id="log"></div>
+</section>
+<section class="card" id="out" hidden></section>
+<section class="card"><div class="ch"><div class="num">&#8634;</div><div><h2>Recent 2-in-1 previews</h2><p class="s">Each keeps its video checks, article and the reasons behind the match.</p></div></div><div class="gal" id="gal"><span class="s">No previews yet &mdash; your first one will appear here.</span></div></section>
+</main>
+<footer class="mk-foot"><img src="/brand/mediakart-logo.png" alt="MediaKart"><span>Contextual Ad Studio · Previews for pitches only — nothing is served live.</span></footer>
+<script>
+const $ = (id) => document.getElementById(id);
+const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
+const api = async (p, o) => { const r = await fetch("/api/ow" + p, o); const j = await r.json().catch(() => ({})); if (!r.ok) throw Object.assign(new Error(j.error || "HTTP " + r.status), { id: j.id }); return j; };
+const post = (p, b) => api(p, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(b) });
+const ORDER = ["video", "articles", "match", "render", "done"];
+const STATUS = { success: ["Placed", "ok"], partial: ["Partly placed", "q"], needs_review: ["Needs a person to review", "q"], no_match: ["No match", "bad"], failed: ["Stopped", "bad"] };
+let shown = 0, target = 0, tick;
+function setPct(p) { target = p; if (!tick) tick = setInterval(() => { if (shown < target) shown += Math.max(0.4, (target - shown) / 8); else if (shown < Math.min(99, target + 5)) shown += 0.04; $("pct").textContent = Math.floor(Math.min(shown, 100)) + "%"; $("fill").style.width = Math.min(shown, 100) + "%"; }, 120); }
+function setStage(st) { const i = ORDER.indexOf(st); for (const s of $("steps").children) { const k = ORDER.indexOf(s.dataset.k); s.className = k < i || st === "done" ? "ok" : k === i ? "on" : ""; } }
+function stopped(msg) { clearInterval(tick); tick = null; $("prog").classList.add("stopped"); $("pct").textContent = "Stopped"; for (const s of $("steps").children) if (s.className === "on") s.className = "bad"; $("log").innerHTML += `\n<span class="err">${esc(msg)}</span>`; $("log").scrollTop = 1e9; }
+let mode = "yt", clientVideo = null, display = null;
+for (const el of document.querySelectorAll('input[name="src"]')) el.addEventListener("change", () => { mode = document.querySelector('input[name="src"]:checked').value; $("ytBox").hidden = mode !== "yt"; $("clBox").hidden = mode !== "client"; });
+const readFile = (f, cap) => new Promise((ok, no) => { if (f.size > cap) return no(new Error(f.name + " is larger than " + cap / 1e6 + " MB")); const r = new FileReader(); r.onload = () => ok(r.result); r.onerror = () => no(new Error("The file could not be read")); r.readAsDataURL(f); });
+$("vfile").addEventListener("change", async () => { const f = $("vfile").files[0]; clientVideo = null; if (!f) return; try { clientVideo = { name: f.name, data: await readFile(f, 40e6) }; $("vname").textContent = `${f.name} · ${(f.size / 1e6).toFixed(1)} MB`; } catch (e) { $("vname").innerHTML = `<span class="err">${esc(e.message)}</span>`; } });
+$("dfile").addEventListener("change", async () => { const f = $("dfile").files[0]; display = null; if (!f) return; try { display = { name: f.name, data: await readFile(f, 40e6) }; $("dname").textContent = f.name; } catch (e) { $("dname").innerHTML = `<span class="err">${esc(e.message)}</span>`; } });
+
+// ---- the YouTube route: verified candidates, one is chosen ----
+async function waitJob(id, onLog) { for (;;) { await new Promise((r) => setTimeout(r, 1200)); const j = await api("/job/" + id); if (onLog) onLog(j); if (j.status !== "running") return j; } }
+$("find").onclick = async () => {
+  const brand = $("brand").value.trim(), product = $("product").value.trim();
+  if (!brand) { $("fhint").innerHTML = `<span class="err">Type the brand.</span>`; return; }
+  $("find").disabled = true; $("vlist").innerHTML = ""; $("rej").hidden = true; $("fhint").textContent = "Searching YouTube…";
+  try {
+    const { id } = await post("/twoinone/candidates", { brand, product });
+    const j = await waitJob(id, (x) => { $("fhint").textContent = x.log[x.log.length - 1]?.replace(/^\S+\s+/, "") || "Searching…"; });
+    if (j.status !== "done") throw new Error(j.error || "The search did not finish.");
+    const r = j.candidates;
+    $("fhint").textContent = r.candidates.length ? `${r.candidates.length} verified ad${r.candidates.length === 1 ? "" : "s"} — pick one.` : "No ad passed the checks.";
+    $("vlist").innerHTML = r.candidates.map((c) => `<div class="vc"><img src="${esc(c.thumb)}" alt="" loading="lazy" referrerpolicy="no-referrer"><div><b>${esc(c.title)}</b><span class="s">${esc(c.channel)} · ${esc(c.length || "")}${c.published ? " · " + esc(c.published) : ""} · <a href="${esc(c.url)}" target="_blank" rel="noopener">YouTube ↗</a></span>
+      <div class="chips">${c.checks.map((k) => `<span class="chip ${k.pass === true ? "" : k.pass === false ? "n" : "q"}" title="${esc(k.detail)}">${k.pass === false ? "✕" : k.pass === null ? "?" : "✓"} ${esc(k.name)}</span>`).join("")}</div>${c.why ? `<div class="s" style="margin-top:6px">${esc(c.why)}</div>` : ""}</div>
+      <button data-id="${esc(c.id)}">Use this ad</button></div>`).join("");
+    $("rej").innerHTML = r.rejected.length || r.flags.length ? `<summary>${r.rejected.length} turned away · ${r.flags.length} note${r.flags.length === 1 ? "" : "s"}</summary><ul>${r.flags.map((f) => `<li>${esc(f)}</li>`).join("")}${r.rejected.map((c) => `<li><b>${esc(c.title)}</b> (${esc(c.channel)}) — ${esc(c.reasons.join("; "))}</li>`).join("")}</ul>` : ""; $("rej").hidden = !$("rej").innerHTML;
+  } catch (e) { $("fhint").innerHTML = `<span class="err">${esc(e.message)}</span>`; }
+  $("find").disabled = false;
+};
+$("vlist").addEventListener("click", (e) => { const b = e.target.closest("button[data-id]"); if (b) run({ youtubeId: b.dataset.id }); });
+$("go").onclick = () => { if (!clientVideo && !$("vurl").value.trim()) { $("hint").innerHTML = `<span class="err">Upload the video or paste its link.</span>`; return; } run({ clientVideo, videoUrl: clientVideo ? undefined : $("vurl").value.trim(), display, confirmBrand: $("cconf").checked }); };
+
+// ---- the run ----
+const lock = (on) => { for (const b of document.querySelectorAll("#vlist button, #go, #find")) b.disabled = on; };
+async function run(extra) {
+  const brand = $("brand").value.trim(), product = $("product").value.trim();
+  if (!brand || !product) { (mode === "yt" ? $("fhint") : $("hint")).innerHTML = `<span class="err">Type the brand and the product.</span>`; return; }
+  $("prog").classList.remove("stopped"); $("prog").hidden = false; $("out").hidden = true; shown = 0; setPct(1); setStage("video"); $("log").textContent = ""; lock(true);
+  let id; try { id = (await post("/twoinone/start", { brand, product, ...extra })).id; } catch (e) { stopped(e.message); lock(false); return; }
+  try {
+    const j = await waitJob(id, (x) => { setPct(x.pct || 1); setStage(x.stage); $("log").textContent = x.log.join("\n"); $("log").scrollTop = 1e9; });
+    if (j.status === "done") { setPct(100); setStage("done"); showResult(j.dir, j.result); }
+    else { stopped(`${(STATUS[j.outcome] || STATUS.failed)[0]}: ${j.error}`); try { showResult(j.dir, await api("/twoinone/result?dir=" + encodeURIComponent(j.dir)), j.error); } catch { /* no result file */ } }
+  } catch (e) { stopped("Lost touch with the run: " + e.message); }
+  lock(false); loadGallery();
+}
+
+
+// ---- the creative guidelines' quality report (shared by 2-in-1 and In-Image)
+const qaTs = (t) => (t == null ? "whole video" : Math.floor(t / 60) + ":" + String(Math.floor(t % 60)).padStart(2, "0") + "." + Math.round((t % 1) * 10));
+const qaBadge = (qa) => (!qa ? "" : `<span style="display:inline-block;font-size:11.5px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;padding:4px 10px;border-radius:99px;background:${qa.approved ? "#ecfdf3" : qa.status === "incomplete" ? "#fff7e6" : "#fdecec"};color:${qa.approved ? "#067647" : qa.status === "incomplete" ? "#9a6700" : "#c0262d"}">${qa.approved ? "Approved" : qa.status === "incomplete" ? "Checks incomplete" : "Not approved"}</span>`);
+function qaHtml(qa) {
+  if (!qa) return "";
+  const ic = { pass: ["✓", "#12b76a"], warn: ["!", "#d99a00"], fail: ["✕", "#c0262d"], unchecked: ["?", "#d99a00"] };
+  const bad = (qa.issues || []).filter((i) => i.severity !== "minor"), minor = (qa.issues || []).filter((i) => i.severity === "minor");
+  return `<div style="border:1px solid #e6e9ef;border-radius:16px;padding:16px 18px;background:#fff;margin:0 0 14px"><div style="font-size:13px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:#4a5468;margin-bottom:8px">Quality checks · ${qaBadge(qa)}</div>
+  <div style="font-size:13px;color:#344054;margin-bottom:8px">${esc(qa.summary || "")}</div>
+  ${bad.length ? `<div style="margin:8px 0 10px">${bad.map((i) => `<div style="border-left:3px solid ${i.severity === "critical" ? "#c0262d" : "#d99a00"};padding:6px 10px;margin:6px 0;background:#fafbfd;font-size:12.5px"><b>${esc(qaTs(i.t))}</b>${i.also?.length ? ` +${i.also.length} more time${i.also.length === 1 ? "" : "s"}` : ""} · ${esc(i.severity)} — ${esc(i.what)}<div style="color:#667085;margin-top:2px">Fix: ${esc(i.fix)}</div></div>`).join("")}</div>` : ""}
+  <div style="display:grid;gap:4px">${(qa.checks || []).map((c) => `<div style="display:flex;gap:8px;align-items:flex-start;font-size:12.5px"><i style="flex:none;width:18px;height:18px;border-radius:50%;background:${ic[c.status][1]};color:#fff;display:grid;place-items:center;font-style:normal;font-size:11px;font-weight:700">${ic[c.status][0]}</i><span>${esc(c.name)}${c.reason ? ` <span style="color:#9a6700">— ${esc(c.reason)}</span>` : ""}</span></div>`).join("")}</div>
+  ${minor.length ? `<div style="font-size:12px;color:#667085;margin-top:8px">Notes: ${minor.map((i) => esc(qaTs(i.t) + (i.also?.length ? " (+" + i.also.length + ")" : "") + " — " + i.what)).join(" · ")}</div>` : ""}
+  ${(qa.notes || []).length ? `<div style="font-size:12px;color:#667085;margin-top:6px">${qa.notes.map(esc).join("<br>")}</div>` : ""}
+  <div style="font-size:11.5px;color:#98a1b3;margin-top:8px">${(qa.sampled || []).length} frames inspected (${(qa.sampled || []).map(qaTs).join(", ")}) plus whole-file checks · ${esc(qa.version || "")}</div></div>`;
+}
+
+// ---- the result ----
+const bar = (k, v) => `<div class="br"><span>${esc(k)}</span><div class="bt"><i style="width:${(v ?? 0) * 10}%"></i></div><b>${v == null ? "–" : v}</b></div>`;
+function showResult(dir, r, why) {
+  const pl = r.placement, v = r.video || {}, st = STATUS[r.status] || STATUS.failed, m = pl?.match, bs = pl?.brandSafety;
+  const checks = (v.checks || []).map((k) => typeof k === "string" ? `<div class="chk"><i style="background:#c0262d">!</i><div>${esc(k)}</div></div>` : `<div class="chk"><i style="background:${k.pass === true ? "#12b76a" : k.pass === false ? "#c0262d" : "#d99a00"}">${k.pass === true ? "✓" : k.pass === false ? "✕" : "?"}</i><div><b>${esc(k.name)}</b><div class="s" style="font-size:12.5px">${esc(k.detail)}</div></div></div>`).join("");
+  const facts = v.facts ? `<div class="kv"><span>Format</span><div>${esc(v.facts.format)} · ${esc(v.facts.codec)}</div><span>Shape</span><div>${v.facts.width}×${v.facts.height} (${v.facts.aspect}:1)</div><span>Length</span><div>${v.facts.duration} s · ${v.facts.audio ? "has sound" : "no sound"}</div></div>` : "";
+  const ident = v.identified ? `<div class="kv"><span>Brand seen</span><div>${esc(v.identified.brand_seen || "—")}</div><span>Product seen</span><div>${esc(v.identified.product_seen || "—")}</div><span>Campaign</span><div>${esc(v.identified.campaign || "none readable on screen")}</div><span>Evidence</span><div>${esc(v.identified.evidence || "")}</div></div>` : v.id ? `<div class="kv"><span>Channel</span><div>${esc(v.channel || "—")}${v.official ? " · the brand’s own channel" : ""}</div><span>Published</span><div>${esc(v.published || "date not available")}</div><span>Length</span><div>${esc(v.length ?? "—")}${typeof v.length === "number" ? " s" : ""}</div></div>` : "";
+  const ext = (v.name || "mp4").split(".").pop().toLowerCase(), vsrc = r.files?.video ? `/api/ow/twoinone/file?path=${encodeURIComponent(dir + "/" + r.files.video)}` : null;
+  $("out").hidden = false;
+  $("out").innerHTML = `<div class="ch"><div class="num">${r.status === "success" ? "✓" : "!"}</div><div><h2>${esc(r.brand)} · ${esc(r.product)} <span class="badge ${st[1]}">${st[0]}</span> ${qaBadge(r.qa)}</h2><p class="s">${esc(r.sourceLabel || "")}${r.seconds ? " · made in " + esc(r.seconds) + " s" : ""} · preview only, not a live ad</p></div></div>
+  ${r.status !== "success" ? `<div class="panel"><h3>Why it stopped</h3><p class="stat err">${esc(r.error || why || "")}</p><p class="s">Nothing was placed. ${r.status === "no_match" ? "No article was forced to fit." : ""}</p></div>` : ""}
+  <div class="res"><div>${pl ? (vsrc ? `<div class="phone"><video src="${vsrc}" autoplay muted loop playsinline controls></video></div><div class="sp2" style="justify-content:center"><a class="btn" href="${vsrc}&download=1">${r.qa?.approved ? "Download video" : "Download video (not approved)"}</a><a class="btn ghost" href="${esc(pl.article.url)}" target="_blank" rel="noopener">View article ↗</a></div><div class="note" style="text-align:center">${esc(r.export.size)} · recorded on ${esc(r.export.recordedOn)}</div>`
+    : `<div class="panel"><h3>Video</h3><div class="s err">${r.export?.status === "failed" ? "The video could not be recorded: " + esc(r.export.error) : "No video was recorded for this preview."}</div></div>`) + `<details style="margin-top:12px"><summary class="s" style="cursor:pointer">Interactive preview (our copy of the article)</summary><iframe class="pv" id="pv" title="2-in-1 placement preview" sandbox="allow-scripts allow-same-origin allow-popups" allow="autoplay; fullscreen" src="/api/ow/twoinone/preview?dir=${encodeURIComponent(dir)}"></iframe><div class="sp2" style="justify-content:center"><button class="ghost" id="again">↻ Replay the unit</button></div></details>` : ""}</div>
+  <div>
+    ${qaHtml(r.qa)}<div class="panel"><h3>Video · <span class="badge">${esc(r.sourceLabel || "")}</span></h3>
+      ${v.source === "client" && v.facts ? `<video src="/api/ow/twoinone/file?path=${encodeURIComponent(dir + "/assets/client_video." + ext)}" controls muted playsinline style="width:100%;border-radius:12px;background:#000;max-height:220px"></video>` : v.id ? `<a href="${esc(v.url)}" target="_blank" rel="noopener"><img src="${esc(v.thumb)}" alt="" referrerpolicy="no-referrer" style="width:100%;border-radius:12px;display:block"></a>` : ""}
+      <div style="margin-top:10px"><b>${esc(v.title || v.name || "")}</b>${v.url ? ` · <a href="${esc(v.url)}" target="_blank" rel="noopener">YouTube ↗</a>` : ""}</div>${facts}${ident}${checks ? `<div style="margin-top:8px">${checks}</div>` : ""}</div>
+    ${pl ? `<div class="panel"><h3>Selected article</h3><b>${esc(pl.article.headline)}</b><div class="s">${esc(pl.article.publisher)}${pl.article.published ? " · " + esc(new Date(pl.article.published).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" })) : " · date not available"}</div>
+      <div class="s" style="margin-top:6px;word-break:break-all"><a href="${esc(pl.article.url)}" target="_blank" rel="noopener">${esc(pl.article.url)}</a></div></div>
+    <div class="panel"><h3>Contextual relevance</h3><div class="big">${esc(m.score)}<span class="s" style="font-size:16px"> / 10</span></div><div class="s">Needs ${esc(m.minScore)} overall and ${esc(m.minContext)} on product relevance.</div>
+      <div class="bars">${bar("Product relevance", m.breakdown.product_relevance)}${bar("Article topic & intent", m.breakdown.topic_intent)}${bar("Campaign message", m.breakdown.campaign_fit)}${bar("Recency", m.breakdown.recency)}${bar("Source reliability", m.breakdown.source)}</div>
+      ${m.evidence ? `<div class="ev">“${esc(m.evidence)}”<div class="s">— sentence from the article that shows the link</div></div>` : `<div class="ev">No verifiable evidence sentence was found in the article.</div>`}<p class="s" style="margin:10px 0 0">${esc(m.why)}</p>${m.flags?.length ? `<p class="s">${esc(m.flags.join(" · "))}</p>` : ""}</div>
+    <div class="panel"><h3>Brand safety · <span class="badge ${bs.status === "safe" ? "ok" : "bad"}">${esc(bs.status)}</span></h3><div class="s">Page safety: ${esc(bs.pageSafety || "n/a")}${bs.pageSafetyReasons?.length ? " (" + esc(bs.pageSafetyReasons.join(", ")) + ")" : ""} · article text: ${esc(bs.extraction)} · AI check: ${esc(bs.aiCheck)}</div></div>
+    <div class="panel"><h3>Product panel</h3><div class="s">${esc(r.panel?.source || "")}.${r.panel?.copy?.headline ? `<br><b>${esc(r.panel.copy.headline)}</b> · ${esc(r.panel.copy.subline || "")} · [${esc(r.panel.copy.cta || "")}]` : ""}${r.panel?.product?.site ? `<br>Product picture: <a href="${esc(r.panel.product.page || "#")}" target="_blank" rel="noopener">${esc(r.panel.product.site)}</a> · ${esc(r.panel.product.method === "photo" ? "photo" : "cut out")}` : ""}${r.panel?.flags?.length ? `<br>${esc(r.panel.flags.join(" · "))}` : ""}</div></div>
+    <div class="panel"><h3>Placement</h3><div class="s">${esc(pl.unit.layout)}.<br>${esc(pl.unit.disclosure)}.</div></div>` : ""}
+    ${r.candidates?.length ? `<div class="note">${r.candidates.length} article${r.candidates.length === 1 ? "" : "s"} scored: ${r.candidates.map((c) => `“${esc(String(c.article).slice(0, 50))}” ${esc(c.score)}${c.fits ? "" : " ✕"}`).join(" · ")}${r.rejectedArticles?.length ? ` · ${r.rejectedArticles.length} left out (${esc(r.rejectedArticles.slice(0, 2).map((x) => x.why).join("; "))})` : ""}</div>` : ""}
+  </div></div>`;
+  const ag = $("again"); if (ag) ag.onclick = () => { const f = $("pv"); f.src = f.src; };
+  $("out").scrollIntoView({ behavior: "smooth", block: "start" });
+}
+async function loadGallery() {
+  try { const l = await api("/twoinone/list"); if (!l.length) return;
+    $("gal").innerHTML = l.map((m) => `<a href="#" data-dir="${esc(m.dir)}"><img src="${m.thumb ? "/api/ow/twoinone/file?path=" + encodeURIComponent(m.dir + "/" + m.thumb) : ""}" alt="" loading="lazy"><div><b>${esc(m.brand)} · ${esc(m.product)}</b>${esc(m.publisher || "")} · ${esc(m.score)}/10<br>${esc(String(m.article || "").slice(0, 80))}</div></a>`).join("");
+  } catch { /* the list is optional */ }
+}
+$("gal").addEventListener("click", async (e) => { const a = e.target.closest("a[data-dir]"); if (!a) return; e.preventDefault(); showResult(a.dataset.dir, await api("/twoinone/result?dir=" + encodeURIComponent(a.dataset.dir))); });
+loadGallery();
+api("/studio/brands").then((b) => { $("brandList").innerHTML = b.brands.flatMap((x) => [x.name, ...x.subBrands]).map((n) => `<option value="${esc(n)}">`).join(""); }).catch(() => {});
+</script></body></html>

@@ -10,6 +10,14 @@ services:
       - key: GEMINI_API_KEY     # free Gemini key (aistudio.google.com) — entered in the Render dashboard, never in the repo
         sync: false
       - key: ANTHROPIC_API_KEY  # optional Claude key (better picks); leave empty to use Gemini
+      - key: AI_PROVIDER        # gemini | claude | openai — use `openai` to run on a free Groq / OpenRouter / Together key instead of Gemini
+        sync: false
+      - key: OPENAI_COMPAT_KEY  # key for the OpenAI-compatible provider (e.g. a free key from console.groq.com)
+        sync: false
+      - key: OPENAI_COMPAT_BASE_URL  # optional; default https://api.groq.com/openai/v1 (OpenRouter: https://openrouter.ai/api/v1)
+        sync: false
+      - key: OPENAI_COMPAT_MODEL     # optional; default meta-llama/llama-4-scout-17b-16e-instruct (needs a model that reads pictures)
+        sync: false
         sync: false
       - key: APP_PASSWORD       # login password for the hosted page (anyone with the URL could otherwise use your key)
         sync: false

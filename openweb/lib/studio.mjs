@@ -17,7 +17,8 @@ import { stripHtml, fitStrip, STRIP_VERSION, STYLES, styleFontsUrl, styleFontFac
 import { storyHtml, STORY_VERSION, MOTIFS, hookFor } from "./story.mjs";
 import { sceneHtml, sceneVersion, directorPrompt, deviceFor, endStyle, DIRECTOR_SCHEMA, DIRECTOR_VERSION, DEVICES } from "./director.mjs";
 import { norm, sha256 } from "./text.mjs";
-import { findBrand, brandBrief, bannedReason, namesBrand } from "./brands.mjs";
+import { findBrand, brandBrief, bannedReason, namesBrand, ownNames } from "./brands.mjs";
+import { runQa } from "./qa.mjs";
 
 // Why a run must not start (a product that may not be advertised, e.g. infant formula under India's IMS Act), or null
 export function studioRefusal(brands, brand, product) {
@@ -201,7 +202,7 @@ export const foreignSite = (host) => /\.(?:(?:co|com|org|net|gov|ac)\.)?(?:ee|fr
 // pictures that show exactly this product are tried, best kind first; banners and irrelevant pictures never are.
 // Lifestyle photos only for food, drinks and services, where the ad shows them as a scene behind the copy.
 export const PICTURE_KINDS = ["cutout", "product_on_background", "lifestyle", "promo_banner", "irrelevant"];
-const PICTURE_GUIDE = "cutout (the product alone on a transparent or plain white/single-colour background), product_on_background (the product clearly the main subject on a table, plate, surface or simple setting), lifestyle (a scene where the product is used or served, people or several props around it), promo_banner (any headline, offer, price or campaign text over the picture, an ad or web banner, or website / app decoration art: illustrated or 3D-rendered objects, icons, coins or confetti floating on an empty background), irrelevant (not this product)";
+export const PICTURE_GUIDE = "cutout (the product alone on a transparent or plain white/single-colour background), product_on_background (the product clearly the main subject on a table, plate, surface or simple setting), lifestyle (a scene where the product is used or served, people or several props around it), promo_banner (any headline, offer, price or campaign text over the picture, an ad or web banner, or website / app decoration art: illustrated or 3D-rendered objects, icons, coins or confetti floating on an empty background), irrelevant (not this product)";
 const KIND_ORDER = { cutout: 0, product_on_background: 1, lifestyle: 2 };
 /** @param {any} pick the AI's answer @param {any[]} thumbs P pictures ({ n, url, … }) @returns {any[]} pictures to try, best first */
 export function productCandidates(pick, thumbs, { lifestyleOk = false, max = 6 } = {}) {
@@ -304,7 +305,7 @@ export async function recentAdsRef(brand, product, { findAds = null, known = nul
 const TOPIC_SCHEMA = { type: "object", properties: { words: { type: "array", items: { type: "string" } }, competitors: { type: "array", items: { type: "string" } } }, required: ["words"] };
 
 // ---------- AI prompts (versioned: STUDIO_PROMPTS) ----------
-const PICK_SCHEMA = { type: "object", properties: {
+export const PICK_SCHEMA = { type: "object", properties: {
   packshot: { type: "integer", description: "number of the best product picture, 0 if none is acceptable" },
   packshot_ranked: { type: "array", items: { type: "integer" }, description: "every acceptable product picture, best first (up to 6)" },
   pictures: { type: "array", description: "every P picture, classified", items: { type: "object", properties: {
@@ -343,7 +344,7 @@ const FINAL_SCHEMA = { type: "object", properties: {
 }, required: ["candidates"] };
 
 // Bing's own copy of a search result at a larger size (used when the picture's site refuses the download)
-const bingLarge = (thumb, size) => /^https:\/\/[\w.]*bing\.(net|com)\/th/.test(thumb || "") ? thumb.replace(/&(w|h|c)=\d+/g, "") + `&w=${size}&h=${size}&c=7` : null;
+export const bingLarge = (thumb, size) => /^https:\/\/[\w.]*bing\.(net|com)\/th/.test(thumb || "") ? thumb.replace(/&(w|h|c)=\d+/g, "") + `&w=${size}&h=${size}&c=7` : null;
 // what the user typed, replaced by the product's real name found online (the brand prefix left off): copy must name the real product
 const reEsc = (t) => String(t).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 // Only a real product name replaces the typed words — whole words only — never the bare brand ("food" must not
@@ -366,7 +367,7 @@ export const words = (s, n) => {
 /**
  * @param {{ brand: string, product: string, discovery?: { fc: any, campaigns?: (brand: string) => Promise<any> }|null, recentAds?: ((q: { brand: string, product?: string }) => Promise<any[]>)|null, offer?: string, productImage?: string, style?: string, brands?: any, clientAd?: { file: string, type: "image"|"video", name?: string, seconds?: number }|null, workDir: string, indexDir?: string, studio: any, cfg: any, store: any,
  *   ask: Function, fetchImpl?: any, py: (args: string[]) => Promise<string>, ffmpeg: (args: string[]) => Promise<any>, chromium?: any, firecrawl?: { key: string }|null, productFile?: string|null,
- *   signal?: AbortSignal, say?: (pct: number, stage: string, msg?: string) => void }} o
+ *   signal?: AbortSignal, say?: (pct: number, stage: string, msg?: string) => void, qa?: boolean }} o
  */
 export async function makeInImage(o) {
   const { brand, product, studio, cfg, store, ask, py, ffmpeg, workDir } = o;
@@ -856,6 +857,20 @@ export async function makeInImage(o) {
     result.status = ex?.status === "partial" ? "partial" : "success";
     result.statusWhy = result.status === "partial" ? `Made from partial context: ${ex.notes.join("; ") || `only ${ex.chars} characters of the article could be read`}. Every check passed on the text that could be read.` : "Every check passed on the article text.";
     result.timing = timing; result.seconds = timing.render;
+    // the creative guidelines' quality checks over the finished video: it is approved only when they all pass
+    if (o.qa !== false && out.mp4) {
+      say(97, "render", "Checking the finished video against the creative guidelines…");
+      const said = client ? [] : [{ where: "headline", text: result.copy?.headline }, { where: "subline", text: result.copy?.subline }, { where: "button", text: result.copy?.cta }, { where: "line", text: result.director?.message }, { where: "kicker", text: result.director?.kicker }].filter((x) => x.text);
+      const left = Math.max(25000, (budget() + 55 - (Date.now() - t0) / 1000) * 1000);
+      const productPng = path.join(workDir, "assets", "product.png");
+      result.qa = await withTimeout(runQa({ file: out.mp4, kind: "inimage", ask, workDir, brand, product, brandNames: ownNames(known).concat([brand]), productNames: [product, result.productInfo?.name || ""].filter(Boolean), texts: said,
+        allowedSource: `${product} ${known ? brandBrief(known) : ""} ${offer}`, supplied: [offer].filter(Boolean), expected: { minSeconds: 3 }, geometry: null, transitions: [], introSeconds: 0,
+        refs: { logo: typeof logoFile === "string" && logoFile && fs.existsSync(logoFile) ? logoFile : null, product: !client && fs.existsSync(productPng) && !result.brandOnly ? productPng : null },
+        safety: { status: "safe", note: client ? "The unit is the client's own creative, shown as supplied." : "" }, frames: 10, aiTimeoutMs: Math.min(70000, left - 5000),
+        reviewNotes: client ? "The unit over the article photo is the CLIENT'S OWN creative, shown as supplied: judge only whether it covers a person's face or body, the article's main subject, or important text in the article." : "The unit covers the lower part of the article's photo: judge whether it covers a person's face or body or the key action in that photo, and the text inside the unit." }), left, "The quality checks")
+        .catch((e) => ({ version: "qa.v1", approved: false, status: "incomplete", checks: [], issues: [], sampled: [], notes: [], seconds: 0, summary: "The quality checks could not finish (" + String(e.message).slice(0, 120) + ") — not approved." }));
+      result.approval = result.qa.status;
+    }
     fs.writeFileSync(path.join(workDir, "result.json"), JSON.stringify(result, null, 1));
     say(100, "done", "Done.");
     return result;

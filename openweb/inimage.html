@@ -65,7 +65,8 @@ button:disabled{opacity:.45;cursor:default}.ghost{background:#fff;color:var(--p)
 </style>
 <link href="https://fonts.googleapis.com/css2?family=Funnel+Display:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="/brand/mediakart.css"></head><body>
-<header><div class="hin"><a class="mk-brand" href="/" title="MediaKart"><img src="/brand/mediakart-logo.png" alt="MediaKart"></a><span class="mk-div"></span><div class="mk-prod"><b>In-Image Studio</b><small>Contextual in-image ads, placed on the right article</small></div><div class="sp"></div><nav class="mk-nav"><a href="/"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2.5" y="5" width="19" height="14" rx="4"/><path d="M10 9.5v5l4.5-2.5z" fill="currentColor"/></svg><span>YouTube</span></a><a href="/inimage" class="on"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="3"/><path d="M3 14h18"/><circle cx="8.5" cy="9" r="1.6"/></svg><span>In-Image</span></a><a href="/openweb"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3c2.6 2.8 2.6 15.2 0 18M12 3c-2.6 2.8-2.6 15.2 0 18"/></svg><span>Open Web</span></a></nav></div></header>
+<header><div class="hin"><a class="mk-brand" href="/" title="MediaKart"><img src="/brand/mediakart-logo.png" alt="MediaKart"></a><span class="mk-div"></span><div class="mk-prod"><b>In-Image Studio</b><small>Contextual in-image ads, placed on the right article</small></div><div class="sp"></div><nav class="mk-nav"><a href="/"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2.5" y="5" width="19" height="14" rx="4"/><path d="M10 9.5v5l4.5-2.5z" fill="currentColor"/></svg><span>YouTube</span></a><a href="/inimage" class="on"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="3"/><path d="M3 14h18"/><circle cx="8.5" cy="9" r="1.6"/></svg><span>In-Image</span></a><a href="/twoinone"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="3"/><rect x="6" y="6" width="12" height="6" rx="1"/><path d="M6 15h12M6 18h7"/></svg><span>2-in-1</span></a><a href="/openweb"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3c2.6 2.8 2.6 15.2 0 18M12 3c-2.6 2.8-2.6 15.2 0 18"/></svg><span>Open Web</span></a></nav></div></header>
+<section class="mk-hero"><div class="in"><span class="mk-eyebrow">In-Image Studio</span><h2>Place your brand <em>inside the story.</em></h2><p>Give us a brand and a product. We design the ad and place it on the right photo of a brand-safe article from a premium publisher.</p><div class="mk-trust"><span>Brand-safe publishers</span><span>Real article, real photo</span><span>Preview only — nothing goes live</span></div></div></section>
 <main>
 <section class="card">
   <div class="ch"><div class="num">1</div><div><h2>Create an in-image ad</h2><p class="s">Enter the brand and product. We find the product, design the ad and place it on a matching article from your publishers.</p></div></div>
@@ -153,15 +154,32 @@ $("cfile").addEventListener("change", () => {
     $("cprev").replaceChildren(el); };
   rd.readAsDataURL(f);
 });
+// ---- the creative guidelines' quality report (shared by 2-in-1 and In-Image)
+const qaTs = (t) => (t == null ? "whole video" : Math.floor(t / 60) + ":" + String(Math.floor(t % 60)).padStart(2, "0") + "." + Math.round((t % 1) * 10));
+const qaBadge = (qa) => (!qa ? "" : `<span style="display:inline-block;font-size:11.5px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;padding:4px 10px;border-radius:99px;background:${qa.approved ? "#ecfdf3" : qa.status === "incomplete" ? "#fff7e6" : "#fdecec"};color:${qa.approved ? "#067647" : qa.status === "incomplete" ? "#9a6700" : "#c0262d"}">${qa.approved ? "Approved" : qa.status === "incomplete" ? "Checks incomplete" : "Not approved"}</span>`);
+function qaHtml(qa) {
+  if (!qa) return "";
+  const ic = { pass: ["✓", "#12b76a"], warn: ["!", "#d99a00"], fail: ["✕", "#c0262d"], unchecked: ["?", "#d99a00"] };
+  const bad = (qa.issues || []).filter((i) => i.severity !== "minor"), minor = (qa.issues || []).filter((i) => i.severity === "minor");
+  return `<div style="border:1px solid #e6e9ef;border-radius:16px;padding:16px 18px;background:#fff;margin:0 0 14px"><div style="font-size:13px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:#4a5468;margin-bottom:8px">Quality checks · ${qaBadge(qa)}</div>
+  <div style="font-size:13px;color:#344054;margin-bottom:8px">${esc(qa.summary || "")}</div>
+  ${bad.length ? `<div style="margin:8px 0 10px">${bad.map((i) => `<div style="border-left:3px solid ${i.severity === "critical" ? "#c0262d" : "#d99a00"};padding:6px 10px;margin:6px 0;background:#fafbfd;font-size:12.5px"><b>${esc(qaTs(i.t))}</b>${i.also?.length ? ` +${i.also.length} more time${i.also.length === 1 ? "" : "s"}` : ""} · ${esc(i.severity)} — ${esc(i.what)}<div style="color:#667085;margin-top:2px">Fix: ${esc(i.fix)}</div></div>`).join("")}</div>` : ""}
+  <div style="display:grid;gap:4px">${(qa.checks || []).map((c) => `<div style="display:flex;gap:8px;align-items:flex-start;font-size:12.5px"><i style="flex:none;width:18px;height:18px;border-radius:50%;background:${ic[c.status][1]};color:#fff;display:grid;place-items:center;font-style:normal;font-size:11px;font-weight:700">${ic[c.status][0]}</i><span>${esc(c.name)}${c.reason ? ` <span style="color:#9a6700">— ${esc(c.reason)}</span>` : ""}</span></div>`).join("")}</div>
+  ${minor.length ? `<div style="font-size:12px;color:#667085;margin-top:8px">Notes: ${minor.map((i) => esc(qaTs(i.t) + (i.also?.length ? " (+" + i.also.length + ")" : "") + " — " + i.what)).join(" · ")}</div>` : ""}
+  ${(qa.notes || []).length ? `<div style="font-size:12px;color:#667085;margin-top:6px">${qa.notes.map(esc).join("<br>")}</div>` : ""}
+  <div style="font-size:11.5px;color:#98a1b3;margin-top:8px">${(qa.sampled || []).length} frames inspected (${(qa.sampled || []).map(qaTs).join(", ")}) plus whole-file checks · ${esc(qa.version || "")}</div></div>`;
+}
+
 function showResult(dir, r) {
   const pl = r.placement, f = r.files, info = r.productInfo || (typeof r.product === "object" ? r.product : null), typed = typeof r.product === "string" ? r.product : info?.name;   // mocks made before productInfo kept the details under "product"
   const isClient = r.creative?.source === "client";
   $("out").hidden = false;
-  $("out").innerHTML = `<div class="ch"><div class="num">✓</div><div><h2>${esc(r.brand)} · ${esc(typed)} — ready</h2><p class="s">Made in ${esc(r.seconds)} s · preview only, not a live ad</p></div></div>
+  $("out").innerHTML = `<div class="ch"><div class="num">✓</div><div><h2>${esc(r.brand)} · ${esc(typed)} — ready ${qaBadge(r.qa)}</h2><p class="s">Made in ${esc(r.seconds)} s · preview only, not a live ad</p></div></div>
   <div class="res"><div class="phone"><video src="${file(dir, f.video)}" autoplay muted loop playsinline controls></video></div>
   <div><div class="art"><span class="s">${esc(pl.article.publisher)}${pl.article.published ? " · " + new Date(pl.article.published).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" }) : ""}</span>
     <b>${esc(pl.article.headline)}</b><a class="btn ghost" href="${esc(pl.article.url)}" target="_blank" rel="noopener" style="padding:8px 14px;font-size:13px">View article ↗</a>
-    <a class="btn" href="${file(dir, f.video, 1)}" style="padding:8px 14px;font-size:13px;margin-left:6px">Download video</a></div>
+    <a class="btn" href="${file(dir, f.video, 1)}" style="padding:8px 14px;font-size:13px;margin-left:6px">${r.qa ? (r.qa.approved ? "Download video" : "Download video (not approved)") : "Download video"}</a></div>
+    ${qaHtml(r.qa)}
     <h3 style="font-size:14px;margin:18px 0 4px">Checks</h3>
     ${pl.checks.map((c) => `<div class="chk"><i>✓</i><div><b>${esc(c.name)}</b><div class="s" style="font-size:12.5px">${esc(c.detail)}</div></div></div>`).join("")}
     <h3 style="font-size:14px;margin:18px 0 4px">About the ad</h3>
