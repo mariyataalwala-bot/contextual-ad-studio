@@ -21,6 +21,8 @@ services:
         sync: false
       - key: APP_PASSWORD       # login password for the hosted page (anyone with the URL could otherwise use your key)
         sync: false
+      - key: OPEN_ACCESS        # set to 1 ONLY if you want no login (anyone with the link can use the app and your AI key's quota); otherwise set APP_PASSWORD
+        sync: false
       - key: YOUTUBE_API_KEY    # optional YouTube Data API key (faster, more reliable video search)
         sync: false
       - key: FIRECRAWL_API_KEY  # optional: renders JavaScript-built article pages (never refused or paywalled ones)
