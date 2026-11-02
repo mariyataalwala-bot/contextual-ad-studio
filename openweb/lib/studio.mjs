@@ -202,9 +202,9 @@ export const foreignSite = (host) => /\.(?:(?:co|com|org|net|gov|ac)\.)?(?:ee|fr
 // pictures that show exactly this product are tried, best kind first; banners and irrelevant pictures never are.
 // Lifestyle photos only for food, drinks and services, where the ad shows them as a scene behind the copy.
 export const PICTURE_KINDS = ["cutout", "product_on_background", "lifestyle", "promo_banner", "irrelevant"];
-// When the product was typed without a variant ("face wash"), a different variant is not a wrong product (Himalaya, Nov 2026: every pack was
+// A different variant is not a wrong product (the user: "doesn't matter which variant, just use the brand's product") (Himalaya, Nov 2026: every pack was
 // rejected as "another variant" and the ad went out without a product).
-const VARIANT_NOTE = "If the product named above gives no particular variant (just a type such as “face wash”), any current Indian pack of this brand and type counts as exactly this product — never reject a picture only for being a different variant. ";
+const VARIANT_NOTE = "The variant, flavour, size or colour does not matter (the user wants the brand's own product shown, whichever one): any current Indian pack of this brand's product of this type counts as exactly this product — never reject a picture only for being a different variant. It must still be this brand's own product, not another brand, a foreign pack, a banner or a person. ";
 export const PICTURE_GUIDE = "cutout (the product alone on a transparent or plain white/single-colour background), product_on_background (the product clearly the main subject on a table, plate, surface or simple setting), lifestyle (a scene where the product is used or served, people or several props around it), promo_banner (any headline, offer, price or campaign text over the picture, an ad or web banner, or website / app decoration art: illustrated or 3D-rendered objects, icons, coins or confetti floating on an empty background), irrelevant (not this product)";
 const KIND_ORDER = { cutout: 0, product_on_background: 1, lifestyle: 2 };
 /** @param {any} pick the AI's answer @param {any[]} thumbs P pictures ({ n, url, … }) @returns {any[]} pictures to try, best first */
