@@ -73,6 +73,11 @@ class AIError extends Error {}
 // One structured-JSON call. Images are [{label, file}] JPEG/PNG paths.
 async function ask(system, text, schema, images = [], effort = "high") {   // effort "medium" + no images → fast lite model first
   const p = provider();
+  // picture checks → Claude Haiku 5.5 vision when a Claude key is set (any provider); the usual provider answers if it fails
+  if (images.length && claudeKey() && loadSettings().visionHaiku !== false) {
+    try { return await askClaudeVision(system, text, schema, images); }
+    catch (e) { console.error("Claude Haiku vision failed — using " + p + " for this check:", String(e.message).slice(0, 200)); }
+  }
   if (p === "none") throw new AIError("No AI key set — using manual mode.");
   try {
     if (p === "openai") return await askOpenAICompat({ baseUrl: compatBase(), key: compatKey(), model: compatModel(), system, text, schema, images });
@@ -154,6 +159,38 @@ async function embedTexts(texts, task = "RETRIEVAL_DOCUMENT", dims = 768) {
   }
   return out;
 }
+// Picture checks (faces, objects, brand, product and logo detection, photo matching, frame QA) go to Claude Haiku 5.5
+// vision whenever a Claude key is set — fast and cheap; Gemini answers if it fails. Settings "visionHaiku": false turns it off.
+const VISION_MODEL = "claude-haiku-5-5";
+const IMAGE_TYPES = { ".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".webp": "image/webp", ".gif": "image/gif" };
+// structured outputs need closed objects: every object in the schema gets additionalProperties: false
+const closedSchema = (s) => {
+  if (!s || typeof s !== "object") return s;
+  if (Array.isArray(s)) return s.map(closedSchema);
+  const out = Object.fromEntries(Object.entries(s).map(([k, v]) => [k, closedSchema(v)]));
+  if (out.type === "object" && out.additionalProperties === undefined) out.additionalProperties = false;
+  return out;
+};
+async function askClaudeVision(system, text, schema, images) {
+  const content = [];
+  for (const im of images) {
+    content.push({ type: "text", text: im.label });
+    content.push({ type: "image", source: { type: "base64", media_type: IMAGE_TYPES[path.extname(im.file).toLowerCase()] || "image/jpeg", data: fs.readFileSync(im.file).toString("base64") } });
+  }
+  content.push({ type: "text", text });
+  const res = await claude().messages.create({
+    model: VISION_MODEL,
+    max_tokens: 8000,
+    output_config: { effort: "medium", format: { type: "json_schema", schema: closedSchema(schema) } },
+    system,
+    messages: [{ role: "user", content }],
+  }, { timeout: 60000, maxRetries: 1 });
+  if (res.stop_reason === "refusal") throw new Error("Claude Haiku declined this check: " + (res.stop_details?.explanation || "refusal"));
+  const t = res.content.find((b) => b.type === "text");
+  if (!t) throw new Error("No answer from Claude Haiku (stop: " + res.stop_reason + ")");
+  return JSON.parse(t.text);
+}
+
 async function askClaude(system, text, schema, images, effort) {
   const content = [];
   for (const im of images) {
