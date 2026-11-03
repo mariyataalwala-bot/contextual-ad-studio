@@ -5,22 +5,24 @@ import assert from "node:assert/strict";
 import { previewHtml } from "../../openweb/lib/twoinone-preview.mjs";
 import { withRealName } from "../../openweb/lib/studio.mjs";
 
+/** @type {any} */
 const base = { brand: "Bingo!", product: "chips", publisher: "P", article: { headline: "h", url: "https://x.test/a", paragraphs: ["a"] }, video: { kind: "file", src: "v.mp4" } };
 
-test("a product picture is animated: spin-in, orbit rings, light sweep over its outline, sparkles", () => {
+test("a product picture is animated with restraint: it rises in and keeps a slow push-in, with a soft shadow under it", () => {
   const h = previewHtml({ ...base, panel: { colour: "#d81f26", logo: "l.png", logoInk: "#d81f26", product: "p.png", productMode: "alpha", headline: "Crunch", cta: "Buy now" } });
-  for (const x of ["rotateY(-110deg)", "orbitSpin", "pshine", "class=\"spk\"", "class=\"orbit\""]) assert.ok(h.includes(x), x);
+  for (const x of ["@keyframes prodIn", "@keyframes pushIn", 'class="pshadow"', 'class="pprod cut"']) assert.ok(h.includes(x), x);
 });
 
-test("no product picture: the panel animates the brand and never shows a frame of the video", () => {
+test("no product picture: the panel shows the whole logo large and never a frame of the video", () => {
   const h = previewHtml({ ...base, panel: { colour: "#d81f26", logo: "l.png", headline: "Crunch", cta: "Buy now" } });
-  assert.match(h, /class="pn k-nop/); assert.doesNotMatch(h, /class="hero"/); assert.match(h, /class="orbit"/);
+  assert.match(h, /class="pn k-nop/); assert.doesNotMatch(h, /class="hero"/); assert.match(h, /class="pwm"/);
+  assert.equal((h.match(/class="plogo/g) || []).length, 0, "the logo is not repeated in the top row");
 });
 
 test("the logo is never recoloured or cropped", () => {
   const h = previewHtml({ ...base, panel: { colour: "#d81f26", logo: "l.png", logoInk: "#d81f26", headline: "Crunch", cta: "Buy now" } });
-  assert.doesNotMatch(h, /\.(plogo|il)\.[a-z]+\{[^}]*(brightness|invert)/);
-  assert.match(h, /\.pwm\{[^}]*max-width:62%/);
+  assert.doesNotMatch(h, /\.(plogo|il|pwm)(\.[a-z]+)?\{[^}]*(brightness|invert|grayscale|hue-rotate|clip-path)/);
+  assert.match(h, /\.pwm\{[^}]*max-width:62%/); assert.match(h, /\.pwm\{[^}]*object-fit:contain/); assert.match(h, /\.il\{[^}]*object-fit:contain/);
 });
 
 test("a page's phrase is not swapped in as the product name", () => {
@@ -31,9 +33,9 @@ test("a page's phrase is not swapped in as the product name", () => {
 import { INTRO_SECONDS } from "../../openweb/lib/twoinone-preview.mjs";
 import { productIssues } from "../../openweb/lib/qa.mjs";
 
-test("story-led opening: opener line, product spin-in, logo landing; its length is shared with the recorder", () => {
+test("art-directed opening: the opener line, the product and the logo; its length is shared with the recorder", () => {
   const h = previewHtml({ ...base, panel: { colour: "#d81f26", logo: "l.png", product: "p.png", productMode: "alpha", opener: "Midnight cravings?", headline: "Crunch", cta: "Buy now" } });
-  assert.match(h, /class="iline"/); assert.match(h, /Midnight/); assert.ok(h.includes("INTRO=calm?0:" + INTRO_SECONDS * 1000));
+  assert.match(h, /class="itype"/); assert.match(h, /Midnight/); assert.match(h, /class="ip cut"/); assert.match(h, /class="il"/); assert.ok(h.includes("INTRO=calm?0:" + INTRO_SECONDS * 1000));
   assert.ok(INTRO_SECONDS >= 3.5 && INTRO_SECONDS <= 5);
 });
 

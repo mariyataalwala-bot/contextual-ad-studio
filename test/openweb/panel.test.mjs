@@ -24,8 +24,8 @@ test("unit: a 9:16 card with the 16:9 video on top and the product panel in the 
 test("panel: headline words, subline, button, logo and product are there and animated; the opening shows the logo and product first", () => {
   const h = previewHtml(base);
   for (const w of ["Matches", "your", "vibe"]) assert.ok(h.includes(`<i style="--k:`) && h.includes(`>${w}</i>`), w);
-  assert.ok(h.includes("Discover the new Dell 14S") && h.includes("Buy now") && h.includes('class="pprod cut"') && h.includes('class="plogo"') && h.includes('class="intro"') && h.includes('class="il"'));
-  for (const k of ["@keyframes rise", "@keyframes prodIn", "@keyframes floaty", "@keyframes pop", "@keyframes sheen"]) assert.ok(h.includes(k), k);
+  assert.ok(h.includes("Discover the new Dell 14S") && h.includes("Buy now") && h.includes('class="pprod cut"') && h.includes('class="plogo"') && /class="intro L-(editorial|hero|range)/.test(h) && h.includes('class="il"') && h.includes('class="ip cut"'));
+  for (const k of ["@keyframes wordIn", "@keyframes prodIn", "@keyframes pushIn", "@keyframes fadeUp"]) assert.ok(h.includes(k), k);
   assert.match(h, /prefers-reduced-motion/, "motion is switched off for people who ask for that");
   assert.match(h, /--btn:#ffd21f/, "the accent colour is used for the button when it stands out on the panel");
 });

@@ -30,13 +30,13 @@ const base = { brand: "Kissht", product: "Smart Loans", publisher: "Indian Expre
   video: { kind: "youtube", id: "dQw4w9WgXcQ", title: "Kissht TVC" },
   panel: { colour: "#2b3fa0", accent: "#ffd21f", logo: "/api/ow/twoinone/file?path=k%2Flogo.png", hero: "/api/ow/twoinone/file?path=k%2Fad_frame.jpg", headline: "A YES for you", subline: "Kissht digital personal loans", cta: "Apply now", ctaUrl: "https://kissht.com", chips: ["Personal Loans", "Business <b>Loans</b>", "Digital Property Loans", "A fourth one"], productName: "Smart Loans" } };
 
-test("graphic layer: a strip of at most three chips, the brand-mark motif, light beams, and a burst in the opening", () => {
+test("graphic layer: a line of at most three chips, and no drawn decoration anywhere (no beams, bursts, rings or ripples)", () => {
   const h = previewHtml(base);
   const shown = (h.match(/<span style="--k:\d">/g) || []).length;
   assert.ok(shown >= 1 && shown <= 3 && shown === fitChips(base.panel.chips).length, "at most three chips, and only as many as fit the strip");
-  assert.ok(h.includes('class="strip"') && h.includes("Personal Loans") && !h.includes("A fourth one"));
-  assert.ok(h.includes('class="beam"') && h.includes('class="burst"') && h.includes('class="ring"') && h.includes("has-strip"));
-  for (const k of ["@keyframes stripIn", "@keyframes chipIn", "@keyframes beam", "@keyframes ripple", "@keyframes burst"]) assert.ok(h.includes(k), k);
+  assert.ok(h.includes('class="strip"') && h.includes("Personal Loans") && !h.includes("A fourth one") && h.includes("has-strip"));
+  assert.doesNotMatch(h, /class="(beam|burst|ring|rip|mesh|bokeh|glow|decor)\b/);
+  for (const k of ["beam", "ripple", "burst", "shimmer", "pulse"]) assert.ok(!h.includes(`@keyframes ${k}{`), k);
   // rows, not layers: logo + words, then the picture, then the chips — so words never sit on a picture
   const top = h.indexOf('class="ptop"'), vis = h.indexOf('<div class="vis">'), strip = h.indexOf('<div class="strip"');
   assert.ok(top > 0 && top < vis && vis < strip, "logo/words row, then picture row, then chips row");
@@ -45,9 +45,9 @@ test("graphic layer: a strip of at most three chips, the brand-mark motif, light
   const esc = previewHtml({ ...base, panel: { ...base.panel, chips: ["Smart <b>Loans</b>"] } });
   assert.ok(!esc.includes("<b>Loans</b>") && esc.includes("&lt;b&gt;Loans&lt;/b&gt;"), "chip text is escaped");
 });
-test("graphic layer: pulse rings sit behind a product picture; no chips means no strip", () => {
+test("graphic layer: a product picture gets only a soft shadow, no rings; no chips means no strip", () => {
   const withProduct = previewHtml({ ...base, panel: { ...base.panel, hero: null, product: "/api/ow/twoinone/file?path=k%2Fp.png" } });
-  assert.equal((withProduct.match(/<i class="rip">/g) || []).length, 3);
+  assert.equal((withProduct.match(/<i class="rip">/g) || []).length, 0); assert.equal((withProduct.match(/<i class="pshadow">/g) || []).length, 1);
   const none = previewHtml({ ...base, panel: { ...base.panel, chips: [] } });
   assert.ok(!none.includes('<div class="strip"') && !none.includes('class="pn k-hero has-strip"') && none.includes('class="pn k-hero"'));
 });
