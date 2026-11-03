@@ -1,0 +1,161 @@
+{
+ "version": "guideline.v1",
+ "brand": "Himalaya Wellness",
+ "slug": "himalaya-wellness",
+ "inBrandList": true,
+ "builtAt": "2026-11-03T05:58:43.134Z",
+ "sources": {
+  "facts": "openweb/config/brands.v2.json + D:/contextual-ads/inimage/_research/brands_research.json",
+  "direction": "ai-direction (derived from the checked facts, not a brand rule)"
+ },
+ "visual_identity": {
+  "value": "Clean and clinical-herbal look featuring teal and green brand colours against crisp white backgrounds. Incorporates ingredient hero shots such as neem and turmeric, along with relatable family and teen skin stories.",
+  "source": "ai-direction (derived from the checked facts, not a brand rule)"
+ },
+ "ad_look": {
+  "value": "Clean, clinical-herbal look: teal and green brand colours, white backgrounds, ingredient hero shots (neem, turmeric). Relatable family and teen skin stories. Sports tie-ins (RCB, RCB Women). Mother-and-baby tenderness for the baby range.",
+  "source": "brands.v2"
+ },
+ "colour_system": [
+  {
+   "hex": "#006666",
+   "role": "primary",
+   "source": "brands.v2",
+   "note": "himalayawellness.in meta theme-color and site CSS"
+  },
+  {
+   "hex": "#108474",
+   "role": "accent",
+   "source": "brands.v2",
+   "note": "himalayawellness.in meta theme-color and site CSS"
+  }
+ ],
+ "typography": {
+  "display": {
+   "value": "Montserrat",
+   "source": "ai-direction (derived from the checked facts, not a brand rule)"
+  },
+  "text": {
+   "value": "Inter",
+   "source": "ai-direction (derived from the checked facts, not a brand rule)"
+  },
+  "notes": {
+   "value": "Bold weight, standard case, and clean tracking for maximum readability across clinical and retail touchpoints.",
+   "source": "ai-direction (derived from the checked facts, not a brand rule)"
+  },
+  "strip_style": {
+   "value": "bold",
+   "source": "brands.v2"
+  }
+ },
+ "motion_language": {
+  "value": "Restrained and intentional movements that highlight natural herbal qualities without excessive flourish.",
+  "source": "ai-direction (derived from the checked facts, not a brand rule)"
+ },
+ "campaign_tone": {
+  "value": "Clean, clinical-herbal look with relatable family and teen skin stories, sports tie-ins, and mother-and-baby tenderness.",
+  "source": "ai-direction (derived from the checked facts, not a brand rule)"
+ },
+ "campaigns": [
+  {
+   "name": "Mom-Mode On (Purifying Neem Face Wash)",
+   "year": 2026,
+   "source": "https://www.afaqs.com/news/advertising/himalayas-mom-mode-on-tackles-teenage-pimple-concerns-12753433",
+   "source_kind": "brands.v2"
+  },
+  {
+   "name": "Unspot Your Natural Glow (Turmeric range, Mithila Palkar)",
+   "year": 2025,
+   "source": "https://www.afaqs.com/news/advertising/himalaya-unveils-unspot-your-natural-glow-with-mithila-palkar-10541062",
+   "source_kind": "brands.v2"
+  },
+  {
+   "name": "Himalaya Ayurveda Secrets launch",
+   "year": 2026,
+   "source": "https://www.afaqs.com/news/advertising/himalaya-enters-premium-beauty-with-ayurveda-secrets-range-11438407",
+   "source_kind": "brands.v2"
+  },
+  {
+   "name": "#TakeMySpot (face wash, RCB players)",
+   "year": 2024,
+   "source": "https://www.afaqs.com/news/advertising/rcb-players-say-takemyspot-in-himalayas-new-skincare-campaign",
+   "source_kind": "brands.v2"
+  },
+  {
+   "name": "Zara Muskurade (Monali Thakur, Aneri Vajani)",
+   "year": 2024,
+   "source": "https://www.afaqs.com/news/advertising/aneri-vajani-stars-in-himalayas-zara-muskurade-campaign-7349654",
+   "source_kind": "brands.v2"
+  }
+ ],
+ "signature_visuals": {
+  "value": [
+   "Ingredient hero shots of fresh neem leaves and turmeric",
+   "Relatable family and teen skin care moments",
+   "Sports tie-in elements featuring RCB players",
+   "Mother-and-baby tenderness moments for the baby range"
+  ],
+  "source": "ai-direction (derived from the checked facts, not a brand rule)"
+ },
+ "product_range": {
+  "value": [
+   "Himalaya Purifying Neem Face Wash",
+   "Himalaya Baby range",
+   "Himalaya Lip Balm",
+   "Turmeric range",
+   "Himalaya face wash and face care range",
+   "Himalaya Botanique Baby Organic",
+   "Lip care",
+   "Kajal",
+   "Kids toothpaste and oral care",
+   "Hair care",
+   "Health and wellness",
+   "Pet and animal health"
+  ],
+  "source": "brands.v2",
+  "note": "hero: Himalaya Purifying Neem Face Wash, Himalaya Baby range, Himalaya Lip Balm, Turmeric range"
+ },
+ "logo": {
+  "value": {
+   "note": "Himalaya wordmark logo, refreshed 2022 (site file named Logo-2022). Official: https://himalayawellness.in/cdn/shop/files/Logo-2022-500_555a55b6-ca04-40ad-b4ed-e25cbfeeff7d.png . Wikipedia uses the older Commons file 'The_Himalaya_Drug_Company_logo.svg' (teal and green with orange #f47c24).",
+   "file": "https://upload.wikimedia.org/wikipedia/commons/c/c0/The_Himalaya_Drug_Company_logo.svg",
+   "png": "https://thumb.wikimedia.org/wikipedia/commons/thumb/c/c0/The_Himalaya_Drug_Company_logo.svg/960px-The_Himalaya_Drug_Company_logo.svg.png",
+   "changed": null
+  },
+  "source": "brands.v2"
+ },
+ "do": {
+  "value": [
+   "Keep backgrounds clean and white to maintain the clinical-herbal look",
+   "Feature real ingredient hero shots like neem and turmeric",
+   "Focus on relatable family and teen skin stories",
+   "Incorporate sports tie-ins and mother-and-baby tenderness authentically"
+  ],
+  "source": "ai-direction (derived from the checked facts, not a brand rule)"
+ },
+ "dont": {
+  "value": [
+   "No drawn particles, sparkles or cartoon splashes",
+   "No claims or numbers",
+   "Do not make treatment claims for regulated Ayurvedic medicines in media ads",
+   "Do not use unsupported safety superlatives like 100 percent safe or chemical-free for baby products",
+   "No drawn particles, sparkles, orbits or cartoon splashes",
+   "No claims, prices or numbers the brand has not made"
+  ],
+  "source": "ai-direction (derived from the checked facts, not a brand rule) + house rules"
+ },
+ "safety_notes": {
+  "value": [
+   "REGULATED: Liv.52, Cystone, Diabecon, Gasex, Koflet, Evecare and Ashwagandha are Ayurvedic or proprietary medicines. Do not make treatment claims (liver, diabetes, kidney stones) in MediaKart ads. Restrict in-image ads to personal care and baby care.",
+   "Baby products: avoid unsupported safety superlatives ('100% safe', 'chemical-free').",
+   "Pet and animal-health lines are not appropriate for news-article ads."
+  ],
+  "source": "brands.v2"
+ },
+ "unverified": [
+  "Agencies for all listed Himalaya campaigns",
+  "Exact pack names of the lip balm range",
+  "Whether 'Himalaya Men' is still a separate range",
+  "Official brand guideline hex (site CSS used instead)"
+ ]
+}

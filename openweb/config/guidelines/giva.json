@@ -1,0 +1,102 @@
+{
+ "version": "guideline.v1",
+ "brand": "GIVA",
+ "slug": "giva",
+ "inBrandList": false,
+ "builtAt": "2026-11-03T06:03:25.520Z",
+ "sources": {
+  "facts": "not in brands.v2.json; only named as a rival of Malabar Gold & Diamonds, Reliance Jewels",
+  "direction": "ai-direction (derived from the checked facts, not a brand rule)"
+ },
+ "visual_identity": {
+  "value": "The brand's visual identity relies on refined, minimalist aesthetics designed to compete in the fine jewelry market. Imagery utilizes clean, sophisticated compositions that highlight elegance and understated luxury.",
+  "source": "ai-direction (derived from the checked facts, not a brand rule)"
+ },
+ "ad_look": {
+  "value": null,
+  "source": "unverified"
+ },
+ "colour_system": [
+  {
+   "hex": "#f5f5f0",
+   "role": "supporting: Soft neutral background tint",
+   "source": "ai-direction (derived from the checked facts, not a brand rule)"
+  },
+  {
+   "hex": "#2a2a2a",
+   "role": "supporting: Deep contrasting text and accent tone",
+   "source": "ai-direction (derived from the checked facts, not a brand rule)"
+  }
+ ],
+ "typography": {
+  "display": {
+   "value": "Playfair Display",
+   "source": "ai-direction (derived from the checked facts, not a brand rule)"
+  },
+  "text": {
+   "value": "Inter",
+   "source": "ai-direction (derived from the checked facts, not a brand rule)"
+  },
+  "notes": {
+   "value": "Display font set in elegant serif with generous tracking for a premium feel; text font set in clean sans-serif at regular weight for high legibility.",
+   "source": "ai-direction (derived from the checked facts, not a brand rule)"
+  },
+  "strip_style": {
+   "value": null,
+   "source": "unverified"
+  }
+ },
+ "motion_language": {
+  "value": "Motions are slow, deliberate, and smooth, ensuring elements glide into frame and settle with absolute precision.",
+  "source": "ai-direction (derived from the checked facts, not a brand rule)"
+ },
+ "campaign_tone": {
+  "value": "Sophisticated, understated, and high-end.",
+  "source": "ai-direction (derived from the checked facts, not a brand rule)"
+ },
+ "campaigns": [],
+ "signature_visuals": {
+  "value": [
+   "Polished marble display surfaces",
+   "Soft, diffused natural studio lighting",
+   "Minimalist architectural backdrops",
+   "Clean metallic textures"
+  ],
+  "source": "ai-direction (derived from the checked facts, not a brand rule)"
+ },
+ "product_range": {
+  "value": [],
+  "source": "unverified"
+ },
+ "logo": {
+  "value": null,
+  "source": "unverified"
+ },
+ "do": {
+  "value": [
+   "Keep layouts uncluttered and spacious",
+   "Use high-end photographic textures",
+   "Maintain consistent soft lighting",
+   "Focus on elegant simplicity"
+  ],
+  "source": "ai-direction (derived from the checked facts, not a brand rule)"
+ },
+ "dont": {
+  "value": [
+   "No drawn particles, sparkles or cartoon splashes",
+   "No claims or numbers",
+   "Do not crowd the visual space",
+   "Avoid loud or saturated color accents",
+   "No drawn particles, sparkles, orbits or cartoon splashes",
+   "No claims, prices or numbers the brand has not made"
+  ],
+  "source": "ai-direction (derived from the checked facts, not a brand rule) + house rules"
+ },
+ "safety_notes": {
+  "value": [],
+  "source": "unverified"
+ },
+ "unverified": [
+  "Everything except the rival lines: this brand is not in the checked Top 50 list"
+ ]
+}

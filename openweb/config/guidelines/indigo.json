@@ -1,0 +1,139 @@
+{
+ "version": "guideline.v1",
+ "brand": "IndiGo",
+ "slug": "indigo",
+ "inBrandList": true,
+ "builtAt": "2026-11-03T06:03:10.837Z",
+ "sources": {
+  "facts": "openweb/config/brands.v2.json + D:/contextual-ads/inimage/_research/brands_research.json",
+  "direction": "ai-direction (derived from the checked facts, not a brand rule)"
+ },
+ "visual_identity": {
+  "value": "The visual identity is minimal and rooted in indigo-blue and white. It focuses on people-centred stories and everyday journeys rather than aircraft.",
+  "source": "ai-direction (derived from the checked facts, not a brand rule)"
+ },
+ "ad_look": {
+  "value": "Indigo-blue and white, minimal, witty copy and lowercase-friendly tone (W+K era 2008-2023); people-centred stories rather than aircraft; recent films are emotional (pilots, 20 years). Tone: warm, efficient, 'on-time, hassle-free'.",
+  "source": "brands.v2"
+ },
+ "colour_system": [
+  {
+   "hex": "#001b94",
+   "role": "primary",
+   "source": "brands.v2",
+   "note": "Wikipedia logo file IndiGo.svg (single fill #001B94)"
+  },
+  {
+   "hex": "#ffffff",
+   "role": "accent",
+   "source": "brands.v2",
+   "note": "Wikipedia logo file IndiGo.svg (single fill #001B94)"
+  }
+ ],
+ "typography": {
+  "display": {
+   "value": "Inter",
+   "source": "ai-direction (derived from the checked facts, not a brand rule)"
+  },
+  "text": {
+   "value": "Inter",
+   "source": "ai-direction (derived from the checked facts, not a brand rule)"
+  },
+  "notes": {
+   "value": "Use lowercase-friendly tones with clean tracking and efficient weight.",
+   "source": "ai-direction (derived from the checked facts, not a brand rule)"
+  },
+  "strip_style": {
+   "value": "journey",
+   "source": "brands.v2"
+  }
+ },
+ "motion_language": {
+  "value": "Restrained and intentional, reflecting efficiency and smooth transitions.",
+  "source": "ai-direction (derived from the checked facts, not a brand rule)"
+ },
+ "campaign_tone": {
+  "value": "Warm, efficient, 'on-time, hassle-free' with witty copy.",
+  "source": "ai-direction (derived from the checked facts, not a brand rule)"
+ },
+ "campaigns": [
+  {
+   "name": "Pilot tribute film (World Pilots' Day)",
+   "year": 2026,
+   "source": "https://www.aviationindia.net/2026/04/indigo-elevates-brand-narrative-with.html",
+   "source_kind": "brands.v2"
+  },
+  {
+   "name": "'That's 20 years' - 20th anniversary film",
+   "year": 2026,
+   "source": "https://www.afaqs.com/news/advertising/indigo-turns-20-celebrating-the-moments-behind-every-journey-12503552",
+   "source_kind": "brands.v2"
+  },
+  {
+   "name": "Homemade cockpit social film",
+   "year": "unverified",
+   "source": "https://bestmediainfo.com/mediainfo/mediainfo-marketing/indigo-turns-10-year-olds-homemade-cockpit-into-social-first-film-12394394",
+   "source_kind": "brands.v2"
+  }
+ ],
+ "signature_visuals": {
+  "value": [
+   "People-centred stories highlighting personal moments",
+   "Pilots as enablers of connectivity and reliability",
+   "Everyday journey moments such as friends abroad or first flights"
+  ],
+  "source": "ai-direction (derived from the checked facts, not a brand rule)"
+ },
+ "product_range": {
+  "value": [
+   "domestic and international flights",
+   "IndiGoStretch",
+   "Flights domestic flights",
+   "Cabin IndiGoStretch",
+   "Loyalty IndiGo BluChip"
+  ],
+  "source": "brands.v2",
+  "note": "hero: domestic and international flights, IndiGoStretch, BluChip"
+ },
+ "logo": {
+  "value": {
+   "note": "'IndiGo' wordmark with dotted aircraft motif, indigo blue.",
+   "file": "https://upload.wikimedia.org/wikipedia/en/6/69/IndiGo.svg",
+   "png": "https://upload.wikimedia.org/wikipedia/en/thumb/6/69/IndiGo.svg/960px-IndiGo.svg.png",
+   "changed": null
+  },
+  "source": "brands.v2"
+ },
+ "do": {
+  "value": [
+   "Keep layouts minimal using indigo-blue and white",
+   "Feature people-centred stories rather than aircraft",
+   "Maintain a warm, efficient, and lowercase-friendly tone"
+  ],
+  "source": "ai-direction (derived from the checked facts, not a brand rule)"
+ },
+ "dont": {
+  "value": [
+   "No drawn particles, sparkles or cartoon splashes",
+   "No claims or numbers",
+   "Avoid placement on flight-disruption news",
+   "No drawn particles, sparkles, orbits or cartoon splashes",
+   "No claims, prices or numbers the brand has not made"
+  ],
+  "source": "ai-direction (derived from the checked facts, not a brand rule) + house rules"
+ },
+ "safety_notes": {
+  "value": [
+   "Brand safety: Dec 2025 scheduling crisis (~4,500 cancellations; DGCA fine Rs 22.2 cr, 10% schedule cut) - avoid placement on flight-disruption news.",
+   "CEO change: Pieter Elbers resigned March 2026; Willie Walsh CEO from 3 Aug 2026.",
+   "Fares and route claims change often - avoid hard fare numbers."
+  ],
+  "source": "brands.v2"
+ },
+ "unverified": [
+  "Current creative agency (pitch reported 2024)",
+  "'Incredible India by IndiGo' 2026 tie-up details",
+  "goindigo.in content (not opened)",
+  "ad_look tone is from general brand history, not a 2025-26 source"
+ ]
+}

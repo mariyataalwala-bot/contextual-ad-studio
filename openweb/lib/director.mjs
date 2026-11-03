@@ -11,11 +11,15 @@
 // Product beautification (any device): a light sweep across the product only (masked by its own cut-out), condensation
 // drops (masked too), a rim light, a mirror reflection, glints and a soft contact shadow.
 // Every class and keyframe here starts with "d" (dz, dHero …): the strip's CSS shares the same shadow root.
-import { stripHtml, luminance, logoMode, STRIP_VERSION } from "./strip.mjs";
+import { stripHtml, luminance, logoMode, contrast, STRIP_VERSION } from "./strip.mjs";
 import { storyHtml, STORY_MS, STORY_VERSION } from "./story.mjs";
 
 export const DIRECTOR_VERSION = "director.v3";   // v2 (2026-10-30): no invented slogans; copy never ties to health, diet, fasting, religion, money or news; v3: richer pour (ingredients, splash crown, caustics) and spotlight (velvet, flares, gold foil, frame)
-export const DEVICES = ["frost", "pour", "spotlight", "portal", "shatter", "medallion"];
+export const DEVICES = ["frost", "pour", "spotlight", "portal", "shatter", "medallion", "photoplate"];
+// photoplate needs a stock photo chosen with a creative direction (concepts.mjs), so the one-shot director never picks it
+export const DIRECTOR_DEVICES = DEVICES.filter((d) => d !== "photoplate");
+// the display faces photoplate may set its line in (Google Fonts, loaded with the scene)
+export const PLATE_FONTS = ["Playfair Display", "Anton", "Space Grotesk", "Baloo 2", "Poppins"];
 export const FX = ["shine", "droplets", "rim", "reflection", "glints", "float"];
 // what floats in a pour and flies out with its splash (viewBox 0 0 40 40, one <g id="dIng">)
 const INGREDIENTS = {
@@ -41,7 +45,7 @@ const words = (t, cls, d0, step = 0.09) => esc(t).split(/\s+/).filter(Boolean).m
 
 // ---------- the brief ----------
 export const DIRECTOR_SCHEMA = { type: "object", properties: {
-  device: { type: "string", enum: DEVICES },
+  device: { type: "string", enum: DIRECTOR_DEVICES },
   big_idea: { type: "string" },
   why: { type: "string" },
   base: { type: "string" }, accent: { type: "string" }, liquid: { type: "string" }, ingredients: { type: "string", enum: INGREDIENT_NAMES },
@@ -376,6 +380,54 @@ ${hero(o, t.fx, seed)}<div class="dLg">${logo}</div>
       html: `<div class="dEn"></div><div class="dLn"></div>${shards}<svg class="dCk" viewBox="0 0 100 56.25" preserveAspectRatio="none">${cracks}</svg><i class="dFl"></i><i class="dRing"></i>
 ${hero(o, t.fx, seed)}<div class="dMsg">${kick}${msg(1.7, 0.16)}</div><div class="dLg">${logo}</div>` };
   }
+  if (name === "photoplate") {
+    // photoplate: a creative direction executed with a REAL photograph (free stock, credited). The plate fades in full
+    // bleed and pushes in slowly; the product cut-out rises on the other side and drifts the opposite way (parallax),
+    // grounded by a contact shadow; a tonal grade opens negative space for editorial type that reveals line by line.
+    // Nothing is drawn: no particles, no shapes — photo, product, type, one hairline rule.
+    const plate = b.plateUrl || t.photoUrl;
+    const right = b.side === "right", font = PLATE_FONTS.includes(b.font) ? b.font : "Playfair Display";
+    const serif = /Playfair/.test(font), stack = b.layout === "stack" && String(b.message || "").trim().split(/\s+/).length <= 3;   // a word per line only fits three words
+    // a bright brand colour washed over a photo looks cheap: grade with its deep tone
+    const raw = hex(b.shade) || deepBase, shade = luminance(raw) > 0.1 && luminance(raw) <= 0.6 ? mix(raw, "#0a0a0c", 0.55) : raw, tInk = inkOn(shade), acc = [hex(b.accent), raw].find((c) => c && contrast(c, shade) >= 3) || tInk;
+    const norm = (x) => String(x || "").trim().toLowerCase(), fromSide = right ? "270deg" : "90deg";
+    const hasProduct = o.productUrl && o.productMode !== "none";
+    const lines = esc(String(b.message || "").replace(/-/g, "‑")).split(/\s+/).filter(Boolean);   // never break a line at a hyphen
+    const msgHtml = stack ? lines.map((w, i) => `<span class="dPpL"><span class="dPpW" style="animation-delay:${(2.0 + i * 0.18).toFixed(2)}s">${w}</span></span>`).join("")
+      : `<span class="dPpL"><span class="dPpW" style="animation-delay:2.00s">${lines.join(" ")}</span></span>`;
+    return { css: `
+.dPl{position:absolute;inset:-4%;background:${shade} ${right ? "left" : "right"} center/cover no-repeat;opacity:0;transform:scale(1.12)}
+.dPg{position:absolute;inset:0;opacity:0;background:linear-gradient(${fromSide},${shade}f2 0%,${shade}c4 30%,${shade}40 56%,transparent 74%),linear-gradient(0deg,${shade}8c 0%,transparent 34%)}
+.dPp .dHero{${right ? "left:7cqw" : "right:8cqw"};bottom:9cqh;width:33cqw;height:76cqh}
+.dPp .dHero.dPh{width:34cqw;height:62cqh;bottom:16cqh}
+.dPp .dHero .dCs{left:6%;right:6%;bottom:-2.6cqh;height:6cqh;background:radial-gradient(closest-side,rgba(0,0,0,.55),transparent)}
+.dPp .dHero .dHb{filter:drop-shadow(0 2.2cqw 2.4cqw rgba(0,0,0,.45)) drop-shadow(0 .3cqw .5cqw rgba(0,0,0,.3))}
+.dPpT{position:absolute;${right ? "right:6cqw;text-align:right" : "left:6cqw"};top:50%;width:${hasProduct ? 50 : 70}cqw;transform:translateY(-46%);color:${tInk}}
+.dPpLg{height:4.6cqw;margin-bottom:3.2cqh;opacity:0}
+.dPpK{display:flex;align-items:center;gap:1.4cqw;${right ? "justify-content:flex-end;" : ""}font:600 1.85cqw/1 ${serif ? "Poppins" : `'${font}'`},system-ui;letter-spacing:.26em;text-transform:uppercase;color:${acc};margin-bottom:2.6cqh;opacity:0}
+.dPpK:before{content:"";width:5.5cqw;height:.18cqw;background:currentColor;${right ? "order:2" : ""}}
+.dPpM{font:${serif ? "600 7.6cqw/1.02" : stack ? "400 10.5cqw/.92" : "700 7cqw/1.0"} '${font}',Georgia,serif;letter-spacing:${serif ? "-.01em" : stack ? ".005em" : "-.02em"};${stack ? "text-transform:uppercase;" : ""}text-wrap:balance;text-shadow:${tInk === "#ffffff" ? "0 .2cqw 1.6cqw rgba(0,0,0,.28)" : "none"}}
+.dPpL{display:block;overflow:hidden;padding-bottom:.06em}
+.dPpW{display:inline-block;transform:translateY(105%)}
+.dPpC{position:absolute;${right ? "left" : "right"}:2cqw;bottom:1.6cqh;font:500 1.25cqw/1 system-ui;letter-spacing:.04em;color:rgba(255,255,255,.62);opacity:0}
+:host([data-go]) .dPl{animation:dPpIn .9s .1s cubic-bezier(.3,.7,.2,1) forwards,dPpPush 6.2s .1s cubic-bezier(.25,.6,.3,1) forwards}
+:host([data-go]) .dPg{animation:dIn 1s .5s forwards}
+:host([data-go]) .dzi .dPp .dHero{animation:dPpRise 1.2s 1.1s cubic-bezier(.2,.8,.2,1) forwards,dPpDrift 5s 1.1s linear forwards}
+:host([data-go]) .dPpLg{animation:dIn .7s 1.5s forwards}
+:host([data-go]) .dPpK{animation:dPpSlide .8s 1.7s cubic-bezier(.2,.8,.2,1) forwards}
+:host([data-go]) .dPpW{animation:dPpUp .9s cubic-bezier(.2,.8,.2,1) forwards}
+:host([data-go]) .dPpC{animation:dIn .6s 1s forwards}
+@keyframes dPpIn{to{opacity:1}}
+@keyframes dPpPush{from{transform:scale(1.12) translateX(${right ? "-" : ""}1.5%)}to{transform:scale(1.03) translateX(${right ? "" : "-"}1%)}}
+@keyframes dPpRise{from{opacity:0;transform:translateY(7cqh) scale(.97)}to{opacity:1;transform:none}}
+@keyframes dPpDrift{from{translate:0 0}to{translate:${right ? "-" : ""}1.6cqw 0}}
+@keyframes dPpSlide{from{opacity:0;transform:translateX(${right ? "" : "-"}2cqw)}to{opacity:1;transform:none}}
+@keyframes dPpUp{to{transform:none}}`,
+      html: `<div class="dPp"><div class="dPl" style="background-image:url('${esc(plate)}')"></div><div class="dPg"></div>
+${hasProduct ? hero(o, t.fx.filter((x) => x === "shine" || x === "rim"), seed) : ""}
+<div class="dPpT"><div class="dPpLg">${logo}</div>${b.kicker && norm(b.kicker) !== norm(o.brand) ? `<div class="dPpK">${esc(b.kicker)}</div>` : ""}<div class="dPpM">${msgHtml}</div></div>
+${b.credit ? `<span class="dPpC">${esc(b.credit)}</span>` : ""}</div>` };
+  }
   return null;
 }
 
@@ -405,7 +457,7 @@ function endCard(dev, brief, base) {
 /**
  * The ad as staged by the creative director: the device's ~6 s scene over the picture, then the brand strip.
  * @param {Parameters<typeof stripHtml>[0] & { hook?: string|null, photoUrl?: string|null, seed?: string }} o
- * @param {{ device: string, base?: string, accent?: string, liquid?: string, ingredients?: string, sky_top?: string, sky_bottom?: string, kicker?: string, message: string, pass_from?: string, pass_to?: string, product_fx?: string[] }} brief
+ * @param {{ device: string, base?: string, accent?: string, liquid?: string, ingredients?: string, sky_top?: string, sky_bottom?: string, kicker?: string, message: string, pass_from?: string, pass_to?: string, product_fx?: string[], plateUrl?: string, credit?: string, side?: string, font?: string, layout?: string, shade?: string }} brief
  */
 export function sceneHtml(o, brief) {
   const dev = DEVICES.includes(brief.device) ? brief.device : "medallion";
@@ -414,7 +466,7 @@ export function sceneHtml(o, brief) {
   const deepBase = mix(base, "#000000", 0.42), seed = String(o.seed || o.brand) + dev;
   const fx = (brief.product_fx || []).filter((x) => FX.includes(x));
   // the logo as it reads on the scene behind it (frost and pour: light; spotlight: dark; shatter: the base colour)
-  const behind = { frost: "#e6f4fc", pour: mix(hex(brief.liquid) || base, "#ffffff", 0.2), spotlight: "#08070b", portal: hex(brief.sky_top) || mix(base, "#ffffff", 0.35), shatter: base }[dev];
+  const behind = { frost: "#e6f4fc", pour: mix(hex(brief.liquid) || base, "#ffffff", 0.2), spotlight: "#08070b", portal: hex(brief.sky_top) || mix(base, "#ffffff", 0.35), shatter: base, photoplate: hex(brief.shade) || deepBase }[dev];
   const lmode = o.logoUrl ? logoMode({ kind: o.logoKind || "mark", ink: o.logoInk, behind }) : "text";
   const logo = o.logoUrl ? `<span class="dLm ${lmode}"><img src="${esc(o.logoUrl)}" alt=""></span>` : `<b class="dLt">${esc(o.brand)}</b>`;
   const d = device(dev, o, { ...brief, message: brief.message || o.headline }, { base, deepBase, logo, seed, fx, photoUrl: o.photoUrl, kickAt: 2.7 });

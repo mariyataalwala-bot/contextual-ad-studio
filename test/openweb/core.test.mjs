@@ -27,7 +27,7 @@ test("config validation catches an unknown IAB id and a format without a source"
 });
 test("a changed taxonomy file is refused (hash check)", () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "owcfg-"));
-  for (const f of fs.readdirSync(CONFIG_DIR)) fs.copyFileSync(path.join(CONFIG_DIR, f), path.join(dir, f));
+  for (const f of fs.readdirSync(CONFIG_DIR).filter((x) => fs.statSync(path.join(CONFIG_DIR, x)).isFile())) fs.copyFileSync(path.join(CONFIG_DIR, f), path.join(dir, f));
   fs.appendFileSync(path.join(dir, "iab-content-taxonomy-3.1.tsv"), "999\t\tMade-up category\n");
   assert.throws(() => loadConfig(dir), /sha256/);
 });

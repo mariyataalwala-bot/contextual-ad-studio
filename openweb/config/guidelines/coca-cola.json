@@ -1,0 +1,155 @@
+{
+ "version": "guideline.v1",
+ "brand": "Coca-Cola",
+ "slug": "coca-cola",
+ "inBrandList": true,
+ "builtAt": "2026-11-03T06:01:47.682Z",
+ "sources": {
+  "facts": "openweb/config/brands.v2.json + D:/contextual-ads/inimage/_research/brands_research.json",
+  "direction": "ai-direction (derived from the checked facts, not a brand rule)"
+ },
+ "visual_identity": {
+  "value": "The visual identity features Coca-Cola red paired with white Spencerian script, contour bottles, and glasses filled with ice and condensation. It emphasizes fresh, ice-cold refreshment combined with meals, togetherness, and music.",
+  "source": "ai-direction (derived from the checked facts, not a brand rule)"
+ },
+ "ad_look": {
+  "value": "Coca-Cola red with white Spencerian script; contour bottle and glasses with ice/condensation; meals and togetherness (food-pairing is the core India platform), celebrities (Diljit Dosanjh, Janhvi Kapoor; Tiger Shroff for Zero Sugar with black cues), music via Coke Studio Bharat. Warm, upbeat, emotional tone.",
+  "source": "brands.v2"
+ },
+ "colour_system": [
+  {
+   "hex": "#e41e2b",
+   "role": "primary",
+   "source": "brands.v2",
+   "note": "Official Coca-Cola India logo SVG (coca-cola.com/content/dam/onexp/in/en/home-page-test-img/brands/coca-cola/Coca-Cola-Logo.svg) — red background #e41e2b, white script"
+  },
+  {
+   "hex": "#ffffff",
+   "role": "accent",
+   "source": "brands.v2",
+   "note": "Official Coca-Cola India logo SVG (coca-cola.com/content/dam/onexp/in/en/home-page-test-img/brands/coca-cola/Coca-Cola-Logo.svg) — red background #e41e2b, white script"
+  },
+  {
+   "hex": "#000000",
+   "role": "supporting: Black cues strictly used for Coca-Cola Zero Sugar creatives",
+   "source": "ai-direction (derived from the checked facts, not a brand rule)"
+  }
+ ],
+ "typography": {
+  "display": {
+   "value": "Montserrat",
+   "source": "ai-direction (derived from the checked facts, not a brand rule)"
+  },
+  "text": {
+   "value": "Inter",
+   "source": "ai-direction (derived from the checked facts, not a brand rule)"
+  },
+  "notes": {
+   "value": "Clean geometric sans-serif styling with balanced tracking, used alongside the iconic white Spencerian script.",
+   "source": "ai-direction (derived from the checked facts, not a brand rule)"
+  },
+  "strip_style": {
+   "value": "fresh",
+   "source": "brands.v2"
+  }
+ },
+ "motion_language": {
+  "value": "Warm, upbeat, and emotional motion where elements enter fluidly and settle with natural, refreshing pacing.",
+  "source": "ai-direction (derived from the checked facts, not a brand rule)"
+ },
+ "campaign_tone": {
+  "value": "Warm, upbeat, and emotional tone highlighting togetherness, food pairing, and instant refreshment.",
+  "source": "ai-direction (derived from the checked facts, not a brand rule)"
+ },
+ "campaigns": [
+  {
+   "name": "Halftime",
+   "year": 2026,
+   "source": "https://www.medianews4u.com/coca-cola-india-ropes-in-diljit-dosanjh-and-janhvi-kapoor-for-halftime-campaign/",
+   "source_kind": "brands.v2"
+  },
+  {
+   "name": "Har Meal Aaah",
+   "year": 2025,
+   "source": "https://www.mediainfoline.com/tag/har-meal-aaah",
+   "source_kind": "brands.v2"
+  },
+  {
+   "name": "Coca-Cola Zero Sugar x Swiggy Instamart — 'Life Interrupted, Taste Uninterrupted'",
+   "year": 2025,
+   "source": "https://www.exchange4media.com/advertising-news/coke-zero-swiggy-instamart-deliver-instant-refreshment-with-tiger-shroff-142975.html",
+   "source_kind": "brands.v2"
+  },
+  {
+   "name": "Coca-Cola Foodmarks India (Raj Kapoor legacy)",
+   "year": 2024,
+   "source": "https://www.theweek.in/wire-updates/business/2024/03/14/dcm11-the-coca-cola-company.html",
+   "source_kind": "brands.v2"
+  },
+  {
+   "name": "Coca-Cola Food Loot promotion / Coke Studio Bharat",
+   "year": "2025-26 (ongoing)",
+   "source": "https://www.coca-cola.com/in/en/brands/coca-cola",
+   "source_kind": "brands.v2"
+  }
+ ],
+ "signature_visuals": {
+  "value": [
+   "Contour bottles and glasses with ice and condensation",
+   "Meals and food-pairing moments shared together",
+   "Celebrities enjoying refreshers during in-between moments",
+   "Coke Studio Bharat music integration and settings"
+  ],
+  "source": "ai-direction (derived from the checked facts, not a brand rule)"
+ },
+ "product_range": {
+  "value": [
+   "Coca-Cola",
+   "Coca-Cola Zero Sugar",
+   "Diet Coke"
+  ],
+  "source": "brands.v2",
+  "note": "hero: Coca-Cola, Coca-Cola Zero Sugar"
+ },
+ "logo": {
+  "value": {
+   "note": "White Spencerian 'Coca-Cola' script on red (or red script on white). Zero Sugar and Diet Coke have separate logos on the India site.",
+   "file": "https://upload.wikimedia.org/wikipedia/commons/c/ce/Coca-Cola_logo.svg",
+   "png": "https://upload.wikimedia.org/wikipedia/commons/thumb/c/ce/Coca-Cola_logo.svg/960px-Coca-Cola_logo.svg.png",
+   "changed": "none found"
+  },
+  "source": "brands.v2"
+ },
+ "do": {
+  "value": [
+   "Use Coca-Cola red with white Spencerian script as the core visual anchor",
+   "Feature real contour bottles and glasses with ice and condensation",
+   "Incorporate food-pairing and shared meal moments",
+   "Use black cues exclusively for Coca-Cola Zero Sugar creatives"
+  ],
+  "source": "ai-direction (derived from the checked facts, not a brand rule)"
+ },
+ "dont": {
+  "value": [
+   "No drawn particles, sparkles or cartoon splashes",
+   "No claims or numbers",
+   "No health claims like healthy",
+   "Never alter the official red background hex or use unapproved brand colours",
+   "No drawn particles, sparkles, orbits or cartoon splashes",
+   "No claims, prices or numbers the brand has not made"
+  ],
+  "source": "ai-direction (derived from the checked facts, not a brand rule) + house rules"
+ },
+ "safety_notes": {
+  "value": [
+   "India brand page footer lists the shop links (BigBasket, Blinkit, Flipkart, JioMart, Amazon) — quick-commerce partnerships are frequent (e.g. Instamart tie-up).",
+   "Zero Sugar creatives use black cues; avoid health claims like 'healthy' — position as 'zero sugar' only."
+  ],
+  "source": "brands.v2"
+ },
+ "unverified": [
+  "Agency for Coke Zero Sugar x Instamart campaign",
+  "Full creative of 'Har Meal Aaah' (only a tag-page listing seen)",
+  "'Festicons' Diwali 2025 Google Gemini initiative (search snippet only)"
+ ]
+}

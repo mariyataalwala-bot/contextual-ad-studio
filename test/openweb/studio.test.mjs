@@ -482,11 +482,28 @@ test("director: every device stages its own scene, then the strip on data-go2; c
     for (const c of mine) assert.ok(!stripClasses.has(c), `${device}: class ${c} is also the strip's`);
     seen.add(scene.length);
   }
-  assert.equal(seen.size, 5, "five different scenes");
+  assert.equal(seen.size, 6, "six different scenes");
   assert.ok(splitStory(sceneHtml(look, { device: "medallion", message: "Hi" }))[1], "medallion is the story with its hook layer");
   assert.ok(splitStory(sceneHtml({ ...look, photoUrl: null }, { device: "shatter", message: "Hi" }))[1], "shatter needs the article photo, else the medallion story");
   assert.ok(sceneHtml(look, { device: "frost", message: "x", product_fx: ["droplets"] }).includes('class="dDew"'), "condensation on a cold cut-out");
   assert.ok(!sceneHtml({ ...look, productMode: "photo" }, { device: "frost", message: "x", product_fx: ["droplets"] }).includes('class="dDew"'), "no condensation masked onto a photo");
+});
+
+test("director: photoplate stages a real stock photo, the cut-out with depth and editorial type — nothing drawn", () => {
+  const brief = { device: "photoplate", message: "Slow <i>mornings</i>", kicker: "Monsoon", plateUrl: "https://images.test/plate.jpg", credit: "Photo: Unsplash", shade: "#102030", font: "Playfair Display", product_fx: ["shine", "droplets", "glints"] };
+  const h = sceneHtml(look, brief), scene = h.slice(h.indexOf('<div class="dz"'));
+  assert.ok(scene.includes("url('https://images.test/plate.jpg')"), "the stock photo is the plate");
+  assert.ok(scene.includes('class="dHero') && h.includes("dPpDrift") && h.includes(".dPp .dHero .dCs"), "cut-out with contact shadow and parallax drift");
+  assert.ok(scene.includes("Photo: Unsplash"), "the photo is credited");
+  assert.ok(!scene.includes('class="dGt"') && !scene.includes('class="dDew"'), "no glints or drawn droplets on a photo plate");
+  assert.ok(!/<svg/.test(scene), "nothing drawn");
+  assert.ok(scene.includes("&lt;i&gt;mornings&lt;/i&gt;"), "copy escaped");
+  assert.match(h, /'Playfair Display'/);
+  assert.ok(sceneHtml({ ...look, photoUrl: "https://a.test/article.jpg" }, { ...brief, plateUrl: undefined }).includes("url('https://a.test/article.jpg')"), "no plate → the article photo");
+  const stack = sceneHtml(look, { ...brief, layout: "stack", font: "Anton", side: "right" });
+  assert.equal((stack.match(/class="dPpW"/g) || []).length, 2, "stack: a line per word");
+  assert.ok(sceneHtml(look, { ...brief, font: "Comic Sans" }).includes("'Playfair Display'"), "only the loaded faces");
+  assert.ok(!sceneHtml({ ...look, productUrl: null }, brief).includes('class="dHero'), "no product → type and logo only");
 });
 
 test("director: rules pick a device when the AI is not available; the brief prompt carries the recent devices", () => {

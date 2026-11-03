@@ -1,0 +1,103 @@
+{
+ "version": "guideline.v1",
+ "brand": "Amul",
+ "slug": "amul",
+ "inBrandList": false,
+ "builtAt": "2026-11-03T06:03:17.140Z",
+ "sources": {
+  "facts": "not in brands.v2.json; only named as a rival of Nestlé, Mondelez",
+  "direction": "ai-direction (derived from the checked facts, not a brand rule)"
+ },
+ "visual_identity": {
+  "value": "The visual identity reflects a rich dairy heritage combined with refined confectionery appeal. Clean lines and warm lighting emphasize the natural quality of the products.",
+  "source": "ai-direction (derived from the checked facts, not a brand rule)"
+ },
+ "ad_look": {
+  "value": null,
+  "source": "unverified"
+ },
+ "colour_system": [
+  {
+   "hex": "#f4f1ea",
+   "role": "supporting: Warm neutral background tint",
+   "source": "ai-direction (derived from the checked facts, not a brand rule)"
+  },
+  {
+   "hex": "#2b2b2b",
+   "role": "supporting: Deep neutral text and contrast",
+   "source": "ai-direction (derived from the checked facts, not a brand rule)"
+  }
+ ],
+ "typography": {
+  "display": {
+   "value": "Playfair Display",
+   "source": "ai-direction (derived from the checked facts, not a brand rule)"
+  },
+  "text": {
+   "value": "Inter",
+   "source": "ai-direction (derived from the checked facts, not a brand rule)"
+  },
+  "notes": {
+   "value": "Display font in elegant medium weight with balanced tracking. Text font in clean sans-serif for clear legibility.",
+   "source": "ai-direction (derived from the checked facts, not a brand rule)"
+  },
+  "strip_style": {
+   "value": null,
+   "source": "unverified"
+  }
+ },
+ "motion_language": {
+  "value": "Elements glide smoothly into the frame with restrained, intentional precision, settling with gentle grace.",
+  "source": "ai-direction (derived from the checked facts, not a brand rule)"
+ },
+ "campaign_tone": {
+  "value": "Sophisticated, warm, and premium",
+  "source": "ai-direction (derived from the checked facts, not a brand rule)"
+ },
+ "campaigns": [],
+ "signature_visuals": {
+  "value": [
+   "Macro close-up of glossy chocolate texture",
+   "Fresh dairy pouring against a neutral studio backdrop",
+   "Minimalist tabletop scene with natural morning light"
+  ],
+  "source": "ai-direction (derived from the checked facts, not a brand rule)"
+ },
+ "product_range": {
+  "value": [
+   "Amul chocolates",
+   "Amul dairy"
+  ],
+  "source": "brands.v2 (rival lines)"
+ },
+ "logo": {
+  "value": null,
+  "source": "unverified"
+ },
+ "do": {
+  "value": [
+   "Keep layouts clean and uncluttered",
+   "Use warm and natural lighting",
+   "Maintain generous whitespace around subjects"
+  ],
+  "source": "ai-direction (derived from the checked facts, not a brand rule)"
+ },
+ "dont": {
+  "value": [
+   "no drawn particles, sparkles or cartoon splashes",
+   "no claims or numbers",
+   "do not use cluttered backgrounds",
+   "do not apply aggressive motion effects",
+   "No drawn particles, sparkles, orbits or cartoon splashes",
+   "No claims, prices or numbers the brand has not made"
+  ],
+  "source": "ai-direction (derived from the checked facts, not a brand rule) + house rules"
+ },
+ "safety_notes": {
+  "value": [],
+  "source": "unverified"
+ },
+ "unverified": [
+  "Everything except the rival lines: this brand is not in the checked Top 50 list"
+ ]
+}
