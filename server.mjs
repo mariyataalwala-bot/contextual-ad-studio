@@ -101,7 +101,8 @@ async function askGemini(system, text, schema, images, fast = false, grace = 0) 
   const LITE = ["gemini-3.5-flash-lite", "gemini-flash-lite-latest"];
   const all = grace ? [...new Set([GEMINI_MODELS()[0], ...LITE, ...GEMINI_MODELS()])] : [...new Set([...LITE, ...GEMINI_MODELS()])];
   const ready = all.filter((m) => (geminiOut.get(m) || 0) <= Date.now());
-  const models = ready.length ? ready : all;   // if every model is resting, try them anyway rather than give up
+  // if every model is resting, try them anyway rather than give up — the lite models first (their free allowance is far larger)
+  const models = ready.length ? ready : [...all.filter((m) => /lite/.test(m)), ...all.filter((m) => !/lite/.test(m))];
   const vision = images.length > 0, TIMEOUT = vision ? 30000 : 15000, HEDGE = vision ? 6000 : 4000;
   let last = "", quota = 0, over = false; const stop = new AbortController();   // over = a winner was found
   // one model, with one retry on broken JSON; marks busy / out-of-quota models so later calls skip them for a while.
@@ -113,10 +114,13 @@ async function askGemini(system, text, schema, images, fast = false, grace = 0) 
           config: { systemInstruction: system, responseMimeType: "application/json", responseJsonSchema: schema, abortSignal: stop.signal, httpOptions: { timeout: TIMEOUT } } });
         return JSON.parse(r.text);
       } catch (e) {
+        const msg = String(e.message || e);
+        // an out-of-quota answer always rests the model, even when another model already won (so later calls go straight to the lite models)
+        if (/429|RESOURCE_EXHAUSTED/i.test(msg)) geminiOut.set(model, Date.now() + (/PerDay|per.?day|daily/i.test(msg) ? 3 * 3600e3 : 90e3));
         if (over) throw e;
-        last = String(e.message || e);
+        last = msg;
         if (/JSON/.test(last) && attempt === 0) continue;
-        if (/429|RESOURCE_EXHAUSTED/i.test(last)) { quota++; geminiOut.set(model, Date.now() + (/PerDay|per.?day|daily/i.test(last) ? 3 * 3600e3 : 90e3)); }
+        if (/429|RESOURCE_EXHAUSTED/i.test(last)) quota++;
         else if (/404|not found|no longer available|not supported/i.test(last)) geminiOut.set(model, Date.now() + 24 * 3600e3);
         else if (/503|UNAVAILABLE|overloaded/i.test(last)) geminiOut.set(model, Date.now() + 60e3);
         else if (/timed? ?out|aborted/i.test(last)) geminiOut.set(model, Date.now() + 120e3);
