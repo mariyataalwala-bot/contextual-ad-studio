@@ -31,6 +31,34 @@ export function shortName(name, brand = "") {
   return w.length ? w.join(" ") : all.join(" ");
 }
 
+/** a product box in % of the frame ({x,y,w,h}), or null when missing / empty */
+export function productBox(b) {
+  if (!b || typeof b !== "object" || ![b.x, b.y, b.w, b.h].every((v) => Number.isFinite(+v))) return null;
+  const n = (/** @type {any} */ v) => Math.max(0, Math.min(100, +v));
+  const x = n(b.x), y = n(b.y), w = Math.min(n(b.w), 100 - x), h = Math.min(n(b.h), 100 - y);
+  return w >= 2 && h >= 2 ? { x, y, w, h } : null;
+}
+
+/**
+ * Where a cover-filled frame must sit so the whole product box (in % of the frame) stays inside the cell with a margin
+ * (pad, a fraction of the cell's shorter side): { px, py } object-position in %, or null when no position keeps it whole
+ * (the frame is then contained). Pure; fitVox runs the same sums inside the page.
+ */
+export function coverPosition(iw, ih, cw, ch, box, pad = 0.04) {
+  if (!(iw > 0 && ih > 0 && cw > 0 && ch > 0) || !box) return null;
+  const s = Math.max(cw / iw, ch / ih), DW = iw * s, DH = ih * s, m = Math.min(cw, ch) * pad;
+  const axis = (/** @type {number} */ D, /** @type {number} */ c, /** @type {number} */ b0, /** @type {number} */ bl) => {
+    const over = D - c, a = b0 / 100 * D, z = (b0 + bl) / 100 * D;
+    if (over < 0.5) return a >= -0.5 && z <= D + 0.5 ? 50 : null;   // this axis is not cropped
+    const lo = Math.max(0, (z + m - c) / over), hi = Math.min(1, (a - m) / over);
+    if (lo > hi + 1e-9) return null;
+    const want = ((a + z) / 2 - c / 2) / over;
+    return Math.round(Math.max(lo, Math.min(hi, want)) * 1000) / 10;
+  };
+  const px = axis(DW, cw, box.x, box.w), py = axis(DH, ch, box.y, box.h);
+  return px == null || py == null ? null : { px, py };
+}
+
 /** the shared parts of both formats */
 function parts(o) {
   let c = hex(o.colour) || "#1d2b53";
@@ -43,11 +71,13 @@ function parts(o) {
   const pic = campaign ? o.campaignUrl : o.productUrl;
   const lmode = o.logoUrl ? logoMode({ kind: o.logoKind || "mark", ink: o.logoInk, behind: "#ffffff" }) : "text";
   const logo = o.logoUrl ? `<div class="vlg vlg-${lmode}"><img src="${esc(o.logoUrl)}" alt="${esc(o.brand)}"></div>` : `<div class="vlg vlg-text">${esc(o.brand)}</div>`;
-  // a campaign frame is cover-cropped only when the vision call confirmed it holds no burnt-in text (campaignCrop);
-  // otherwise it is shown whole (contained), so no caption can ever be cut mid-word
-  const crop = campaign && o.campaignCrop === true;
+  // a product photo or pack cut-out is always contained, with padding. A campaign frame is cover-filled only when the
+  // vision call confirmed it holds no burnt-in text (campaignCrop) AND gave the product's box (campaignBox); fitVox then
+  // checks on the page that the whole box stays inside the cell with a margin, else it contains the frame instead
+  const box = campaign && o.campaignCrop === true ? productBox(o.campaignBox) : null;
+  const crop = !!box;
   const cls = crop ? "vph-cover" : campaign ? "vph-fit" : "vph-pack";
-  const cell = pic ? `<div class="vph ${cls}"><img src="${esc(pic)}" alt=""${crop ? ` style="object-position:${fx}% 50%"` : ""}></div>` : "";
+  const cell = pic ? `<div class="vph ${cls}"><img src="${esc(pic)}" alt=""${crop ? ` data-box="${box.x},${box.y},${box.w},${box.h}" style="object-position:${fx}% 50%"` : ""}></div>` : "";
   const text = `<div class="vtx"><div class="vnm">${esc(name)}</div>${line ? `<div class="vln">${esc(line)}</div>` : ""}<div class="vcta">${esc(o.cta || "Shop now")}</div></div>`;
   return { c, ctaInk, cell, text, logo };
 }
@@ -58,6 +88,7 @@ const BASE = (c, ctaInk) => `*{text-decoration:none!important;box-sizing:border-
 .vph{position:absolute;overflow:hidden;background:#fff}
 .vph img{display:block;width:100%;height:100%}
 .vph-cover img{object-fit:cover;object-position:center}
+.vph-fit{padding:4%}
 .vph-fit img{object-fit:contain;object-position:center}
 .vph-pack{padding:6%}
 .vph-pack img{object-fit:contain;object-position:center}
@@ -139,6 +170,26 @@ export function fitVox(host) {
   const R = (/** @type {Element} */ el) => el.getBoundingClientRect();
   const ink = (/** @type {Element} */ el) => { const r = document.createRange(); r.selectNodeContents(el); const b = r.getBoundingClientRect(); return b.width ? b : R(el); };
   const fails = [];
+  // a cover-filled frame keeps the whole product box inside its cell (with a margin), else it is contained instead
+  for (const img of /** @type {HTMLImageElement[]} */ ([...root.querySelectorAll(".vph-cover img")])) {
+    const cell = /** @type {HTMLElement} */ (img.parentElement), b = String(img.dataset.box || "").split(",").map(Number);
+    const iw = img.naturalWidth, ih = img.naturalHeight, cw = cell.clientWidth, ch = cell.clientHeight;
+    let pos = null;
+    if (b.length === 4 && b.every(Number.isFinite) && iw > 0 && ih > 0 && cw > 0 && ch > 0) {
+      const s = Math.max(cw / iw, ch / ih), DW = iw * s, DH = ih * s, m = Math.min(cw, ch) * 0.04;
+      const axis = (/** @type {number} */ D, /** @type {number} */ c, /** @type {number} */ b0, /** @type {number} */ bl) => {
+        const over = D - c, a = b0 / 100 * D, z = (b0 + bl) / 100 * D;
+        if (over < 0.5) return a >= -0.5 && z <= D + 0.5 ? 50 : null;
+        const lo = Math.max(0, (z + m - c) / over), hi = Math.min(1, (a - m) / over);
+        if (lo > hi + 1e-9) return null;
+        return Math.round(Math.max(lo, Math.min(hi, ((a + z) / 2 - c / 2) / over)) * 1000) / 10;
+      };
+      const px = axis(DW, cw, b[0], b[2]), py = axis(DH, ch, b[1], b[3]);
+      if (px != null && py != null) pos = px + "% " + py + "%";
+    }
+    if (pos) img.style.objectPosition = pos;
+    else { cell.classList.remove("vph-cover"); cell.classList.add("vph-fit"); img.style.objectPosition = ""; delete img.dataset.box; }
+  }
   for (const tx of /** @type {HTMLElement[]} */ ([...root.querySelectorAll(".vtx")])) {
     const bar = /** @type {HTMLElement} */ (tx.parentElement);
     const nm = /** @type {HTMLElement|null} */ (tx.querySelector(".vnm")), ln = /** @type {HTMLElement|null} */ (tx.querySelector(".vln")), cta = /** @type {HTMLElement|null} */ (tx.querySelector(".vcta"));
@@ -190,7 +241,18 @@ export function voxGeom(host) {
   const ink = (/** @type {Element} */ el) => { const r = document.createRange(); r.selectNodeContents(el); const b = r.getBoundingClientRect(); return b.width ? { x: +b.x.toFixed(1), y: +b.y.toFixed(1), w: +b.width.toFixed(1), h: +b.height.toFixed(1) } : R(el); };
   const t = (/** @type {string} */ k, /** @type {Element|null} */ el, box = ink) => { if (!el) return null; const cs = getComputedStyle(el); return { k, text: (el.textContent || "").trim(), ...box(el), fs: parseFloat(cs.fontSize), color: cs.color }; };
   const lg = bar.querySelector(":scope > .vlg"), img = lg && lg.querySelector("img"), cell = bar.querySelector(":scope > .vph");
+  // the product on screen: the drawn picture when contained, the AI's product box when cover-filled
+  const shown = (/** @type {Element} */ c) => {
+    const im = /** @type {HTMLImageElement|null} */ (c.querySelector("img")); if (!im || !im.naturalWidth) return null;
+    const b = im.getBoundingClientRect(), cs = getComputedStyle(im), iw = im.naturalWidth, ih = im.naturalHeight;
+    const cover = cs.objectFit === "cover", s = cover ? Math.max(b.width / iw, b.height / ih) : Math.min(b.width / iw, b.height / ih);
+    const DW = iw * s, DH = ih * s, [ox, oy] = (cs.objectPosition || "50% 50%").split(" ").map((v) => (parseFloat(v) || 0) / 100);
+    const x0 = b.x + (b.width - DW) * ox, y0 = b.y + (b.height - DH) * oy;
+    const k = cover ? String(im.dataset.box || "").split(",").map(Number) : [0, 0, 100, 100];
+    if (k.length !== 4 || !k.every(Number.isFinite)) return { x: +x0.toFixed(1), y: +y0.toFixed(1), w: +DW.toFixed(1), h: +DH.toFixed(1) };   // a cover with no box: the whole frame (so a crop is caught)
+    return { x: +(x0 + k[0] / 100 * DW).toFixed(1), y: +(y0 + k[1] / 100 * DH).toFixed(1), w: +(k[2] / 100 * DW).toFixed(1), h: +(k[3] / 100 * DH).toFixed(1) };
+  };
   return { kind: "vox", bar: bar === vf ? "full" : "stripe", card: R(bar), view: { w: innerWidth, h: innerHeight }, panelColour: "#ffffff", fit: host.dataset.voxFit || "",
     texts: [t("headline", tx.querySelector(".vnm")), t("subline", tx.querySelector(".vln")), t("cta", tx.querySelector(".vcta"), R)].filter(Boolean),
-    logo: lg ? (img ? R(img) : ink(lg)) : null, picture: cell ? R(cell) : null };
+    logo: lg ? (img ? R(img) : ink(lg)) : null, picture: cell ? R(cell) : null, productBox: cell ? shown(cell) : null };
 }

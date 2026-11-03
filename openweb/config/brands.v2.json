@@ -5654,15 +5654,17 @@
     "Tissot PRX",
     "Tissot Seastar",
     "Tissot Gentleman",
-    "Collections on India site Tissot PRX"
+    "Tissot Le Locle"
    ],
    "heroProducts": [
     "Tissot PRX",
     "Tissot Seastar",
-    "Tissot Gentleman"
+    "Tissot Gentleman",
+    "Tissot Le Locle"
    ],
    "domains": [
-    "tissotwatches.com/en-in"
+    "tissotwatches.com/en-in",
+    "tissotwatches.com"
    ],
    "colours": {
     "primary": "#282828",
@@ -5692,7 +5694,9 @@
     "Fossil",
     "TAG Heuer",
     "Victorinox",
-    "Timex"
+    "Timex",
+    "Rolex",
+    "Jacob & Co."
    ],
    "rivals": [
     {
@@ -5736,6 +5740,14 @@
     },
     {
      "brand": "Timex",
+     "lines": []
+    },
+    {
+     "brand": "Rolex",
+     "lines": []
+    },
+    {
+     "brand": "Jacob & Co.",
      "lines": []
     }
    ],

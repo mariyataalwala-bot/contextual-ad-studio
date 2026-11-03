@@ -86,8 +86,18 @@ export const PICK_SCHEMA = { type: "object", properties: {
   product_x: { type: "integer", description: "where the product's centre sits across that frame, 0 (left edge) to 100 (right edge)" },
   has_text: { type: "boolean", description: "true if the chosen frame shows ANY burnt-in text: a caption, super, slogan, price, URL, legal line or end-card words (text printed on the product's own pack does not count)" },
   text_box: { type: "object", description: "where that text is, in % of the frame (0 0 0 0 when has_text is false)", properties: { x: { type: "integer" }, y: { type: "integer" }, w: { type: "integer" }, h: { type: "integer" } }, required: ["x", "y", "w", "h"] },
+  product_box: { type: "object", description: "the whole product (watch, pack, bottle…) in the chosen frame, in % of the frame: x, y = its top-left corner, w, h = its size", properties: { x: { type: "integer" }, y: { type: "integer" }, w: { type: "integer" }, h: { type: "integer" } }, required: ["x", "y", "w", "h"] },
   why: { type: "string" },
-}, required: ["pick", "product_x", "has_text", "text_box", "why"] };
+}, required: ["pick", "product_x", "has_text", "text_box", "product_box", "why"] };
+
+/** a product box in % of the frame, clamped; null when missing or empty (the unit then never cover-crops the frame) */
+export function cleanBox(b) {
+  if (!b || typeof b !== "object") return null;
+  const n = (v) => Math.max(0, Math.min(100, Math.round(+v)));
+  if (![b.x, b.y, b.w, b.h].every((v) => Number.isFinite(+v))) return null;
+  const x = n(b.x), y = n(b.y), w = Math.min(n(b.w), 100 - x), h = Math.min(n(b.h), 100 - y);
+  return w >= 2 && h >= 2 ? { x, y, w, h } : null;
+}
 
 /**
  * The best frame: one vision call when ask is given (product visible, sharp, well lit, no large face, no on-screen
@@ -102,12 +112,12 @@ export async function pickCampaignFrame(files, { ffmpeg, ask = null, brand = "",
   if (ask) {
     try {
       const r = await ask("You choose a still from a brand's TV ad for a premium banner. You judge only what is shown.",
-        `These are stills from ${brand}'s TV ad. Pick the ONE frame that best works as the campaign photo for ${product}: the product (or its pack) clearly visible, sharp, well lit, no large human face filling the frame, no big on-screen caption or legal text, not a fade or a black/white end card. Answer 0 if none shows the product. product_x: where the product's centre is across the chosen frame (0 = left edge, 100 = right edge), so a crop keeps it. Choose ONLY a frame with no burnt-in text at all (captions, supers, slogans, URLs, legal lines, end-card words; words printed on the product's own pack are fine); has_text must say honestly whether the chosen frame shows any, and text_box where.`,
+        `These are stills from ${brand}'s TV ad. Pick the ONE frame that best works as the campaign photo for ${product}: the product (or its pack) clearly visible, sharp, well lit, no large human face filling the frame, no big on-screen caption or legal text, not a fade or a black/white end card. Answer 0 if none shows the product. product_x: where the product's centre is across the chosen frame (0 = left edge, 100 = right edge), so a crop keeps it. product_box: the box around the WHOLE product in that frame, in % of the frame, so a crop never cuts it. Choose ONLY a frame with no burnt-in text at all (captions, supers, slogans, URLs, legal lines, end-card words; words printed on the product's own pack are fine); has_text must say honestly whether the chosen frame shows any, and text_box where.`,
         PICK_SCHEMA, usable.map((x, i) => ({ label: `Frame ${i + 1}`, file: x.file })), "low");
       const k = Number(r?.pick);
       if (k >= 1 && k <= usable.length) {
         if (r.has_text !== false) return null;   // text in the frame (or not stated): the unit uses the contained pack cut-out
-        return { file: usable[k - 1].file, by: "AI", focus: Number.isFinite(+r.product_x) ? Math.max(0, Math.min(100, +r.product_x)) : 50, crop: true, why: String(r.why || "").slice(0, 200) };
+        return { file: usable[k - 1].file, by: "AI", focus: Number.isFinite(+r.product_x) ? Math.max(0, Math.min(100, +r.product_x)) : 50, box: cleanBox(r.product_box), crop: true, why: String(r.why || "").slice(0, 200) };
       }
       if (k === 0) return null;
     } catch { /* quota or no AI: the rules below */ }
@@ -118,7 +128,7 @@ export async function pickCampaignFrame(files, { ffmpeg, ask = null, brand = "",
 
 /**
  * The campaign image for a run: frames of the first recent ad, the best one saved as <dir>/campaign.jpg (1280 px wide).
- * @returns {Promise<{ file: string, videoId: string, by: string, focus: number, crop: boolean, why: string }|null>}
+ * @returns {Promise<{ file: string, videoId: string, by: string, focus: number, box: {x:number,y:number,w:number,h:number}|null, crop: boolean, why: string }|null>}
  */
 export async function campaignImage({ ads = [], dir, ffmpeg, ask = null, brand = "", product = "", yt = runYt }) {
   if (!ffmpeg) return null;
@@ -129,7 +139,7 @@ export async function campaignImage({ ads = [], dir, ffmpeg, ask = null, brand =
     if (!pick) continue;
     const out = path.join(dir, "campaign.jpg");
     await ffmpeg(["-loglevel", "error", "-y", "-i", pick.file, "-vf", "scale='min(1280,iw)':-2", "-q:v", "2", "-frames:v", "1", out]);
-    return { file: out, videoId: ad.id, by: pick.by, focus: pick.focus, crop: pick.crop === true, why: pick.why };
+    return { file: out, videoId: ad.id, by: pick.by, focus: pick.focus, box: pick.box || null, crop: pick.crop === true, why: pick.why };
   }
   return null;
 }

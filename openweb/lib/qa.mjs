@@ -153,6 +153,8 @@ export function geometryIssues(samples) {
       const box = { x: g.card.x + m, y: g.card.y + m, w: g.card.w - 2 * m, h: g.card.h - 2 * m };
       if (g.logo && (g.logo.x < box.x - 0.5 || g.logo.y < box.y - 0.5 || g.logo.x + g.logo.w > box.x + box.w + 0.5 || g.logo.y + g.logo.h > box.y + box.h + 0.5)) add(issue("safe_margins", "critical", t, `The logo is outside the safe margin of the ${g.bar || "bar"}`, "Shrink the logo (keeping its shape) so it sits whole inside the bar.", "geometry"));
       if (g.logo && inter(g.logo, g.picture) > 2) add(issue("logo_product_obstruction", "critical", t, "The logo overlaps the photo cell", "Keep the logo in its own column, clear of the photo.", "geometry"));
+      const pb = g.productBox, pc = g.picture;   // the product photo is never cropped: its box lies whole inside its cell
+      if (pb && pc && (pb.x < pc.x - 0.5 || pb.y < pc.y - 0.5 || pb.x + pb.w > pc.x + pc.w + 0.5 || pb.y + pb.h > pc.y + pc.h + 0.5)) add(issue("logo_product_obstruction", "critical", t, "The product photo is cut off at the edge of its cell", "Contain the product photo in its cell (with padding) so it is shown whole.", "geometry"));
       if (/^fail/.test(g.fit || "")) add(issue("text_overlap", "critical", t, `The copy could not be fitted without cutting it: ${String(g.fit).slice(6)}`, "Shorten the product name or the line.", "geometry"));
     }
     if (g.ad === false) add(issue("claims_safety", "major", t, "The unit is not labelled “Advertisement”", "Show the “Advertisement” label above the unit.", "geometry"));

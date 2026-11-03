@@ -245,11 +245,12 @@ export async function tryProductPictures(fetched, { prepare, check, maxTries = 6
       if (checks.filter((c) => c.method).length >= maxTries) break;
       const c = await prepare(got, mode, i);
       const v = await check(got, c);
-      checks.push({ picture: got.x.url, kind: v.kind || got.x.kind || null, method: c.method, ok: !!v.ok, problem: v.problem || "", preview: c.preview || null });
+      // a picture too small to use costs no AI check (it does not count against maxTries)
+      checks.push({ picture: got.x.url, kind: v.kind || got.x.kind || null, method: v.kind === "low_res" ? null : c.method, ok: !!v.ok, problem: v.problem || "", preview: c.preview || null });
       if (v.ok) return { got, c, v, checks };
       // a banner or an unrelated picture stays wrong whatever is done to it: next picture; anything else rejected as a
       // cut-out gets one more check as its original photo (the cut-out may be what damaged it)
-      if (c.method === "photo" || v.kind === "promo_banner" || v.kind === "irrelevant") break;
+      if (c.method === "photo" || v.kind === "promo_banner" || v.kind === "irrelevant" || v.kind === "low_res") break;
     }
   }
   return { got: null, c: null, v: null, checks };
@@ -437,7 +438,10 @@ export async function makeInImage(o) {
     const topicP = ask("You help find articles for contextual ads.",
       `Brand: ${brand}. Product: ${product}.\n${brief ? brief + "\n" : ""}Give 15-25 lowercase single words (a few two-word phrases at most) that would appear in the web address of a news or lifestyle article that is a natural place for this ad — the product type, how and where it is used, occasions, activities, dishes, places (e.g. for running shoes: running, marathon, jogging, walking, workout, fitness, steps, cardio, sneakers; for instant noodles: noodles, recipe, snack, ramen, hostel, monsoon, chai, breakfast). Never the brand name or competitor names.\nAlso competitors: 8-20 rival brands of ${brand} for this product and their product line names (e.g. for a phone: Apple, iPhone, Samsung, Galaxy, Google, Pixel, OnePlus, Xiaomi, Redmi, Vivo, Oppo, Realme).`,
       TOPIC_SCHEMA, [], "medium").catch(() => ({ words: [], competitors: [] }));
-    const [web, webClear, webIn, commons, webLogos, feedItems, older] = await Promise.all([
+    // official product images first: the brand's own site (site: search on its known domain), then the rest
+    const offHost = String((known?.domains || [])[0] || "").replace(/^https?:\/\//, "").split("/")[0];
+    const [webOff, web, webClear, webIn, commons, webLogos, feedItems, older] = await Promise.all([
+      client || !offHost ? [] : imageSearch(`${brand} ${product} site:${offHost}`, { fetchImpl }).catch(() => []),
       client ? [] : imageSearch(`${brand} ${product}`, { fetchImpl }).catch(() => []),
       client ? [] : imageSearch(`${brand} ${product}`, { fetchImpl, transparent: true }).catch(() => []),
       client ? [] : imageSearch(`${brand} ${product} India`, { fetchImpl }).catch(() => []),
@@ -468,11 +472,13 @@ export async function makeInImage(o) {
     // the product as sold in India: the brand's own sites first, then Indian shops, then the rest; shops abroad never
     // (a US 20 fl oz Sprite bottle or a German page is not the product Indian readers buy)
     const shop = (list, h) => list.some((d) => h === d || h.endsWith("." + d));
-    const where = (h) => shop(studio.product.foreignShops, h) || foreignSite(h) ? -1 : official(h) ? 3 : shop(studio.product.indianShops, h) || /\.in$/.test(h) ? 2 : 0;
+    // stock libraries (watermarked previews, not the brand's own images) are never used
+    const STOCK = /(^|\.)(shutterstock|alamy|istockphoto|gettyimages|dreamstime|123rf|depositphotos|freepik|stock\.adobe|vecteezy|pexels|unsplash|pixabay)\./i;
+    const where = (h) => shop(studio.product.foreignShops, h) || foreignSite(h) || STOCK.test(h) ? -1 : official(h) ? 3 : /(^|\.)(press|media|newsroom)\./.test(h) && brandHost(h, brand) ? 2.5 : shop(studio.product.indianShops, h) || /\.in$/.test(h) ? 2 : 0;
     const seen = new Set(), products = [];
-    const ranked = [...web, ...webIn, ...webClear].map((x, i) => ({ x, i, w: where(x.host) })).filter((r) => r.w >= 0).sort((a, b) => b.w - a.w || a.i - b.i).map((r) => r.x);
+    const ranked = [...webOff, ...web, ...webIn, ...webClear].map((x, i) => ({ x, i, w: where(x.host) })).filter((r) => r.w >= 0).sort((a, b) => b.w - a.w || a.i - b.i).map((r) => r.x);
     for (const x of ranked) if (!seen.has(x.url) && x.thumb) { seen.add(x.url); products.push(x); }
-    result.productSearch = { found: web.length + webIn.length + webClear.length, kept: products.length, foreignShopsLeftOut: [...web, ...webIn, ...webClear].filter((x) => where(x.host) < 0).length };
+    result.productSearch = { found: webOff.length + web.length + webIn.length + webClear.length, official: webOff.length, kept: products.length, foreignShopsLeftOut: [...webOff, ...web, ...webIn, ...webClear].filter((x) => where(x.host) < 0).length };
     // the official logo file found in the brand research comes first; the web results stay as fallbacks (the AI pick and
     // the PNG check still apply to it)
     const researched = known?.logo?.png ? [{ url: known.logo.png, thumb: known.logo.png, page: known.logo.file || known.logo.png, host: "upload.wikimedia.org", title: `${known.name} official logo (MediaKart brand knowledge)` }] : [];
@@ -499,9 +505,10 @@ export async function makeInImage(o) {
     const camp = await campP;
     if (camp) { ref.verifiedCampaigns = camp.verified; ref.unverifiedCampaigns = camp.unverified; ref.campaignFlags = camp.flags; }
     result.recentAds = ref;
-    // the VOX formats use a frame of the brand's own TV ad; the stills are taken meanwhile (player screenshots, ~30–60 s)
+    // video / TV-ad frames are never used as imagery (brands do not accept screenshots of their ads): only when
+    // creative.videoFrames is explicitly true (off in the config and by default) is a frame taken
     const voxLayout = !client && VOX_LAYOUTS.includes(layoutName);
-    const campaignP = voxLayout && o.campaign && ref.ads?.length
+    const campaignP = voxLayout && studio.creative?.videoFrames === true && o.campaign && ref.ads?.length
       ? o.campaign({ ads: ref.ads, dir: path.join(workDir, "campaign"), ffmpeg, ask, brand, product }).catch((e) => { result.campaignProblem = String(e.message).slice(0, 200); return null; })
       : Promise.resolve(null);
     const stills = (await Promise.all(ref.ads.slice(0, 4).map(async (a, i) => { const f = await downloadImage(a.still, path.join(cand, `r${i + 1}`), { fetchImpl, fs }).catch(() => null); return f && /\.(jpg|png)$/.test(f) ? { ...a, file: f, n: i + 1 } : null; }))).filter(Boolean);
@@ -544,6 +551,8 @@ export async function makeInImage(o) {
     const service = !!pick.is_service || /deliver|airline|flight|travel|booking|\bstays?\b|hotel|streaming|\bapps?\b|assistant|bank|insurance|telecom|ride|cab/i.test(known?.category || "");
     const lifestyleOk = service || style === "fresh" || style === "journey";
     let candidates = productCandidates(pick, pThumbs, { lifestyleOk });
+    // a service has no pack: only the brand's own imagery (its site, press or media pages); no stock or third-party photos
+    if (service) candidates = candidates.filter((x) => where(x.host) >= 2.5);
     if (userFile) candidates = [{ url: "upload:" + path.basename(userFile), page: null, host: "uploaded file", title: "photo uploaded by the user", n: -1, user: true, kind: "product_on_background" }];
     else if (userPic) {
       let host = ""; try { host = new URL(userPic).host.replace(/^www\./, ""); } catch { throw new StudioStop("failed", "The product photo link is not a web address (it should start with https://)."); }
@@ -593,6 +602,9 @@ export async function makeInImage(o) {
         return { ...c, previewFile: pv, preview: path.relative(workDir, pv).replace(/\\/g, "/") };
       },
       check: async (/** @type {any} */ got, /** @type {any} */ c) => {
+        // official product photos only at a proper resolution: the longer side at least product.minPx (800), unless the user gave it
+        const minPx = studio.product.minPx ?? 800, side = Math.max(+c.sw || 0, +c.sh || 0);
+        if (!service && !got.x.user && side > 0 && side < minPx) return { ok: false, kind: "low_res", problem: `too small (${c.sw}×${c.sh}; at least ${minPx} px on the longer side)`, picture_problem: true };
         if (c.method === "photo" && (c.clear || 0) > 0.3) return { ok: false, kind: "promo_banner", problem: `a graphic on a transparent background (${Math.round(c.clear * 100)}% see-through, e.g. objects floating on nothing), not a photograph` };
         const imgs = [{ label: "PRODUCT PICTURE to check (shown on a grey checkerboard: checkerboard = transparent)", file: c.previewFile }];
         if (got.x.file) imgs.push({ label: `Reference: the search thumbnail it came from ("${got.x.title}" on ${got.x.host})`, file: got.x.file });
@@ -602,7 +614,7 @@ export async function makeInImage(o) {
           (c.method === "photo" ? `PRODUCT PICTURE — the original photo, shown in the ad as a photo. ALLOWED and never a reason to reject: a background, table or surface, cloth or napkin, plate, board, serving dish, garnish or simple props around the product${got.x.kind === "lifestyle" ? ", and a lifestyle scene where the product is clearly the hero" : ""}.\n` : "PRODUCT PICTURE — a cut-out: no leftover background blocks, nothing damaged or removed by the cutting.\n") +
           (service && c.method === "photo"
             ? `${brand} is a service (${known?.category || pick.product_name || product}): there is no pack to show. ok when this is ONE appealing photo of what the service gives people — for food delivery, tempting food or a meal; for travel, the destination, stay or journey; for an app, it in use — clear and well lit. A phone, hands, a table or several dishes in one shot are fine. `
-            : `${VARIANT_NOTE}ok only if exactly this product (right brand, the variant asked for, current pack) is clearly the main subject, complete, not cut off or damaged. `) +
+            : `${VARIANT_NOTE}ok only if exactly this product (right brand, the variant asked for, current pack) is clearly the main subject, complete, not cut off or damaged${/watch/i.test(`${product} ${known?.category || ""}`) ? " — for a watch the WHOLE watch must show: case, crown and the full strap or bracelet" : ""}. `) +
           `Never ok: banner, headline, offer or price text over the picture; people or models as the focus; other brands' products; a watermark; a collage; website or app decoration art (illustrated or 3D-rendered food, icons, coins, confetti or boxes floating on an empty or transparent background — it must be a real photograph).\n` +
           `kind: what the picture is. picture_problem: true when the problem is in the original picture itself, false when only the cut-out went wrong.` +
           (lpv ? `\nLOGO PNG: logo_ok only if it is ${brand}'s own logo, complete and legible, and nothing else (no other logos, no photo around it).` : ""),
@@ -623,7 +635,7 @@ export async function makeInImage(o) {
         { type: "object", properties: { pictures: PICK_SCHEMA.properties.pictures }, required: ["pictures"] },
         more.map((x) => ({ label: `P${x.n} — "${x.title}" on ${x.host}`, file: x.file })), "medium"), 50000).catch(() => ({ pictures: [] })) : { pictures: [] };
       const seen = new Set(candidates.map((x) => x.url));
-      const next = productCandidates({ pictures: cls.pictures || [] }, more, { lifestyleOk }).filter((x) => !seen.has(x.url));
+      const next = productCandidates({ pictures: cls.pictures || [] }, more, { lifestyleOk }).filter((x) => !seen.has(x.url) && (!service || where(x.host) >= 2.5));
       result.productCandidates.push(...next.map((x) => ({ url: x.url, kind: x.kind, site: x.host, round: 2 })));
       if (next.length) {
         const second = await tryProductPictures(await download(next, candidates.length), { ...tryOpts, maxTries: maxChecks - used() });
@@ -640,14 +652,14 @@ export async function makeInImage(o) {
         `Brand: ${brand}\nProduct: ${product}\n${brief ? brief + "\n" : ""}Classify EVERY picture — kind: ${PICTURE_GUIDE}; ${VARIANT_NOTE}exact: true only when it shows exactly this product (the brand, the variant asked for, the current Indian pack — not a foreign pack, an old design or another variant).`,
         { type: "object", properties: { pictures: PICK_SCHEMA.properties.pictures }, required: ["pictures"] },
         shotsA.map((x) => ({ label: `P${x.n} — "${x.title}" on ${x.host}`, file: x.file })), "medium"), 40000).catch(() => ({ pictures: [] })) : { pictures: [] };
-      const nextA = productCandidates({ pictures: clsA.pictures || [] }, shotsA, { lifestyleOk });
+      const nextA = productCandidates({ pictures: clsA.pictures || [] }, shotsA, { lifestyleOk }).filter((x) => !service || where(x.host) >= 2.5);
       result.productCandidates.push(...nextA.map((x) => ({ url: x.url, kind: x.kind, site: x.host, round: "again" })));
       if (nextA.length) {
         const third = await tryProductPictures(await download(nextA, candidates.length + 80), { ...tryOpts, maxTries: Math.max(1, maxChecks - used()) });
         tried = { ...third, checks: [...tried.checks, ...third.checks] };
       }
     }
-    if (!tried.got && service && !userPic && !userFile && used() < maxChecks && Date.now() - t0 < (budget() - 78) * 1000) {
+    if (!tried.got && service && studio.product.stockForServices === true && !userPic && !userFile && used() < maxChecks && Date.now() - t0 < (budget() - 78) * 1000) {
       const what = [product, known?.category || ""].join(" ").replace(/\b(app|service|delivery|booking|online)\b/gi, " ").replace(/\s+/g, " ").trim() || product;
       say(35, "assets", `Looking for a clean photo of ${what} for the ad…`);
       const stock = (await imageSearch(`${what} photo site:unsplash.com OR site:pexels.com`, { fetchImpl }).catch(() => [])).filter((x) => /unsplash\.com|pexels\.com/.test(x.host) && x.thumb);
@@ -820,7 +832,7 @@ export async function makeInImage(o) {
     // 6) the creative on the chosen picture, recorded on a phone
     const FONTS = path.join(HERE, "..", "..", "pipeline", "template", "fonts");
     let fontsCss = fs.readFileSync(path.join(FONTS, "fonts.css"), "utf8").replace(/url\((f\d+\.woff2)\)/g, `url(${ASSET_URL}$1)`);
-    const files = client ? {} : { ["product.png"]: path.join(assets, "product.png") };
+    const files = client || !fs.existsSync(path.join(assets, "product.png")) ? {} : { ["product.png"]: path.join(assets, "product.png") };   // a brand-only ad has no product file
     if (logoFile) files["logo" + path.extname(logoFile)] = logoFile;
     if (logoFile && logoReverseFile) files["logo_reverse.png"] = logoReverseFile;
     for (const f of fs.readdirSync(FONTS).filter((x) => x.endsWith(".woff2"))) files[f] = path.join(FONTS, f);
@@ -832,13 +844,13 @@ export async function makeInImage(o) {
       const extra = await styleFonts(style, fontDir, fetchImpl).catch(() => null);   // no font → the design's fallback font
       if (extra) { fontsCss += "\n" + extra.css; Object.assign(files, extra.files); }
       const layout = layoutName;
-      const look = { brand, ...copy, colour: result.brandLook.colour, accent: result.brandLook.accent, productUrl: ASSET_URL + "product.png", productMode, logoUrl: logoFile ? ASSET_URL + "logo" + path.extname(logoFile) : null, logoKind: result.brandLook.logo?.kind, logoInk: result.brandLook.logo?.ink, logoLight: result.brandLook.logo?.light, logoReverseUrl: logoFile && logoReverseFile ? ASSET_URL + "logo_reverse.png" : null, style, motif };
+      const look = { brand, ...copy, colour: result.brandLook.colour, accent: result.brandLook.accent, productUrl: files["product.png"] ? ASSET_URL + "product.png" : null, productMode, logoUrl: logoFile ? ASSET_URL + "logo" + path.extname(logoFile) : null, logoKind: result.brandLook.logo?.kind, logoInk: result.brandLook.logo?.ink, logoLight: result.brandLook.logo?.light, logoReverseUrl: logoFile && logoReverseFile ? ASSET_URL + "logo_reverse.png" : null, style, motif };
       if (VOX_LAYOUTS.includes(layout)) {
         // VOX / Hybrid formats: the brand's campaign frame (else the pack cut-out), Stripe or Full takeover → Stripe
-        say(70, "render", "Taking the campaign photo from the brand's TV ad…");
+        if (studio.creative?.videoFrames === true) say(70, "render", "Taking the campaign photo from the brand's TV ad…");
         const camp = await timed(campaignP, 30000).catch(() => null);
-        if (camp?.file && fs.existsSync(camp.file)) { files["campaign.jpg"] = camp.file; result.campaignImage = { file: "campaign/campaign.jpg", videoId: camp.videoId, by: camp.by, focus: camp.focus, crop: camp.crop === true, why: camp.why }; }
-        const vo = { ...look, productName: pick.product_name || null, campaignUrl: files["campaign.jpg"] ? ASSET_URL + "campaign.jpg" : null, campaignFocus: camp?.focus, campaignCrop: camp?.crop === true };
+        if (camp?.file && fs.existsSync(camp.file)) { files["campaign.jpg"] = camp.file; result.campaignImage = { file: "campaign/campaign.jpg", videoId: camp.videoId, by: camp.by, focus: camp.focus, box: camp.box || null, crop: camp.crop === true, why: camp.why }; }
+        const vo = { ...look, productName: pick.product_name || null, campaignUrl: files["campaign.jpg"] ? ASSET_URL + "campaign.jpg" : null, campaignFocus: camp?.focus, campaignBox: camp?.box || null, campaignCrop: camp?.crop === true };
         result.creative = { format: layout, version: VOX_VERSION, campaign: !!vo.campaignUrl };
         const html = voxHtml(layout, vo);
         htmlFor = () => html;

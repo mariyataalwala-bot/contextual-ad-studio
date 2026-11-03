@@ -1,7 +1,7 @@
 /* global document */
 import test from "node:test";
 import assert from "node:assert/strict";
-import { voxStripeHtml, voxFullHtml, voxHtml, fitVox, VOX_FULL_MS } from "../../openweb/lib/vox.mjs";
+import { voxStripeHtml, voxFullHtml, voxHtml, fitVox, VOX_FULL_MS, coverPosition, productBox } from "../../openweb/lib/vox.mjs";
 import { stripHtml } from "../../openweb/lib/strip.mjs";
 import { statsOf, frameScore, pickCampaignFrame } from "../../openweb/lib/campaign.mjs";
 import { loadStudioConfig } from "../../openweb/lib/studio.mjs";
@@ -113,7 +113,9 @@ test("vox QA: a logo past the margin or a failed fit blocks approval, with the t
 
 test("vox: a campaign frame is cover-cropped only when the AI confirmed it holds no text", () => {
   assert.ok(voxStripeHtml(o).includes('class="vph vph-fit"'));
-  assert.ok(voxStripeHtml({ ...o, campaignCrop: true }).includes('class="vph vph-cover"'));
+  assert.ok(voxStripeHtml({ ...o, campaignCrop: true }).includes('class="vph vph-fit"'), "no product box: contained");
+  const h = voxStripeHtml({ ...o, campaignCrop: true, campaignBox: { x: 30, y: 20, w: 40, h: 60 } });
+  assert.ok(h.includes('class="vph vph-cover"') && h.includes('data-box="30,20,40,60"'));
   assert.match(voxFullHtml(o), /\.vph-fit img\{object-fit:contain/);
 });
 
@@ -151,4 +153,46 @@ test("vox fallback: with no clean frame the product cut-out is contained, never 
     assert.ok(h.includes('class="vph vph-pack"><img src="/a/product.png" alt="">'));
     assert.ok(!/vph-cover"/.test(h) && !/object-position:\d/.test(h.split("</style>")[1]));
   }
+});
+
+test("vox: a product photo or pack cut-out is always contained with padding", () => {
+  const h = voxStripeHtml({ ...o, campaignUrl: null, campaignCrop: true, campaignBox: { x: 0, y: 0, w: 100, h: 100 } });
+  assert.ok(h.includes('class="vph vph-pack"') && !h.includes("data-box"));
+  assert.match(h, /.vph-pack{padding:6%}/);
+  assert.match(h, /.vph-fit{padding:4%}/);
+});
+
+test("vox: coverPosition keeps the whole product box inside the cell, else null", () => {
+  assert.equal(productBox(null), null);
+  assert.equal(productBox({ x: 10, y: 10, w: 1, h: 50 }), null);
+  // a 16:9 frame in a 38%-wide stripe cell (about 1.2:1): the width is cropped
+  const mid = coverPosition(1280, 720, 300, 250, { x: 40, y: 20, w: 20, h: 60 });
+  assert.ok(mid && mid.px > 0 && mid.px < 100 && mid.py === 50);
+  // the watch at the left edge: the crop slides left to keep it
+  const left = coverPosition(1280, 720, 300, 250, { x: 5, y: 20, w: 25, h: 60 });
+  assert.ok(left && left.px < 10);
+  // a product spanning most of the width cannot fit a cover crop: contain instead
+  assert.equal(coverPosition(1280, 720, 300, 250, { x: 5, y: 10, w: 90, h: 80 }), null);
+  // a box that reaches the edge of an uncropped axis is still whole
+  assert.ok(coverPosition(1280, 720, 300, 250, { x: 40, y: 0, w: 20, h: 100 }));
+});
+
+test("qa: a product box outside its photo cell is a critical issue", async () => {
+  const { geometryIssues } = await import("../../openweb/lib/qa.mjs");
+  const base = { kind: "vox", bar: "stripe", card: { x: 0, y: 300, w: 800, h: 200 }, view: { w: 800, h: 500 }, panelColour: "#ffffff", fit: "ok", texts: [], logo: null, picture: { x: 0, y: 300, w: 300, h: 200 } };
+  const cut = geometryIssues([{ t: 1, geom: { ...base, productBox: { x: -40, y: 320, w: 200, h: 150 } } }]);
+  assert.ok(cut.some((i) => i.severity === "critical" && /cut off/.test(i.what)));
+  const ok = geometryIssues([{ t: 1, geom: { ...base, productBox: { x: 20, y: 320, w: 200, h: 150 } } }]);
+  assert.ok(!ok.some((i) => /cut off/.test(i.what)));
+});
+
+test("in-image: TV-ad / video frames are off in the config; a low-res picture is skipped without an AI check", async () => {
+  const { tryProductPictures } = await import("../../openweb/lib/studio.mjs");
+  assert.equal(loadStudioConfig().creative.videoFrames, false);
+  assert.equal(loadStudioConfig().product.minPx, 800);
+  const fetched = [{ x: { url: "a" }, f: "a.png" }, { x: { url: "b" }, f: "b.png" }];
+  let asks = 0;
+  const r = await tryProductPictures(fetched, { maxTries: 1, prepare: async (g) => ({ method: "alpha", sw: g.x.url === "a" ? 400 : 1200, sh: 400 }),
+    check: async (g, c) => Math.max(c.sw, c.sh) < 800 ? { ok: false, kind: "low_res", problem: "too small" } : (asks++, { ok: true }) });
+  assert.equal(r.got.x.url, "b"); assert.equal(asks, 1);
 });

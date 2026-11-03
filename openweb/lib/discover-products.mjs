@@ -20,6 +20,9 @@ const SHOP_WORDS = /\b(buy|online|price|prices|best|review|reviews|png|hd|images
 const SIZE = /\b\d+(?:\.\d+)?\s?(?:ml|g|gm|gms|gram|grams|kg|l|ltr|litre|litres|oz|fl\.? ?oz|pcs?|pieces?|tabs?|caps?|count|sheets?)\b/gi;
 const STOP = new Set(["the", "a", "an", "and", "of", "with", "for", "by", "in", "on", "to", "pack", "combo", "set", "new", "ml", "gm", "g"]);
 
+// words that make a listing ("Tissot Watches for Men", "Father's Day Watches", "Collection of …") rather than one product
+const LISTING = new Set(["s", "couple", "couples", "matching", "selection", "automatic", "mechanical", "quartz", "collection", "collections", "men", "mens", "women", "womens", "him", "her", "ladies", "gents", "father", "fathers", "mother", "mothers", "day", "gift", "gifts", "iconic", "all", "latest", "uk", "usa", "switzerland", "showroom", "showrooms", "boutique", "boutiques", "brand", "brands", "authorised", "authorized", "dealer", "dealers", "luxury", "swiss", "top", "popular"]);
+
 const titleCase = (s) => s.replace(/\b([a-z])([a-z']*)/gi, (_, a, b) => a.toUpperCase() + b.toLowerCase());
 const words = (s) => String(s || "").split(/\s+/).filter(Boolean);
 
@@ -80,12 +83,17 @@ export async function discoverProducts(o) {
   const brandTokens = new Set([brandIn, known?.name, known?.parent].filter(Boolean).flatMap((k) => termTokens(k)));
   const typedTokens = termTokens(productIn).filter((w) => !brandTokens.has(w) && !STOP.has(w));
   const catTokens = cat.words;
+  const brandCat = !!known && mentionsCategory(String(known.category || ""), cat);   // the brand itself is of the typed category ("Swiss watches")
 
   // 2) a few searches: brand + product as typed, + the normalised product, + "range", + "variants"
   const base = [`${brandIn} ${productIn}`.trim()];
   const plain = (q) => q.toLowerCase().replace(/\s+/g, " ").trim();   // search engines read "facewash" and "face wash" differently, so both are asked
   if (normalised && plain(`${brandIn} ${productIn}`) !== plain(`${brandIn} ${normalised}`)) base.push(`${brandIn} ${normalised}`);
   base.push(`${brandIn} ${normalised || productIn} range`, `${brandIn} ${normalised || productIn} variants`);
+  // a bare category ("Tissot" + "watch"): also ask for the brand's known hero products of it, so real models are listed
+  const heroes = brandCat && typedTokens.filter((w) => !catTokens.has(w)).length === 0 ? [...new Set([...(known.heroProducts || []), ...(known.products || [])])].filter((p) => !/range|and|&|collections?|site/i.test(p)).slice(0, 4) : [];
+  const offHost = String((known?.domains || [])[0] || "").replace(/^https?:\/\//, "").split("/")[0];
+  for (const h of heroes) { const q = `${names(h) ? h : `${brandLabel} ${h}`} ${productIn}`.trim(); base.push(offHost ? `${q} site:${offHost}` : q); }
   const queries = [...new Map(base.map((q) => [plain(q), q])).values()];
   const lists = await Promise.all(queries.map((q) => Promise.resolve().then(() => search(q)).catch((e) => { notes.push(`Search “${q}” failed: ${String(e.message).slice(0, 80)}`); return []; })));
   const flat = [], seenPic = new Set();
@@ -104,6 +112,8 @@ export async function discoverProducts(o) {
     if (NOT_A_PRODUCT.test(t) || !names(t) || rival(t) || !mentionsCategory(t, cat) || otherCategories(t, cat).length) continue;
     const name = nameFromTitle(t, { names, category: (s) => mentionsCategory(s, cat), brandLabel });
     if (!name || rival(name) || otherCategories(name, cat).length) continue;
+    const rest = termTokens(name).filter((w) => !brandTokens.has(w) && !STOP.has(w) && !catTokens.has(w) && !typedTokens.includes(w));
+    if (rest.length && rest.every((w) => LISTING.has(w) || LISTING.has(w.replace(/'?s$/, "")))) continue;   // a listing page, not one product
     cands.push({ name, title: t, r, site: siteScore(r.host) });
     if (cands.length >= MAX_CANDIDATES) break;
   }
@@ -117,11 +127,17 @@ export async function discoverProducts(o) {
   /** @type {{ name: string, core: string[], names: any[], pics: any[], texts: string[], known: boolean }[]} */ let groups = [];
   const place = (g) => { const hit = groups.find((x) => same(x.core, g.core)); if (hit) { hit.names.push(...g.names); hit.pics.push(...g.pics); hit.texts.push(...g.texts); hit.known ||= g.known; if (g.core.length > hit.core.length) hit.core = g.core; } else groups.push(g); };
   // brand knowledge: the brand's own named products of this category (never a generic "range" line)
-  const knownNames = (known?.products || []).filter((p) => !/\brange\b|\band\b|&/i.test(p) && mentionsCategory(p, cat) && !otherCategories(p, cat).length);
+  const knownNames = (known?.products || []).filter((p) => !/\brange\b|\band\b|&|\bcollections?\b|\bsite\b/i.test(p) && (mentionsCategory(p, cat) || brandCat) &&!otherCategories(p, cat).length);
   const items0 = [...cands.map((c) => ({ core: core(c.name), names: [{ name: c.name, official: c.site.official }], pics: [{ ...c.r, site: c.site }], texts: [c.title], known: false })),
     ...knownNames.map((p) => ({ core: core(p), names: [{ name: names(p) ? p : `${brandLabel} ${p}`, official: true, fromKnowledge: true }], pics: [], texts: [p], known: true }))]
     .sort((a, b) => b.core.length - a.core.length);
   for (const g of items0) place({ name: "", ...g });
+  // a known product with no picture yet: the best result whose title names it (all its words, this brand, no rival)
+  for (const g of groups) if (g.known && !g.pics.length && g.core.length) {
+    const hits = flat.filter((r) => !NOT_A_PRODUCT.test(r.title) && names(r.title) && !rival(r.title) && !otherCategories(r.title, cat).length && g.core.every((w) => termTokens(r.title).includes(w)))
+      .map((r) => ({ ...r, site: siteScore(r.host) })).filter((r) => r.site.score > 0).sort((a, b) => b.site.score - a.site.score);
+    if (hits.length) { g.pics.push(hits[0]); g.texts.push(hits[0].title); }
+  }
 
   // 4) one text-only AI call: may drop non-products, merge the same product, tidy a name — only with words found in the titles
   if (ask && groups.length > 1) {

@@ -336,7 +336,9 @@
   "layoutNote": "vox-full = VOX/Hybrid Full: the brand's campaign photo (a frame of its own TV ad) takes over the picture for ~4 s with the product name and button, then collapses into the Stripe (vox.mjs); vox-stripe = the VOX Stripe alone (thin white bar: campaign photo cell, product name, small-caps line, rectangular brand-colour button, logo); director =an AI creative director invents the idea per ad and stages it with one of six devices (frost, pour, spotlight, portal, shatter, medallion; director.mjs), then the strip; story = hook over the page, frosted takeover with the product medallion, message, then the strip (story.mjs); bottom-strip = the strip alone",
   "stripHeight": "40% of the image (at least 21% of its width)",
   "seconds": 12,
-  "scrollSeconds": 2
+  "scrollSeconds": 2,
+  "videoFrames": false,
+  "videoFramesNote": "2026-11-03: off — the client rejected TV-ad / YouTube frames as imagery; the VOX cell shows the official product photo, contained with padding."
  },
  "unavailable": [
   {
@@ -431,7 +433,9 @@
    "amazon.de",
    "amazon.ae"
   ],
-  "cutout": "Only when the background separates cleanly from the product; light or metallic products on a light background (silver jewellery, clear bottles) are shown as their original photo in a card."
+  "cutout": "Only when the background separates cleanly from the product; light or metallic products on a light background (silver jewellery, clear bottles) are shown as their original photo in a card.",
+  "minPx": 800,
+  "minPxNote": "2026-11-03: a product photo must be at least 800 px on its longer side (official images at the highest resolution found)."
  },
  "discovery": {
   "articleDays": 45,
