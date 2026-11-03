@@ -15,6 +15,7 @@ import { renderMock, ASSET_URL } from "./mock.mjs";
 import { discoverArticles, discoverCampaigns } from "./discover.mjs";
 import { stripHtml, fitStrip, STRIP_VERSION, STYLES, styleFontsUrl, styleFontFaces } from "./strip.mjs";
 import { storyHtml, STORY_VERSION, MOTIFS, hookFor } from "./story.mjs";
+import { voxHtml, fitVox, VOX_LAYOUTS, VOX_VERSION } from "./vox.mjs";
 import { sceneHtml, sceneVersion, directorPrompt, deviceFor, endStyle, DIRECTOR_SCHEMA, DIRECTOR_VERSION, DEVICES } from "./director.mjs";
 import { norm, sha256 } from "./text.mjs";
 import { findBrand, brandBrief, bannedReason, namesBrand, ownNames } from "./brands.mjs";
@@ -478,6 +479,11 @@ export async function makeInImage(o) {
     const camp = await campP;
     if (camp) { ref.verifiedCampaigns = camp.verified; ref.unverifiedCampaigns = camp.unverified; ref.campaignFlags = camp.flags; }
     result.recentAds = ref;
+    // the VOX formats use a frame of the brand's own TV ad; the stills are taken meanwhile (player screenshots, ~30–60 s)
+    const voxLayout = !client && VOX_LAYOUTS.includes(studio.creative.layout);
+    const campaignP = voxLayout && o.campaign && ref.ads?.length
+      ? o.campaign({ ads: ref.ads, dir: path.join(workDir, "campaign"), ffmpeg, ask, brand, product }).catch((e) => { result.campaignProblem = String(e.message).slice(0, 200); return null; })
+      : Promise.resolve(null);
     const stills = (await Promise.all(ref.ads.slice(0, 4).map(async (a, i) => { const f = await downloadImage(a.still, path.join(cand, `r${i + 1}`), { fetchImpl, fs }).catch(() => null); return f && /\.(jpg|png)$/.test(f) ? { ...a, file: f, n: i + 1 } : null; }))).filter(Boolean);
     const refLine = ref.ads.length || ref.campaigns.length || ref.adLook || ref.verifiedCampaigns?.length
       ? `The brand's recent ads (the reference for colours, style and voice — the new ad should look and sound like this brand's current advertising):${ref.adLook ? `\n- Ad look: ${ref.adLook}` : ""}${ref.verifiedCampaigns?.length ? `\n- Recent campaigns (verified on dated trade-press pages): ${ref.verifiedCampaigns.slice(0, 4).map((c) => `"${c.title}" (${c.date.slice(0, 10)}): ${c.evidence}`).join(" | ")}` : ""}${ref.campaigns.length ? `\n- Campaigns: ${ref.campaigns.map((c) => `"${c.name}"${c.year ? ` (${c.year})` : ""}`).join("; ")}` : ""}${ref.ads.length ? `\n- Recent commercials on YouTube: ${ref.ads.map((a) => `"${a.title}"`).join("; ")}` : ""}\n`
@@ -794,7 +800,16 @@ export async function makeInImage(o) {
       if (extra) { fontsCss += "\n" + extra.css; Object.assign(files, extra.files); }
       const layout = studio.creative.layout;
       const look = { brand, ...copy, colour: result.brandLook.colour, accent: result.brandLook.accent, productUrl: ASSET_URL + "product.png", productMode, logoUrl: logoFile ? ASSET_URL + "logo" + path.extname(logoFile) : null, logoKind: result.brandLook.logo?.kind, logoInk: result.brandLook.logo?.ink, logoLight: result.brandLook.logo?.light, logoReverseUrl: logoFile && logoReverseFile ? ASSET_URL + "logo_reverse.png" : null, style, motif };
-      if (layout === "director") {
+      if (VOX_LAYOUTS.includes(layout)) {
+        // VOX / Hybrid formats: the brand's campaign frame (else the pack cut-out), Stripe or Full takeover → Stripe
+        say(70, "render", "Taking the campaign photo from the brand's TV ad…");
+        const camp = await timed(campaignP, 30000).catch(() => null);
+        if (camp?.file && fs.existsSync(camp.file)) { files["campaign.jpg"] = camp.file; result.campaignImage = { file: "campaign/campaign.jpg", videoId: camp.videoId, by: camp.by, focus: camp.focus, why: camp.why }; }
+        const vo = { ...look, productName: pick.product_name || null, campaignUrl: files["campaign.jpg"] ? ASSET_URL + "campaign.jpg" : null, campaignFocus: camp?.focus };
+        result.creative = { format: layout, version: VOX_VERSION, campaign: !!vo.campaignUrl };
+        const html = voxHtml(layout, vo);
+        htmlFor = () => html;
+      } else if (layout === "director") {
         // the creative director: one idea for this brand, product and the picture it will play on (the first to be recorded)
         say(70, "render", "Creative direction: shaping the idea for this ad…");
         const top = ok[0], root = o.indexDir || path.join(workDir, "..", ".."), recent = recentDevices(root);
@@ -835,7 +850,7 @@ export async function makeInImage(o) {
           ? await renderMock({ articleUrl: c.a.url, leadImage: c.im.finalUrl || c.im.src, format: "in-image", outBase: path.join(workDir, base), video: true, strict: true,
             creativeFile: client.file, holdMs: clientHold, navTimeoutMs: 25000, ffmpeg, chromium: o.chromium })
           : await renderMock({ articleUrl: c.a.url, leadImage: c.im.finalUrl || c.im.src, format: "in-image", outBase: path.join(workDir, base), video: true, strict: true,
-            creativeHtml: htmlFor(c), assets: files, fontsCss, fontFaces, fit: fitStrip, holdMs: studio.creative.seconds * 1000, navTimeoutMs: 25000, ffmpeg, chromium: o.chromium });
+            creativeHtml: htmlFor(c), assets: files, fontsCss, fontFaces, fit: VOX_LAYOUTS.includes(result.creative?.format) ? fitVox : fitStrip, holdMs: studio.creative.seconds * 1000, navTimeoutMs: 25000, ffmpeg, chromium: o.chromium });
         chosen = c;
         if (!client) fs.writeFileSync(path.join(workDir, "creative.html"), `<!doctype html><meta charset="utf-8"><!-- ${result.creative.version} (${style}, ${result.director?.device || hook}): open inside the mock renderer (assets are served from ${ASSET_URL}) -->\n${htmlFor(c)}`);
         break;

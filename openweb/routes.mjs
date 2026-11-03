@@ -14,6 +14,7 @@ import { renderMock, MockError } from "./lib/mock.mjs";
 import { ensureVectors } from "./lib/semantic.mjs";
 import { loadStudioConfig, makeInImage, studioRefusal, sectionItems, feedFetcher, sitemapIndex, rivalMatcher } from "./lib/studio.mjs";
 import { STYLES } from "./lib/strip.mjs";
+import { campaignImage } from "./lib/campaign.mjs";
 import { loadBrands, findBrand, namesBrand } from "./lib/brands.mjs";
 import { makeFirecrawl, discoverArticles, discoverCampaigns } from "./lib/discover.mjs";
 import { makeReader, withTimeout } from "./lib/reader.mjs";
@@ -147,7 +148,7 @@ export function createOpenWeb({ dataDir, ask = null, provider = () => "none", ff
     const end = (status, outcome, error) => { if (j.status !== "running") return false; Object.assign(j, { status, outcome, tEnd: Date.now() }); if (error) j.error = error; if (studioBusy === j.id) studioBusy = null; return true; };
     const ctl = new AbortController(), limitS = studio.budgetSeconds + 75;
     const dog = setTimeout(() => { ctl.abort(); if (end("failed", "failed", `Stopped: the run took longer than ${limitS} s (last step: ${j.stage}). Nothing was placed.`)) log(j, j.error); }, limitS * 1000);
-    makeInImage({ compact: provider() === "openai", discovery: { fc: fcFor(), campaigns: campaignsFor }, recentAds: findAds, brand, product, offer, productImage, productThumb: /^https:\/\//i.test(productThumb) ? productThumb : "", style, clientAd, brands, workDir, indexDir: studioRoot, studio, cfg, store, ask, fetchImpl, py, ffmpeg, chromium, firecrawl: firecrawl(), signal: ctl.signal, say, productFile })
+    makeInImage({ compact: provider() === "openai", discovery: { fc: fcFor(), campaigns: campaignsFor }, recentAds: findAds, brand, product, offer, productImage, productThumb: /^https:\/\//i.test(productThumb) ? productThumb : "", style, clientAd, brands, workDir, indexDir: studioRoot, studio, cfg, store, ask, fetchImpl, py, ffmpeg, chromium, campaign: ffmpeg ? campaignImage : null, firecrawl: firecrawl(), signal: ctl.signal, say, productFile })
       .then((r) => { if (end("done", r.status || "success")) { j.result = r; j.pct = 100; log(j, `Ad ready in ${r.seconds} s (${j.outcome}${r.status === "partial" ? ": " + r.statusWhy : ""}).`); } })
       .catch((e) => { if (end("failed", e.status || "failed", e.message)) { j.needsInput = e.needsInput || null; log(j, `Stopped (${j.outcome}): ` + e.message); } try { fs.writeFileSync(path.join(workDir, "error.txt"), e.stack || e.message); } catch { /* best effort */ } })
       .finally(() => clearTimeout(dog));
