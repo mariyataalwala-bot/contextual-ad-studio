@@ -149,6 +149,12 @@ export function geometryIssues(samples) {
     if (bg) for (const x of texts.filter((y) => ["subline", "logo-word"].includes(y.k) || y.k.startsWith("headline"))) {
       const c = rgb(x.color); if (c && ratio(c, bg) < (x.k.startsWith("headline") ? 3 : 4.5)) add(issue("text_overlap", "major", t, `${label(x.k)} has weak contrast against the panel (${ratio(c, bg).toFixed(1)}:1)`, "Use the opposite ink colour for the panel.", "geometry"));
     }
+    if (g.kind === "vox") {   // the VOX bar (In-Image): the logo too must sit whole inside the safe margin, clear of the photo cell
+      const box = { x: g.card.x + m, y: g.card.y + m, w: g.card.w - 2 * m, h: g.card.h - 2 * m };
+      if (g.logo && (g.logo.x < box.x - 0.5 || g.logo.y < box.y - 0.5 || g.logo.x + g.logo.w > box.x + box.w + 0.5 || g.logo.y + g.logo.h > box.y + box.h + 0.5)) add(issue("safe_margins", "critical", t, `The logo is outside the safe margin of the ${g.bar || "bar"}`, "Shrink the logo (keeping its shape) so it sits whole inside the bar.", "geometry"));
+      if (g.logo && inter(g.logo, g.picture) > 2) add(issue("logo_product_obstruction", "critical", t, "The logo overlaps the photo cell", "Keep the logo in its own column, clear of the photo.", "geometry"));
+      if (/^fail/.test(g.fit || "")) add(issue("text_overlap", "critical", t, `The copy could not be fitted without cutting it: ${String(g.fit).slice(6)}`, "Shorten the product name or the line.", "geometry"));
+    }
     if (g.ad === false) add(issue("claims_safety", "major", t, "The unit is not labelled “Advertisement”", "Show the “Advertisement” label above the unit.", "geometry"));
   }
   return out;
@@ -261,6 +267,7 @@ export async function runQa(o) {
   issues.push(...textIssues(o.texts || [], { brandNames: o.brandNames, productNames: o.productNames }));
   // 2–5 layout measured in the page
   if (o.geometry?.length) issues.push(...geometryIssues(o.geometry));
+  else if (o.requireGeometry) unchecked.safe_margins = "the layout could not be measured in the page";   // a VOX unit is never approved without its boxes
   if (o.expectProduct && o.geometry?.length) issues.push(...productIssues(o.geometry));   // a video without page measurements (In-Image) is judged by eye, from its frames (below)
   // 1–4, 6, 7 the AI's look at the frames
   let frames = /** @type {{ t: number, file: string }[]} */ ([]), review = null, aiError = "";

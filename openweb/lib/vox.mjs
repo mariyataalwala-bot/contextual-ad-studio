@@ -43,7 +43,11 @@ function parts(o) {
   const pic = campaign ? o.campaignUrl : o.productUrl;
   const lmode = o.logoUrl ? logoMode({ kind: o.logoKind || "mark", ink: o.logoInk, behind: "#ffffff" }) : "text";
   const logo = o.logoUrl ? `<div class="vlg vlg-${lmode}"><img src="${esc(o.logoUrl)}" alt="${esc(o.brand)}"></div>` : `<div class="vlg vlg-text">${esc(o.brand)}</div>`;
-  const cell = pic ? `<div class="vph ${campaign ? "vph-cover" : "vph-pack"}"><img src="${esc(pic)}" alt=""${campaign ? ` style="object-position:${fx}% 50%"` : ""}></div>` : "";
+  // a campaign frame is cover-cropped only when the vision call confirmed it holds no burnt-in text (campaignCrop);
+  // otherwise it is shown whole (contained), so no caption can ever be cut mid-word
+  const crop = campaign && o.campaignCrop === true;
+  const cls = crop ? "vph-cover" : campaign ? "vph-fit" : "vph-pack";
+  const cell = pic ? `<div class="vph ${cls}"><img src="${esc(pic)}" alt=""${crop ? ` style="object-position:${fx}% 50%"` : ""}></div>` : "";
   const text = `<div class="vtx"><div class="vnm">${esc(name)}</div>${line ? `<div class="vln">${esc(line)}</div>` : ""}<div class="vcta">${esc(o.cta || "Shop now")}</div></div>`;
   return { c, ctaInk, cell, text, logo };
 }
@@ -54,12 +58,13 @@ const BASE = (c, ctaInk) => `*{text-decoration:none!important;box-sizing:border-
 .vph{position:absolute;overflow:hidden;background:#fff}
 .vph img{display:block;width:100%;height:100%}
 .vph-cover img{object-fit:cover;object-position:center}
+.vph-fit img{object-fit:contain;object-position:center}
 .vph-pack{padding:6%}
 .vph-pack img{object-fit:contain;object-position:center}
 .vtx{position:absolute;display:flex;flex-direction:column;justify-content:center;align-items:flex-start;overflow:hidden}
 .vnm{font-weight:700;font-size:var(--vfs,5.4cqw);line-height:1.02;letter-spacing:-.02em;text-transform:uppercase;color:#111;text-wrap:balance;max-width:100%}
 .vln{margin-top:.55em;font-weight:500;font-size:var(--vfl,2.2cqw);line-height:1.2;letter-spacing:.12em;text-transform:uppercase;color:#555;max-width:100%}
-.vcta{margin-top:var(--vgap,1.4cqw);flex:none;font-weight:600;font-size:var(--vfc,2.2cqw);line-height:1;letter-spacing:.06em;text-transform:uppercase;padding:.85em 1.4em;border-radius:.3cqw;background:${c};color:${ctaInk};white-space:nowrap}
+.vcta{margin-top:var(--vgap,1.4cqw);flex:none;font-weight:600;font-size:var(--vfc,2.2cqw);line-height:1;letter-spacing:.06em;text-transform:uppercase;padding:.7em 1.3em;border-radius:.3cqw;background:${c};color:${ctaInk};white-space:nowrap}
 .vlg{position:absolute;display:flex;align-items:center;justify-content:center}
 .vlg img{display:block;max-width:100%;max-height:100%;width:auto;height:auto;object-fit:contain}
 .vlg-chip,.vlg-chipd{padding:.6cqw 1cqw;border-radius:.6cqw}
@@ -69,10 +74,10 @@ const BASE = (c, ctaInk) => `*{text-decoration:none!important;box-sizing:border-
 .vic i{display:block;width:2.8cqw;height:2.8cqw;border-radius:50%;border:.15cqw solid #bbb;color:#888;font:600 1.8cqw/2.5cqw system-ui;font-style:normal;text-align:center;background:#fff}`;
 
 /** the stripe's CSS; trigger = the host attribute that starts it (data-go, or data-go2 after a takeover) */
-const STRIPE_CSS = (trigger) => `.vs{position:absolute;left:0;right:0;bottom:0;height:min(max(25cqh,19cqw),42cqh);background:#fff;box-shadow:0 -.4cqw 1.6cqw rgba(0,0,0,.16);transform:translateY(102%)}
-.vs .vph{left:0;top:0;bottom:0;width:40%}
-.vs .vtx{left:calc(40% + 3.4cqw);right:19cqw;top:1.4cqw;bottom:1.4cqw;opacity:0}
-.vs .vlg{right:2.6cqw;width:14cqw;top:4.4cqw;bottom:2.4cqw}
+const STRIPE_CSS = (trigger) => `.vs{position:absolute;left:0;right:0;bottom:0;height:min(max(25cqh,24cqw),42cqh);background:#fff;box-shadow:0 -.4cqw 1.6cqw rgba(0,0,0,.16);transform:translateY(102%)}
+.vs .vph{left:0;top:0;bottom:0;width:38%}
+.vs .vtx{left:calc(38% + 3.4cqw);right:19cqw;top:3.2cqw;bottom:3.2cqw;opacity:0}
+.vs .vlg{right:3.4cqw;width:12cqw;top:4.6cqw;bottom:4.6cqw}
 .vs .vic{opacity:0}
 :host([${trigger}]) .vs{animation:vsUp .6s cubic-bezier(.2,.8,.2,1) forwards}
 :host([${trigger}]) .vs .vtx,:host([${trigger}]) .vs .vic{animation:vFade .5s .45s ease-out forwards}
@@ -119,24 +124,73 @@ ${STRIPE_CSS("data-go2")}
 /** the creative for a layout ("vox-stripe" | "vox-full") */
 export const voxHtml = (layout, o) => layout === "vox-stripe" ? voxStripeHtml(o) : voxFullHtml(o);
 
-// Runs inside the page after the unit is placed (self-contained: it is stringified): shrinks the product name, then the
-// line, until each text block fits its column (name at most two lines, nothing past the column's bottom); a line that
-// still does not fit is dropped. Used instead of fitStrip, which needs the strip's classes.
-/* global getComputedStyle */
+// Runs inside the page after the unit is placed (self-contained: it is stringified). The client's hard rule: text, logo
+// and product are never cut, trimmed or overlapping. Every size starts at least 10 px (legible on a phone); then, in
+// this order, until the column fits (name at most two lines, nothing past the column) and the logo, name, line and
+// button each lie inside their bar with a 3% safe margin and touch neither each other nor the photo cell:
+//   the name shrinks → the logo shrinks (scaled, so its aspect ratio is kept) → the line shrinks, then is dropped →
+//   the button's text shrinks. Nothing is ever clipped; whatever still does not fit is reported on the host
+//   (data-vox-fit="fail: …"), which the QA geometry check turns into a blocking issue.
+/* global getComputedStyle, document, innerWidth, innerHeight, DOMMatrix */
 export function fitVox(host) {
   const root = host.shadowRoot; if (!root) return;
+  const vw = /** @type {HTMLElement|null} */ (root.querySelector(".vw")); if (!vw) return;
+  const unit = vw.offsetWidth / 100 || 1, px10 = 10.1 / unit;   // 1cqw = the unit's width / 100; px10 = 10 px in cqw
+  const R = (/** @type {Element} */ el) => el.getBoundingClientRect();
+  const ink = (/** @type {Element} */ el) => { const r = document.createRange(); r.selectNodeContents(el); const b = r.getBoundingClientRect(); return b.width ? b : R(el); };
+  const fails = [];
   for (const tx of /** @type {HTMLElement[]} */ ([...root.querySelectorAll(".vtx")])) {
-    const nm = /** @type {HTMLElement|null} */ (tx.querySelector(".vnm")), ln = /** @type {HTMLElement|null} */ (tx.querySelector(".vln"));
+    const bar = /** @type {HTMLElement} */ (tx.parentElement);
+    const nm = /** @type {HTMLElement|null} */ (tx.querySelector(".vnm")), ln = /** @type {HTMLElement|null} */ (tx.querySelector(".vln")), cta = /** @type {HTMLElement|null} */ (tx.querySelector(".vcta"));
+    const lg = /** @type {HTMLElement|null} */ (bar.querySelector(":scope > .vlg")), cell = bar.querySelector(":scope > .vph");
     if (!nm) continue;
-    const cw = tx.offsetWidth || 1;   // 1cqw = the unit's width / 100
-    const unit = (/** @type {HTMLElement} */ (root.querySelector(".vw"))).offsetWidth / 100 || 1;
-    const fs0 = parseFloat(getComputedStyle(nm).fontSize) / unit, fl0 = ln ? parseFloat(getComputedStyle(ln).fontSize) / unit : 0;
-    const lines = (el) => el.offsetHeight / (parseFloat(getComputedStyle(el).lineHeight) || 1);
-    const over = () => tx.scrollHeight > tx.clientHeight + 1 || nm.scrollWidth > cw + 1 || lines(nm) > 2.1;
-    for (let f = fs0; over() && f > 2.6; f -= 0.2) tx.style.setProperty("--vfs", f.toFixed(1) + "cqw");
-    if (ln) {
-      for (let f = fl0; over() && f > 1.7; f -= 0.1) tx.style.setProperty("--vfl", f.toFixed(1) + "cqw");
-      if (over()) ln.remove();
+    const size = (/** @type {HTMLElement|null} */ el) => (el ? parseFloat(getComputedStyle(el).fontSize) / unit : 0);
+    const set = (/** @type {string} */ v, /** @type {number} */ f) => tx.style.setProperty(v, f.toFixed(2) + "cqw");
+    for (const [v, el] of /** @type {[string, HTMLElement|null][]} */ ([["--vfs", nm], ["--vfl", ln], ["--vfc", cta]])) if (el && size(el) < px10) set(v, px10);
+    const lines = (/** @type {HTMLElement} */ el) => el.offsetHeight / (parseFloat(getComputedStyle(el).lineHeight) || 1);
+    const over = () => tx.scrollHeight > tx.clientHeight + 1 || tx.scrollWidth > tx.clientWidth + 1 || nm.scrollWidth > nm.clientWidth + 1 || (!!cta && cta.scrollWidth > cta.clientWidth + 1) || lines(nm) > 2.1;
+    const clash = () => {
+      const b = R(bar), m = b.width * 0.03, pic = cell ? R(cell) : null;
+      const img = lg && lg.querySelector("img");
+      const boxes = /** @type {[string, DOMRect|null][]} */ ([["logo", lg ? (img ? R(img) : ink(lg)) : null], ["name", ink(nm)], ["line", ln && ln.isConnected ? ink(ln) : null], ["button", cta ? R(cta) : null]]).filter((x) => x[1] && x[1].width > 0);
+      const inside = (/** @type {DOMRect} */ r) => r.left >= b.left + m - 0.5 && r.right <= b.right - m + 0.5 && r.top >= b.top + m - 0.5 && r.bottom <= b.bottom - m + 0.5;
+      const hit = (/** @type {DOMRect} */ a, /** @type {DOMRect} */ c) => Math.min(a.right, c.right) - Math.max(a.left, c.left) > 0.5 && Math.min(a.bottom, c.bottom) - Math.max(a.top, c.top) > 0.5;
+      for (let i = 0; i < boxes.length; i++) {
+        const [k, r] = /** @type {[string, DOMRect]} */ (boxes[i]);
+        if (!inside(r)) return `the ${k} is outside the safe margin`;
+        if (pic && hit(r, pic)) return `the ${k} overlaps the photo`;
+        for (let j = i + 1; j < boxes.length; j++) if (hit(r, /** @type {DOMRect} */ (boxes[j][1]))) return `the ${k} overlaps the ${boxes[j][0]}`;
+      }
+      return "";
+    };
+    const bad = () => over() || !!clash();
+    for (let f = size(nm); over() && f > Math.max(2.6, px10); f -= 0.2) set("--vfs", Math.max(f - 0.2, px10));
+    if (lg) for (let k = 0.95; clash() && k >= 0.5; k -= 0.05) lg.style.scale = k.toFixed(2);   // smaller, never cut or stretched
+    if (ln && bad()) { for (let f = size(ln); bad() && f > Math.max(1.7, px10); f -= 0.1) set("--vfl", Math.max(f - 0.1, px10)); if (bad()) ln.remove(); }
+    if (cta) for (let f = size(cta); bad() && f > Math.max(1.4, px10); f -= 0.1) set("--vfc", Math.max(f - 0.1, px10));
+    if (cta && bad()) {   // a button wider than its column: its words wrap inside the button (never cut), and the name makes room
+      Object.assign(cta.style, { whiteSpace: "normal", maxWidth: "100%", textAlign: "center", lineHeight: "1.15" });
+      for (let f = size(nm); bad() && f > px10; f -= 0.2) set("--vfs", Math.max(f - 0.2, px10));
     }
+    if (bad()) fails.push(clash() || "the copy does not fit its column");
   }
+  host.dataset.voxFit = fails.length ? "fail: " + fails.join("; ") : "ok";
+}
+
+// Runs inside the page while the unit is recorded (self-contained): the boxes of the bar on screen (the takeover while it
+// is shown, else the stripe once it is fully up), in the shape qa.geometryIssues reads. null while a part is moving.
+export function voxGeom(host) {
+  const root = host && host.shadowRoot; if (!root) return null;
+  const vf = /** @type {HTMLElement|null} */ (root.querySelector(".vf")), vs = /** @type {HTMLElement|null} */ (root.querySelector(".vs"));
+  const op = (/** @type {Element} */ el) => parseFloat(getComputedStyle(el).opacity);
+  const bar = vf && op(vf) > 0.95 ? vf : vs; if (!bar) return null;
+  const tx = bar.querySelector(".vtx"); if (!tx || op(tx) < 0.95) return null;
+  if (bar === vs) { const t = getComputedStyle(vs).transform; if (t && t !== "none" && Math.abs(new DOMMatrix(t).f) > 1) return null; }
+  const R = (/** @type {Element} */ el) => { const b = el.getBoundingClientRect(); return { x: +b.x.toFixed(1), y: +b.y.toFixed(1), w: +b.width.toFixed(1), h: +b.height.toFixed(1) }; };
+  const ink = (/** @type {Element} */ el) => { const r = document.createRange(); r.selectNodeContents(el); const b = r.getBoundingClientRect(); return b.width ? { x: +b.x.toFixed(1), y: +b.y.toFixed(1), w: +b.width.toFixed(1), h: +b.height.toFixed(1) } : R(el); };
+  const t = (/** @type {string} */ k, /** @type {Element|null} */ el, box = ink) => { if (!el) return null; const cs = getComputedStyle(el); return { k, text: (el.textContent || "").trim(), ...box(el), fs: parseFloat(cs.fontSize), color: cs.color }; };
+  const lg = bar.querySelector(":scope > .vlg"), img = lg && lg.querySelector("img"), cell = bar.querySelector(":scope > .vph");
+  return { kind: "vox", bar: bar === vf ? "full" : "stripe", card: R(bar), view: { w: innerWidth, h: innerHeight }, panelColour: "#ffffff", fit: host.dataset.voxFit || "",
+    texts: [t("headline", tx.querySelector(".vnm")), t("subline", tx.querySelector(".vln")), t("cta", tx.querySelector(".vcta"), R)].filter(Boolean),
+    logo: lg ? (img ? R(img) : ink(lg)) : null, picture: cell ? R(cell) : null };
 }

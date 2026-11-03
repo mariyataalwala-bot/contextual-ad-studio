@@ -15,7 +15,7 @@ import { renderMock, ASSET_URL } from "./mock.mjs";
 import { discoverArticles, discoverCampaigns } from "./discover.mjs";
 import { stripHtml, fitStrip, STRIP_VERSION, STYLES, styleFontsUrl, styleFontFaces } from "./strip.mjs";
 import { storyHtml, STORY_VERSION, MOTIFS, hookFor } from "./story.mjs";
-import { voxHtml, fitVox, VOX_LAYOUTS, VOX_VERSION } from "./vox.mjs";
+import { voxHtml, fitVox, voxGeom, VOX_LAYOUTS, VOX_VERSION } from "./vox.mjs";
 import { sceneHtml, sceneVersion, directorPrompt, deviceFor, endStyle, DIRECTOR_SCHEMA, DIRECTOR_VERSION, DEVICES } from "./director.mjs";
 import { norm, sha256 } from "./text.mjs";
 import { findBrand, brandBrief, bannedReason, namesBrand, ownNames } from "./brands.mjs";
@@ -336,6 +336,19 @@ const PLAN_SCHEMA = (ctas) => ({ type: "object", properties: {
   shortlist: { type: "array", items: { type: "object", properties: { n: { type: "integer" }, why: { type: "string" } }, required: ["n", "why"] } },
 }, required: ["category", "audience", "contexts", "avoid", "competitors", "headline", "subline", "cta", "shortlist"] });
 
+// "Place anyway (I approve)": the only refusals a person may override, for one article and picture they choose
+export const OVERRIDE_KINDS = ["celebrity", "rival"];
+export const OVERRIDE_LABEL = "manually approved: celebrity / rival context";
+/** a candidate refused ONLY for celebrity / rival context (every other check passed) — the one a person may approve */
+export const overridable = (c, { minScore = 0, minContext = 0 } = {}) => {
+  const k = c?.v?.refusal_kinds;
+  return !!c && c.v.safe === false && Array.isArray(k) && k.length > 0 && k.every((x) => OVERRIDE_KINDS.includes(x)) && c.score >= minScore && c.v.context_fit >= minContext;
+};
+/** the offer shown on the card of a no_match run: the closest overridable candidate */
+export function overrideOffer(scored, opts) {
+  const c = [...scored].sort((x, y) => y.score - x.score).find((x) => overridable(x, opts));
+  return c ? { article: c.a.url, image: c.im.finalUrl || c.im.src, headline: c.a.headline, section: c.s?.section || null, reasons: [...new Set(c.v.refusal_kinds)], why: c.v.safe_why || "" } : null;
+}
 const FINAL_SCHEMA = { type: "object", properties: {
   candidates: { type: "array", items: { type: "object", properties: {
     k: { type: "integer" }, context_fit: { type: "integer", description: "0-10: 9-10 the article is about this product's category or its main use; 6-8 closely related; 0-5 only a loose link" },
@@ -343,6 +356,8 @@ const FINAL_SCHEMA = { type: "object", properties: {
     safe: { type: "boolean" }, safe_why: { type: "string" },
     article_safe: { type: "boolean", description: "the ARTICLE itself (its topic and text, whatever the picture) is a safe, positive place for this product — false when it warns about, questions or is negative about this kind of product, or is about illness, risks or diet restrictions tied to it; the same answer for every picture of the same article" },
     strip_ok: { type: "boolean", description: "the bottom 46% of the picture can be covered without hiding the main subject's face or key text" },
+    refusal_kinds: { type: "array", items: { type: "string", enum: OVERRIDE_KINDS.concat(["tragedy", "crime", "illness", "negative_product", "children", "avoid", "other"]) }, description: "when safe is false: every reason, as kinds (celebrity = a recognisable celebrity or politician, endorsement risk; rival = a competitor's product, logo or brand named). Empty when safe" },
+    face_zone: { type: "string", enum: ["none", "top", "middle", "bottom"], description: "where the main person's face sits in the picture, by vertical thirds (none if no face)" },
     why: { type: "string" },
   }, required: ["k", "context_fit", "image_fit", "safe", "safe_why", "article_safe", "strip_ok", "why"] } },
 }, required: ["candidates"] };
@@ -375,6 +390,10 @@ export const words = (s, n) => {
  */
 export async function makeInImage(o) {
   const { brand, product, studio, cfg, store, ask, py, ffmpeg, workDir } = o;
+  // "Place anyway (I approve)": one article + picture the user approved despite celebrity / rival context. Only those two
+  // refusals are skipped; the creative is the bottom stripe only (never the takeover), so it cannot cover a face above it
+  const ov = o.override?.article && o.override?.image ? o.override : null;
+  const layoutName = ov ? "vox-stripe" : studio.creative.layout;
   const fetchImpl = o.fetchImpl || globalThis.fetch;
   // every progress step first checks the app's time limit, so a stopped run ends at its next step instead of running on
   const say = (pct, stage, msg) => { if (o.signal?.aborted) throw new StudioStop("failed", "Stopped: the run went over its time limit."); (o.say || (() => {}))(pct, stage, msg); };
@@ -458,7 +477,8 @@ export async function makeInImage(o) {
     // the PNG check still apply to it)
     const researched = known?.logo?.png ? [{ url: known.logo.png, thumb: known.logo.png, page: known.logo.file || known.logo.png, host: "upload.wikimedia.org", title: `${known.name} official logo (MediaKart brand knowledge)` }] : [];
     const logos = [...researched, ...webLogos.filter((x) => x.thumb).slice(0, 5), ...commons.slice(0, 3)].slice(0, 8);
-    if (!client && !products.length) throw new StudioStop("no_match", `No pictures of “${brand} ${product}” were found online. Check the spelling, or add a word (e.g. the product type).`);
+    const ownPhoto = !!(String(o.productImage || "").trim() || o.productFile);   // the user's own photo: the run does not need the web search
+    if (!client && !products.length && !ownPhoto) throw new StudioStop("no_match", `No pictures of “${brand} ${product}” were found online. Check the spelling, or add a word (e.g. the product type).`);
     if (!all.length) throw new Error("None of the media-plan publisher feeds answered just now. Try again in a minute.");
     say(12, "search", `${client ? "Client's ad: " + (client.name || "uploaded file") + " · " : `${products.length} product picture(s), ${logos.length} logo candidate(s), `}${items.length} recent articles from ${new Set(items.map((i) => i.section)).size} sections (${items.filter((x) => hits.has(x.url)).length} of them matched by topic: ${(topic.words || []).slice(0, 6).join(", ")}…).`);
 
@@ -472,7 +492,7 @@ export async function makeInImage(o) {
     const calm = async (list, pre, n) => { const out = []; for (let i = 0; i < Math.min(n, list.length); i += 3) out.push(...await thumbs(list.slice(i, i + 3).map((x, j) => ({ ...x, _i: i + j })), pre + "r" + i + "_", 3)); return out.map((x, k) => ({ ...x, n: k + 1 })); };
     if (!client && !pThumbs.length && products.length) pThumbs = await calm(products, "p", 10);
     if (!client && !lThumbs.length && logos.length) lThumbs = await calm(logos, "l", 8);
-    if (!client && !pThumbs.length) throw new Error("The product pictures found online could not be downloaded just now (the image host refused). Try again in a minute.");
+    if (!client && !pThumbs.length && !ownPhoto) throw new Error("The product pictures found online could not be downloaded just now (the image host refused). Try again in a minute.");
 
     // 2) AI: the packshot + logo (vision) and the plan — copy, targeting, article shortlist (text) — in parallel
     const ref = await refP;
@@ -480,7 +500,7 @@ export async function makeInImage(o) {
     if (camp) { ref.verifiedCampaigns = camp.verified; ref.unverifiedCampaigns = camp.unverified; ref.campaignFlags = camp.flags; }
     result.recentAds = ref;
     // the VOX formats use a frame of the brand's own TV ad; the stills are taken meanwhile (player screenshots, ~30–60 s)
-    const voxLayout = !client && VOX_LAYOUTS.includes(studio.creative.layout);
+    const voxLayout = !client && VOX_LAYOUTS.includes(layoutName);
     const campaignP = voxLayout && o.campaign && ref.ads?.length
       ? o.campaign({ ads: ref.ads, dir: path.join(workDir, "campaign"), ffmpeg, ask, brand, product }).catch((e) => { result.campaignProblem = String(e.message).slice(0, 200); return null; })
       : Promise.resolve(null);
@@ -683,7 +703,9 @@ export async function makeInImage(o) {
     const rivals0 = rivalMatcher([...(plan.competitors || []), ...(known?.competitors || [])]), rivals = (t) => rivals0(t) || (ownNews(t) ? ["the brand itself"] : null);
     const picked = (plan.shortlist || []).map((s) => ({ ...items[s.n - 1], why: s.why })).filter((x) => x.url);
     result.rivalHeadlinesDropped = picked.filter((x) => rivals(x.title)).map((x) => ({ url: x.url, title: x.title, names: rivals(x.title) }));
-    const usableShort = picked.filter((x) => !rivals(x.title));
+    // an approved override reads only that article (its headline may name a rival: that is what was approved)
+    const usableShort = ov ? [{ url: ov.article, title: ov.headline || all.find((x) => x.url === ov.article)?.title || "", section: ov.section || all.find((x) => x.url === ov.article)?.section || studio.sections[0]?.id, why: "approved by the user (Place anyway)" }]
+      : picked.filter((x) => !rivals(x.title));
     if (!usableShort.length) throw new StudioStop("no_match", `No recent article on the media-plan publishers is a good context for ${brand} ${product} right now.`);
     const secOf = new Map([...studio.sections, ...(studio.sitemaps || [])].map((s) => [s.id, s]));
     const reader = makeReader({ fetcher, py, firecrawl: o.firecrawl || null, fetchImpl, timeoutMs: 25000, tmpDir: path.join(store.root, "tmp", "read") });
@@ -695,7 +717,7 @@ export async function makeInImage(o) {
     if (client) { adRef = path.join(cand, "client_ad.jpg"); await ffmpeg(["-loglevel", "error", "-y", ...(client.type === "video" ? ["-ss", "1.5"] : []), "-i", client.file, "-vf", "scale=640:-2", "-frames:v", "1", adRef]).catch(() => { adRef = null; }); }
     // two rounds at most: the first shortlisted articles; then (time allowing) the rest of the shortlist — or a fresh
     // shortlist of other articles when it runs out — instead of stopping at the first set that does not fit
-    for (let round = 1; round <= 2 && !ok.length; round++) {
+    for (let round = 1; round <= (ov ? 1 : 2) && !ok.length; round++) {   // an approved override reads only its own article
       let short = usableShort.filter((x) => !triedUrls.has(x.url)).slice(0, studio.fetchArticles);
       if (round === 2) {
         extraSeconds = studio.secondRoundExtraSeconds ?? 40;
@@ -735,7 +757,9 @@ export async function makeInImage(o) {
         if (a.canonical && taken.has(urlKey(a.canonical))) { rejected.push({ url: s.url, title: s.title, why: `the same article (${a.canonical}) already carries another brand's ad: ${taken.get(urlKey(a.canonical))}` }); continue; }
         // page safety (word lists, safety policy): only pages where nothing was flagged; the AI check below sees the text too
         if (a.safety.state === "unsafe" || a.safety.reasons.some((r) => r !== "SAFETY_AI_UNAVAILABLE" && r !== "SAFETY_CLEAR")) { rejected.push({ url: s.url, title: s.title, why: `page safety: ${a.safety.reasons.join(", ")}`, evidence: a.safety.evidence?.slice(0, 3) }); continue; }
-        const usable = (a.images || []).filter((im) => im.status === "ok" && im.width >= studio.image.minWidth && im.width / im.height >= studio.image.minAspect && im.width / im.height <= studio.image.maxAspect).slice(0, studio.image.perArticle);
+        const stem = (/** @type {any} */ u) => String(u || "").split(/[?#]/)[0].split("/").pop().replace(/-\d{2,4}x\d{2,4}(?=\.\w+$)/, "").toLowerCase();   // the same picture from either image host
+        const samePic = (/** @type {any} */ im) => !ov || [im.finalUrl, im.src].some((u) => u && stem(u) === stem(ov.image));
+        const usable = (a.images || []).filter((im) => samePic({ ...im, ...(ov ? store.getImage(im.id) || {} : {}) }) && im.status === "ok" && im.width >= studio.image.minWidth && im.width / im.height >= studio.image.minAspect && im.width / im.height <= studio.image.maxAspect).slice(0, studio.image.perArticle);
         if (!usable.length) { rejected.push({ url: s.url, title: s.title, why: "no landscape picture big enough for an in-image unit" }); continue; }
         for (const im of usable) { const rec = store.getImage(im.id); if (rec) images.push({ a, s, im: { ...rec, ...(rec.uses?.[a.id] || {}) } }); }
       }
@@ -775,6 +799,13 @@ export async function makeInImage(o) {
       // (Tropicana on "Whole fruit vs juice … diabetes": one picture of fresh fruit passed, another of the same article did not) is left out whole
       const unsafeArticles = new Set(scored.filter((c) => c.v.article_safe === false).map((c) => c.a.url));
       for (const c of scored) if (unsafeArticles.has(c.a.url) && c.v.safe) { c.v.safe = false; c.v.safe_why = `The article itself is not a safe place for this product (another check of it: ${(scored.find((x) => x.a.url === c.a.url && x.v.article_safe === false)?.v.safe_why || "unsafe").slice(0, 160)}).`; }
+      if (ov) for (const c of scored) if (overridable(c, studio)) {   // the user's approval lifts only the celebrity / rival refusal
+        if (c.v.face_zone === "bottom") throw new StudioStop("no_match", `Not placed: the face in this picture is in its bottom part, where the stripe would sit — the ad would cover it. Choose another picture.`);
+        c.v.safe = true; c.v.overridden = [...new Set(c.v.refusal_kinds)];
+        // strip_ok judges the 46% strip; the override uses only the bottom stripe (about a quarter), so a face in the top
+        // or middle third stays clear of it — the face_obstruction QA on the finished video still checks this
+        if (!c.v.strip_ok) { c.v.strip_ok_ai = false; c.v.strip_ok = true; }
+      }
       ok = scored.filter((c) => c.v.safe && c.v.strip_ok && c.score >= studio.minScore && c.v.context_fit >= studio.minContext);
     }
     result.reviewArticles = review;
@@ -782,6 +813,8 @@ export async function makeInImage(o) {
     result.candidates = scored.map((c) => ({ article: c.a.headline, url: c.a.url, image: c.im.finalUrl || c.im.src, ...c.v, score: +c.score.toFixed(1) }));
     result.rejectedArticles = rejected;
     if (!anyPictures) throw new StudioStop(review.length ? "needs_review" : "no_match", `The shortlisted articles have no usable pictures (${rejected.map((r) => r.why).join("; ")}).${forReview}`);
+    if (!ok.length && ov) throw new StudioStop("no_match", `Not placed, even with your approval: ${scored[0] ? (scored[0].v.overridden ? `the fit is too weak (context ${scored[0].v.context_fit}/10, score ${scored[0].score.toFixed(1)})` : scored[0].v.safe_why || scored[0].v.why || "the article or picture failed another check") :"the approved picture could not be found on the article page again"}. Only celebrity / rival context can be approved; every other safety rule still applies.`);
+    if (!ok.length && (result.overrideOffer = overrideOffer(scored, studio))) throw Object.assign(new StudioStop("no_match", noMatchMessage({ brand, product, scored, minContext: studio.minContext, minScore: studio.minScore, searchOn: !!fc?.enabled }) + forReview + ` “${result.overrideOffer.headline}” was refused only for ${result.overrideOffer.reasons.map((r) => r === "rival" ? "rival-brand context" : "celebrity / endorsement risk").join(" and ")} — you can place it anyway.`), { overrideOffer: result.overrideOffer });
     if (!ok.length) throw new StudioStop(review.length ? "needs_review" : "no_match", noMatchMessage({ brand, product, scored, minContext: studio.minContext, minScore: studio.minScore, searchOn: !!fc?.enabled }) + forReview);
 
     // 6) the creative on the chosen picture, recorded on a phone
@@ -798,14 +831,14 @@ export async function makeInImage(o) {
       const fontDir = path.join(o.indexDir || path.join(workDir, "..", ".."), "_fonts");
       const extra = await styleFonts(style, fontDir, fetchImpl).catch(() => null);   // no font → the design's fallback font
       if (extra) { fontsCss += "\n" + extra.css; Object.assign(files, extra.files); }
-      const layout = studio.creative.layout;
+      const layout = layoutName;
       const look = { brand, ...copy, colour: result.brandLook.colour, accent: result.brandLook.accent, productUrl: ASSET_URL + "product.png", productMode, logoUrl: logoFile ? ASSET_URL + "logo" + path.extname(logoFile) : null, logoKind: result.brandLook.logo?.kind, logoInk: result.brandLook.logo?.ink, logoLight: result.brandLook.logo?.light, logoReverseUrl: logoFile && logoReverseFile ? ASSET_URL + "logo_reverse.png" : null, style, motif };
       if (VOX_LAYOUTS.includes(layout)) {
         // VOX / Hybrid formats: the brand's campaign frame (else the pack cut-out), Stripe or Full takeover → Stripe
         say(70, "render", "Taking the campaign photo from the brand's TV ad…");
         const camp = await timed(campaignP, 30000).catch(() => null);
-        if (camp?.file && fs.existsSync(camp.file)) { files["campaign.jpg"] = camp.file; result.campaignImage = { file: "campaign/campaign.jpg", videoId: camp.videoId, by: camp.by, focus: camp.focus, why: camp.why }; }
-        const vo = { ...look, productName: pick.product_name || null, campaignUrl: files["campaign.jpg"] ? ASSET_URL + "campaign.jpg" : null, campaignFocus: camp?.focus };
+        if (camp?.file && fs.existsSync(camp.file)) { files["campaign.jpg"] = camp.file; result.campaignImage = { file: "campaign/campaign.jpg", videoId: camp.videoId, by: camp.by, focus: camp.focus, crop: camp.crop === true, why: camp.why }; }
+        const vo = { ...look, productName: pick.product_name || null, campaignUrl: files["campaign.jpg"] ? ASSET_URL + "campaign.jpg" : null, campaignFocus: camp?.focus, campaignCrop: camp?.crop === true };
         result.creative = { format: layout, version: VOX_VERSION, campaign: !!vo.campaignUrl };
         const html = voxHtml(layout, vo);
         htmlFor = () => html;
@@ -850,7 +883,7 @@ export async function makeInImage(o) {
           ? await renderMock({ articleUrl: c.a.url, leadImage: c.im.finalUrl || c.im.src, format: "in-image", outBase: path.join(workDir, base), video: true, strict: true,
             creativeFile: client.file, holdMs: clientHold, navTimeoutMs: 25000, ffmpeg, chromium: o.chromium })
           : await renderMock({ articleUrl: c.a.url, leadImage: c.im.finalUrl || c.im.src, format: "in-image", outBase: path.join(workDir, base), video: true, strict: true,
-            creativeHtml: htmlFor(c), assets: files, fontsCss, fontFaces, fit: VOX_LAYOUTS.includes(result.creative?.format) ? fitVox : fitStrip, holdMs: studio.creative.seconds * 1000, navTimeoutMs: 25000, ffmpeg, chromium: o.chromium });
+            creativeHtml: htmlFor(c), assets: files, fontsCss, fontFaces, fit: VOX_LAYOUTS.includes(result.creative?.format) ? fitVox : fitStrip, geom: VOX_LAYOUTS.includes(result.creative?.format) ? voxGeom : null, holdMs: studio.creative.seconds * 1000, navTimeoutMs: 25000, ffmpeg, chromium: o.chromium });
         chosen = c;
         if (!client) fs.writeFileSync(path.join(workDir, "creative.html"), `<!doctype html><meta charset="utf-8"><!-- ${result.creative.version} (${style}, ${result.director?.device || hook}): open inside the mock renderer (assets are served from ${ASSET_URL}) -->\n${htmlFor(c)}`);
         break;
@@ -872,6 +905,7 @@ export async function makeInImage(o) {
       ],
     };
     result.files = { video: path.basename(out.mp4 || ""), still: path.basename(out.png), creative: client ? "assets/" + path.basename(client.file) : "creative.html", product: client || result.brandOnly ? null : "assets/product.png", logo: logoFile ? "assets/" + path.basename(logoFile) : null };
+    if (ov) result.override = { by: "user", at: ov.at || new Date().toISOString(), reasons: chosen.v.overridden || ov.reasons || [], label: OVERRIDE_LABEL, article: chosen.a.url, image: chosen.im.finalUrl || chosen.im.src };
     const ex = chosen.a.extraction;
     result.status = ex?.status === "partial" ? "partial" : "success";
     result.statusWhy = result.status === "partial" ? `Made from partial context: ${ex.notes.join("; ") || `only ${ex.chars} characters of the article could be read`}. Every check passed on the text that could be read.` : "Every check passed on the article text.";
@@ -883,7 +917,7 @@ export async function makeInImage(o) {
       const left = Math.max(25000, (budget() + 55 - (Date.now() - t0) / 1000) * 1000);
       const productPng = path.join(workDir, "assets", "product.png");
       result.qa = await withTimeout(runQa({ file: out.mp4, kind: "inimage", ask, workDir, brand, product, brandNames: ownNames(known).concat([brand]), productNames: [product, result.productInfo?.name || ""].filter(Boolean), texts: said,
-        allowedSource: `${product} ${known ? brandBrief(known) : ""} ${offer}`, supplied: [offer].filter(Boolean), expected: { minSeconds: 3 }, geometry: null, transitions: [], introSeconds: 0,
+        allowedSource: `${product} ${known ? brandBrief(known) : ""} ${offer}`, supplied: [offer].filter(Boolean), expected: { minSeconds: 3 }, geometry: out.geometry?.length ? out.geometry : null, requireGeometry: !client && VOX_LAYOUTS.includes(result.creative?.format), transitions: [], introSeconds: 0,
         refs: { logo: typeof logoFile === "string" && logoFile && fs.existsSync(logoFile) ? logoFile : null, product: !client && fs.existsSync(productPng) && !result.brandOnly ? productPng : null },
         safety: { status: "safe", note: client ? "The unit is the client's own creative, shown as supplied." : "" }, frames: 10, aiTimeoutMs: Math.min(70000, left - 5000),
         reviewNotes: client ? "The unit over the article photo is the CLIENT'S OWN creative, shown as supplied: judge only whether it covers a person's face or body, the article's main subject, or important text in the article." : "The unit covers the lower part of the article's photo: judge whether it covers a person's face or body or the key action in that photo, and the text inside the unit." }), left, "The quality checks")

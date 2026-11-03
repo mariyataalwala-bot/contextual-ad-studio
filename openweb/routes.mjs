@@ -12,7 +12,7 @@ import { normaliseCampaign, todayIST } from "./lib/campaigns.mjs";
 import { loadMediaPlan, loadShowcase, refreshShowcase, creativeFiles, checkPublisherSources } from "./lib/inventory.mjs";
 import { renderMock, MockError } from "./lib/mock.mjs";
 import { ensureVectors } from "./lib/semantic.mjs";
-import { loadStudioConfig, makeInImage, studioRefusal, sectionItems, feedFetcher, sitemapIndex, rivalMatcher } from "./lib/studio.mjs";
+import { loadStudioConfig, makeInImage, studioRefusal, sectionItems, feedFetcher, sitemapIndex, rivalMatcher, OVERRIDE_KINDS } from "./lib/studio.mjs";
 import { STYLES } from "./lib/strip.mjs";
 import { campaignImage } from "./lib/campaign.mjs";
 import { loadBrands, findBrand, namesBrand } from "./lib/brands.mjs";
@@ -118,6 +118,15 @@ export function createOpenWeb({ dataDir, ask = null, provider = () => "none", ff
     log(j, `Recommendations recomputed: ${run.articles} article(s) × ${run.campaigns} campaign(s).`);
   }
 
+  // "Place anyway (I approve)": { overrideArticle, overrideImage } from a no_match card (both https); null when absent
+  function studioOverride(b) {
+    if (!b.overrideArticle && !b.overrideImage) return null;
+    const article = String(b.overrideArticle || "").trim().slice(0, 2000), image = String(b.overrideImage || "").trim().slice(0, 2000);
+    if (!/^https:\/\//i.test(article) || !/^https:\/\//i.test(image)) return { error: "Place anyway needs the article and its picture (https links)." };
+    if (b.clientAd) return { error: "Place anyway works with the studio's own creative only." };
+    const reasons = (Array.isArray(b.overrideReasons) ? b.overrideReasons : ["celebrity", "rival"]).filter((x) => OVERRIDE_KINDS.includes(x));
+    return { article, image, headline: String(b.overrideHeadline || "").slice(0, 300), section: b.overrideSection ? String(b.overrideSection).slice(0, 80) : null, reasons, at: new Date().toISOString() };
+  }
   // In-Image Studio: brand + product → product found online → strip creative → relevant article picture → mock video
   function studioStart(b) {
     if (isLowMemory()) return { code: 503, body: { error: "In-Image records its video in a browser. " + LOW_MEMORY_WHY } };
@@ -127,6 +136,8 @@ export function createOpenWeb({ dataDir, ask = null, provider = () => "none", ff
     const refusal = studioRefusal(brands, brand, product);
     if (refusal) return { code: 400, body: { error: refusal } };
     const style = STYLES.includes(b.style) ? b.style : null;
+    const override = studioOverride(b);
+    if (override?.error) return { code: 400, body: { error: override.error } };
     const cc = b.clientAd ? clientCreative(b.clientAd.data) : null;
     if (cc?.error) return { code: 400, body: { error: cc.error } };
     // the product photo uploaded by the user (when none found online passed): checked like any other product picture
@@ -148,9 +159,9 @@ export function createOpenWeb({ dataDir, ask = null, provider = () => "none", ff
     const end = (status, outcome, error) => { if (j.status !== "running") return false; Object.assign(j, { status, outcome, tEnd: Date.now() }); if (error) j.error = error; if (studioBusy === j.id) studioBusy = null; return true; };
     const ctl = new AbortController(), limitS = studio.budgetSeconds + 75;
     const dog = setTimeout(() => { ctl.abort(); if (end("failed", "failed", `Stopped: the run took longer than ${limitS} s (last step: ${j.stage}). Nothing was placed.`)) log(j, j.error); }, limitS * 1000);
-    makeInImage({ compact: provider() === "openai", discovery: { fc: fcFor(), campaigns: campaignsFor }, recentAds: findAds, brand, product, offer, productImage, productThumb: /^https:\/\//i.test(productThumb) ? productThumb : "", style, clientAd, brands, workDir, indexDir: studioRoot, studio, cfg, store, ask, fetchImpl, py, ffmpeg, chromium, campaign: ffmpeg ? campaignImage : null, firecrawl: firecrawl(), signal: ctl.signal, say, productFile })
+    makeInImage({ compact: provider() === "openai", discovery: { fc: fcFor(), campaigns: campaignsFor }, recentAds: findAds, brand, product, offer, productImage, productThumb: /^https:\/\//i.test(productThumb) ? productThumb : "", style, clientAd, brands, workDir, indexDir: studioRoot, studio, cfg, store, ask, fetchImpl, py, ffmpeg, chromium, campaign: ffmpeg ? campaignImage : null, firecrawl: firecrawl(), signal: ctl.signal, say, productFile, override })
       .then((r) => { if (end("done", r.status || "success")) { j.result = r; j.pct = 100; log(j, `Ad ready in ${r.seconds} s (${j.outcome}${r.status === "partial" ? ": " + r.statusWhy : ""}).`); } })
-      .catch((e) => { if (end("failed", e.status || "failed", e.message)) { j.needsInput = e.needsInput || null; log(j, `Stopped (${j.outcome}): ` + e.message); } try { fs.writeFileSync(path.join(workDir, "error.txt"), e.stack || e.message); } catch { /* best effort */ } })
+      .catch((e) => { if (end("failed", e.status || "failed", e.message)) { j.needsInput = e.needsInput || null; j.overrideOffer = e.overrideOffer || null; log(j, `Stopped (${j.outcome}): ` + e.message); } try { fs.writeFileSync(path.join(workDir, "error.txt"), e.stack || e.message); } catch { /* best effort */ } })
       .finally(() => clearTimeout(dog));
     return { code: 200, body: { id: j.id } };
   }

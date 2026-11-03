@@ -136,9 +136,9 @@ export async function screencast(page, dir, act, size = { w: 824, h: 1830 }) {
  * `assets` (name → local file, requested as ASSET_URL + name) and `fontsCss`. Its animation starts (data-go on the
  * unit) once the page has scrolled to it, and the recording then holds for holdMs. `strict`: fail rather than fall
  * back to another image when the chosen picture is not on the rendered page.
- * @param {{ articleUrl: string, leadImage?: string|null, creativeFile?: string|null, creativeHtml?: string|null, assets?: Record<string, string>, fontsCss?: string|null, fit?: Function|null, fontFaces?: string[], holdMs?: number, navTimeoutMs?: number, strict?: boolean, format: string, outBase: string, video?: boolean, ffmpeg?: ((args: string[]) => Promise<any>)|null, chromium?: any }} opts
+ * @param {{ articleUrl: string, leadImage?: string|null, creativeFile?: string|null, creativeHtml?: string|null, assets?: Record<string, string>, fontsCss?: string|null, fit?: Function|null, geom?: Function|null, fontFaces?: string[], holdMs?: number, navTimeoutMs?: number, strict?: boolean, format: string, outBase: string, video?: boolean, ffmpeg?: ((args: string[]) => Promise<any>)|null, chromium?: any }} opts
  */
-export async function renderMock({ articleUrl, leadImage, creativeFile = null, creativeHtml = null, assets = {}, fontsCss = null, fit = null, fontFaces = [], holdMs = 4000, navTimeoutMs = 45000, strict = false, format, outBase, video = false, ffmpeg = null, chromium = null }) {
+export async function renderMock({ articleUrl, leadImage, creativeFile = null, creativeHtml = null, assets = {}, fontsCss = null, fit = null, geom = null, fontFaces = [], holdMs = 4000, navTimeoutMs = 45000, strict = false, format, outBase, video = false, ffmpeg = null, chromium = null }) {
   const ext = creativeHtml ? ".html" : path.extname(creativeFile || "").toLowerCase(), type = creativeHtml ? "text/html" : TYPES[ext];
   if (!type) throw new MockError("CREATIVE_TYPE", `Unsupported creative file type ${ext}`);
   if (!creativeHtml && !fs.existsSync(creativeFile)) throw new MockError("CREATIVE_MISSING", "The source creative file is not in the creatives folder yet");
@@ -187,9 +187,11 @@ export async function renderMock({ articleUrl, leadImage, creativeFile = null, c
     if (careful) await page.evaluate((y) => scrollTo(0, Math.max(0, y - 1500)), target);   // start a little above it
     await page.evaluate(tidyPage);
     let frames = null;
+    const geometry = /** @type {{ t: number, geom: any }[]} */ ([]);
     await page.evaluate(`setInterval(${tidyPage.toString()}, 250)`);   // publisher ads keep loading: keep them hidden while capturing
     if (video) {   // Chrome screencast at device resolution (824×1830): sharp, and animated creatives keep playing
       frames = await screencast(page, vdir, async () => {
+        const rec0 = Date.now();
         await page.waitForTimeout(600);
         await page.evaluate((y) => new Promise((done) => {   // one smooth 2 s eased scroll down to the slot
           const y0 = scrollY, t0 = performance.now();
@@ -197,7 +199,12 @@ export async function renderMock({ articleUrl, leadImage, creativeFile = null, c
           requestAnimationFrame(step);
         }), target);
         if (creativeHtml) { await page.waitForTimeout(250); await page.evaluate(goCreative); }
-        await page.waitForTimeout(holdMs);
+        if (!geom) await page.waitForTimeout(holdMs);
+        else for (const end = Date.now() + holdMs; Date.now() < end;) {   // the unit's boxes, sampled while it is on screen (QA geometry)
+          await page.waitForTimeout(Math.min(700, Math.max(0, end - Date.now())));
+          const g = await page.evaluate(`(${geom})(document.getElementById("mk-slot"))`).catch(() => null);
+          if (g) geometry.push({ t: +((Date.now() - rec0) / 1000).toFixed(2), geom: g });
+        }
       });
     }
     else {
@@ -227,7 +234,7 @@ export async function renderMock({ articleUrl, leadImage, creativeFile = null, c
       if (seen) throw new MockError("NOT_VISIBLE", `The recording is not usable: ${seen}`);
     }
     await page.screenshot({ path: outBase + ".png" });
-    const out = { png: outBase + ".png", slot, viewport: "412×915 @2x (Android phone)" };
+    const out = { png: outBase + ".png", slot, geometry, viewport: "412×915 @2x (Android phone)" };
     await ctx.close();
     if (frames?.length && ffmpeg) {
       // variable-rate screencast frames → a constant 25 fps sequence (each tick shows the latest frame) → MP4

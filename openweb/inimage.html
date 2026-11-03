@@ -124,6 +124,13 @@ function stopped(msg, needsInput) {
   if (needsInput === "product_image") { $("makeRow").classList.add("need"); $("hint").innerHTML = `<span class="err">Add the product photo above (upload or link), then press Generate ad again.</span>`; $("makeRow").scrollIntoView({ behavior: "smooth", block: "center" }); }
   else $("hint").innerHTML = `<span class="err">Stopped — adjust and press Generate ad to try again.</span>`;
 }
+// "Place anyway (I approve)": the closest article was refused only for celebrity / rival context — the user may approve it.
+// The re-run skips only those two refusals (every other safety rule still applies) and uses the bottom stripe only.
+function offerOverride(x) {
+  const why = x.reasons.map((r) => (r === "rival" ? "rival-brand context" : "celebrity / endorsement risk")).join(" and ");
+  $("hint").innerHTML = `<span class="err">“${esc(x.headline)}” was refused only for ${esc(why)}.</span> <button class="btn" id="ovgo" style="padding:8px 14px;font-size:13px;margin-left:6px">Place anyway (I approve)</button>`;
+  $("ovgo").onclick = () => go({ overrideArticle: x.article, overrideImage: x.image, overrideHeadline: x.headline, overrideSection: x.section, overrideReasons: x.reasons });
+}
 // ---- optional: find the brand's real products of this kind, pick one (its name fills the product, its photo link is used) ----
 let found = [], picked = null;   // picked: { photo, thumb } — the photo link the run will use
 const photoOf = (p) => (p && /^https:\/\//i.test(p.url || "") ? { photo: p.url, thumb: /^https:\/\//i.test(p.thumb || "") ? p.thumb : "" } : p && /^https:\/\//i.test(p.thumb || "") ? { photo: p.thumb, thumb: "" } : null);
@@ -149,7 +156,7 @@ $("plist").addEventListener("click", (e) => {
   for (const c of $("plist").children) c.classList.toggle("on", c === b);
   $("fphint").textContent = `Using “${x.name}”${picked ? " and its photo" : " (no photo link — the app will search for one)"}. Press Generate ad.`;
 });
-async function go() {
+async function go(override = null) {
   const brand = $("brand").value.trim(), product = $("product").value.trim(), offer = $("offer").value.trim(), productImage = $("pimg").value.trim(), style = $("style").value;
   const productThumb = picked && picked.photo === productImage ? picked.thumb : "";
   $("prog").classList.remove("stopped"); $("makeRow").classList.remove("need"); $("hint").textContent = "Ready in about a minute.";
@@ -157,14 +164,14 @@ async function go() {
   const useClient = document.querySelector('input[name="src"]:checked').value === "client";
   if (useClient && !clientAd) { $("hint").innerHTML = `<span class="err">Upload the ad file first.</span>`; return; }
   $("go").disabled = true; $("out").hidden = true; $("prog").hidden = false; shown = 0; setPct(1); setStage("search"); $("log").textContent = "";
-  let id; try { id = (await api("/studio/start", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(useClient ? { brand, product, clientAd } : { brand, product, offer, productImage, productThumb, style, productUpload }) })).id; }
+  let id; try { id = (await api("/studio/start", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(useClient ? { brand, product, clientAd } : { brand, product, offer, productImage, productThumb, style, productUpload, ...(override || {}) }) })).id; }
   catch (e) { stopped(e.message); $("go").disabled = false; return; }
   for (;;) {
     await new Promise((r) => setTimeout(r, 1200));
     let j; try { j = await api("/job/" + id); } catch (e) { stopped("Lost touch with the run: " + e.message); break; }
     setPct(j.pct || 1); setStage(j.status === "done" ? "done" : j.stage); $("log").textContent = j.log.join("\n"); $("log").scrollTop = 1e9;
     if (j.status === "done") { setPct(100); showResult(j.dir, j.result); if (j.outcome === "partial") $("log").innerHTML += `\n<span class="err">Partial context: ${esc(j.result?.statusWhy || "")}</span>`; break; }
-    if (j.status === "failed") { stopped(`${{ no_match: "No match", needs_review: "Needs review" }[j.outcome] || "Failed"}: ${j.error}`, j.needsInput); break; }
+    if (j.status === "failed") { stopped(`${{ no_match: "No match", needs_review: "Needs review" }[j.outcome] || "Failed"}: ${j.error}`, j.needsInput); if (j.outcome === "no_match" && j.overrideOffer) offerOverride(j.overrideOffer); break; }
   }
   $("go").disabled = false; loadGallery();
 }
@@ -214,6 +221,7 @@ function showResult(dir, r) {
   <div><div class="art"><span class="s">${esc(pl.article.publisher)}${pl.article.published ? " · " + new Date(pl.article.published).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" }) : ""}</span>
     <b>${esc(pl.article.headline)}</b><a class="btn ghost" href="${esc(pl.article.url)}" target="_blank" rel="noopener" style="padding:8px 14px;font-size:13px">View article ↗</a>
     <a class="btn" href="${file(dir, f.video, 1)}" style="padding:8px 14px;font-size:13px;margin-left:6px">${r.qa ? (r.qa.approved ? "Download video" : "Download video (not approved)") : "Download video"}</a></div>
+    ${r.override ? `<div style="border:1px solid #f5c26b;background:#fff7e6;color:#7a4b00;border-radius:12px;padding:10px 14px;margin:10px 0;font-size:13px"><b>${esc(r.override.label)}</b> — approved by the ${esc(r.override.by)} on ${esc(new Date(r.override.at).toLocaleString("en-IN"))} (${esc(r.override.reasons.join(", "))}). Shown as the bottom stripe only.</div>` : ""}
     ${qaHtml(r.qa)}
     <h3 style="font-size:14px;margin:18px 0 4px">Checks</h3>
     ${pl.checks.map((c) => `<div class="chk"><i>✓</i><div><b>${esc(c.name)}</b><div class="s" style="font-size:12.5px">${esc(c.detail)}</div></div></div>`).join("")}
@@ -234,7 +242,7 @@ async function loadGallery() {
   } catch { /* gallery is optional */ }
 }
 $("gal").addEventListener("click", async (e) => { const a = e.target.closest("a[data-dir]"); if (!a) return; e.preventDefault(); showResult(a.dataset.dir, await api("/studio/result?dir=" + encodeURIComponent(a.dataset.dir))); });
-$("go").onclick = go; for (const id of ["brand", "product", "offer"]) $(id).addEventListener("keydown", (e) => { if (e.key === "Enter") go(); });
+$("go").onclick = () => go(); for (const id of ["brand", "product", "offer"]) $(id).addEventListener("keydown", (e) => { if (e.key === "Enter") go(); });
 loadGallery();
 // the brands MediaKart knows (brand knowledge): suggested as you type
 api("/studio/brands").then((b) => { $("brandList").innerHTML = b.brands.flatMap((x) => [x.name, ...x.subBrands]).map((n) => `<option value="${esc(n)}">`).join(""); }).catch(() => {});
