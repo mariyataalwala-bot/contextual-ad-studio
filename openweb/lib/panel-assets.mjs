@@ -61,14 +61,16 @@ export function keepHighlights(proposed, source, known = [], typed = "", brand =
 
 /**
  * @param {{ brand: string, product: string, known?: any, studio: any, ask: Function, py: (a: string[]) => Promise<string>, ffmpeg: (a: string[]) => Promise<any>, fetchImpl?: any, workDir: string,
- *   video?: { title?: string, [k: string]: any }, say?: (m: string) => void, budgetMs?: number, heroFile?: string|null, campaigns?: string[] }} o
- * @returns {Promise<{ logoInk: string|null, highlights: string[], hero: string|null, product: string|null, logo: string|null, colour: string|null, accent: string|null, copy: { headline: string, subline: string, cta: string }, productInfo: any, logoInfo: any, flags: string[], checks: any[] }>}
+ *   video?: { title?: string, [k: string]: any }, say?: (m: string) => void, budgetMs?: number, heroFile?: string|null, campaigns?: string[], productImage?: string, productThumb?: string }} o
+ * @returns {Promise<{ style?: string|null, logoInk: string|null, highlights: string[], hero: string|null, product: string|null, logo: string|null, colour: string|null, accent: string|null, copy: { headline: string, subline: string, cta: string }, productInfo: any, logoInfo: any, flags: string[], checks: any[] }>}
  */
 export async function preparePanel(o) {
   const { brand, product, known = null, studio, ask, py, ffmpeg, workDir } = o, fetchImpl = o.fetchImpl || globalThis.fetch, say = o.say || (() => {}), flags = /** @type {string[]} */ ([]);
   const assets = path.join(workDir, "assets"), cand = path.join(assets, "cand"), checkDir = path.join(assets, "checks");
   for (const d of [assets, cand, checkDir]) fs.mkdirSync(d, { recursive: true });
   const t0 = Date.now(), left = () => (o.budgetMs || 90000) - (Date.now() - t0);
+  // the exact product photo (a https link, e.g. picked from the product list): used instead of the searched pictures — still cut out and checked
+  const userPic = /^https:\/\//i.test(String(o.productImage || "").trim()) ? String(o.productImage).trim() : "";
   const official = (h) => !!h && (brandHost(h, brand) || (known?.domains || []).some((d) => { const x = d.replace(/^www\./, ""); return h === x || h.endsWith("." + x); }));
   const shop = (list, h) => list.some((d) => h === d || h.endsWith("." + d));
   const where = (h) => shop(studio.product.foreignShops, h) || foreignSite(h) ? -1 : official(h) ? 3 : shop(studio.product.indianShops, h) || /\.in$/.test(h) ? 2 : 0;
@@ -83,14 +85,14 @@ export async function preparePanel(o) {
   for (const x of [...webAd, ...web, ...webIn, ...webClear].map((x, i) => ({ x, i, w: where(x.host) })).filter((r) => r.w >= 0).sort((a, b) => b.w - a.w || a.i - b.i).map((r) => r.x)) if (!seen.has(x.url) && x.thumb) { seen.add(x.url); products.push(x); }
   const researched = known?.logo?.png ? [{ url: known.logo.png, thumb: known.logo.png, page: known.logo.file || known.logo.png, host: "upload.wikimedia.org", title: `${known.name} official logo (MediaKart brand knowledge)` }] : [];
   const logos = [...researched, ...webLogos.filter((x) => x.thumb).slice(0, 5)].slice(0, 6);
-  if (!products.length) flags.push(`No pictures of “${brand} ${product}” were found online — the panel is a brand panel.`);
+  if (!products.length && !userPic) flags.push(`No pictures of “${brand} ${product}” were found online — the panel is a brand panel.`);
 
   // small copies for the AI (JPEG / PNG only; WebP converted)
   const thumbs = async (list, pre, n) => (await Promise.all(list.slice(0, n).map(async (x, i) => {
     let f = await downloadImage(x.thumb, path.join(cand, `${pre}${i + 1}`), { fetchImpl, fs }).catch(() => null);
     if (f && f.endsWith(".webp")) { const png = f.replace(/\.webp$/, ".png"); f = await ffmpeg(["-loglevel", "error", "-y", "-i", f, png]).then(() => png, () => null); }
     return f && /\.(jpg|png)$/.test(f) ? { ...x, file: f, n: i + 1 } : null; }))).filter(Boolean);
-  const [pT, lT] = await Promise.all([thumbs(products, "p", 10), thumbs(logos, "l", 6)]);
+  const [pT, lT] = await Promise.all([thumbs(userPic ? [] : products, "p", 10), thumbs(logos, "l", 6)]);   // a photo link from the user replaces the searched product pictures
   // a frame of the brand's recent ad, shown to the AI as the reference for how the product looks TODAY (never used as a picture here)
   let refFile = null;
   if (o.heroFile && fs.existsSync(o.heroFile)) { refFile = o.heroFile; if (/\.webp$/i.test(refFile)) { const png = path.join(cand, "ref.png"); refFile = await ffmpeg(["-loglevel", "error", "-y", "-i", refFile, png]).then(() => png, () => null); } }
@@ -125,12 +127,16 @@ export async function preparePanel(o) {
     }
   }
   let logoChecked = !logoFile;
-  const candidates = pick ? productCandidates(pick, pT, { lifestyleOk: service }) : [];
+  let candidates = pick ? productCandidates(pick, pT, { lifestyleOk: service }) : [];
+  if (userPic) {
+    let host = ""; try { host = new URL(userPic).host.replace(/^www\./, ""); } catch { /* an unusable link: no picture */ }
+    candidates = host ? [{ url: userPic, page: userPic, host, title: "photo link given by the user", n: -1, user: true, kind: "product_on_background", thumb: o.productThumb || null }] : [];
+  }
   if (candidates.length && left() > 25000) {
     say(`Checking ${Math.min(candidates.length, 4)} product picture(s)…`);
     const fetched = await Promise.all(candidates.slice(0, 4).map(async (x, i) => {
       let f = await downloadImage(x.url, path.join(assets, `product_src${i}`), { fetchImpl, fs }).catch(() => null);
-      if (!f && bingLarge(x.thumb, 900)) f = await downloadImage(bingLarge(x.thumb, 900), path.join(assets, `product_src${i}b`), { fetchImpl, fs }).catch(() => null);
+      if (!f && (!x.user || x.thumb) && bingLarge(x.thumb, 900)) f = await downloadImage(bingLarge(x.thumb, 900), path.join(assets, `product_src${i}b`), { fetchImpl, fs }).catch(() => null);
       return { x, f, idx: i, hash: f ? sha256(fs.readFileSync(f).toString("base64")) : null };
     }));
     const tried = await tryProductPictures(fetched, { maxTries: 4, outOfTime: () => left() < 15000,
@@ -144,7 +150,7 @@ export async function preparePanel(o) {
         const imgs = [{ label: "PRODUCT PICTURE to check (grey checkerboard = transparent)", file: c.previewFile }];
         let lpv = null; if (!logoChecked && logoFile) { lpv = path.join(checkDir, "logo.jpg"); await py(["cutout.py", "preview", logoFile, lpv]); imgs.push({ label: "LOGO PNG to check", file: lpv }); }
         const v = await withTimeout(ask("You check the finished pictures of a display ad before it is published. Judge only what you see.",
-          `Ad for ${brand} — ${pick.product_name || product} (asked for: "${product}"), as sold in India. ok only if exactly this product (right brand, the variant asked for, current pack) is clearly the main subject, complete, not cut off or damaged` +
+          `Ad for ${brand} — ${pick?.product_name || product} (asked for: "${product}"), as sold in India. ok only if exactly this product (right brand, the variant asked for, current pack) is clearly the main subject, complete, not cut off or damaged` +
           `${service ? "; for a service, ONE appealing photo of what it gives people also passes" : ""}. Never ok: banner, headline, offer or price text over the picture; people or models as the focus; other brands' products; a watermark; a collage; illustrated or 3D-rendered decoration art. ` +
           `A background or simple props around the product are fine when the original photo is shown. kind: what the picture is.${lpv ? `\nLOGO PNG: logo_ok only if it is ${brand}'s own logo, complete and legible, and nothing else.` : " logo_ok: true, logo_problem: \"\"."}`,
           VERIFY_SCHEMA, imgs, "medium"), 45000, "Checking the picture").catch((e) => ({ ok: false, kind: got.x.kind, problem: "the check could not run: " + e.message, logo_ok: false, logo_problem: "" }));
@@ -152,7 +158,7 @@ export async function preparePanel(o) {
         return v;
       } });
     checks = tried.checks;
-    if (tried.got) { productFile = path.join(assets, "product.png"); productInfo = { url: tried.got.x.url, page: tried.got.x.page, site: tried.got.x.host, title: tried.got.x.title, kind: tried.v.kind || tried.got.x.kind, method: tried.c.method, name: pick.product_name || product }; }
+    if (tried.got) { productFile = path.join(assets, "product.png"); productInfo = { url: tried.got.x.url, page: tried.got.x.page, site: tried.got.x.host, title: tried.got.x.title, kind: tried.v.kind || tried.got.x.kind, method: tried.c.method, name: pick?.product_name || product }; }
     else flags.push("No product picture passed the check — the panel is a brand panel.");
   }
   if (logoFile && !logoChecked) { logoFile = null; logoInfo = null; flags.push("Logo not used — it could not be checked."); }

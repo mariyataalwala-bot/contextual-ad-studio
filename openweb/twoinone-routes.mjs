@@ -48,6 +48,9 @@ export function createTwoInOne(d) {
     if (cv && (cv.error || cv.type !== "video")) return { code: 400, body: { error: cv?.error || "The client's video must be an MP4 or WebM file." } };
     const dp = b.display ? clientCreative(b.display.data) : null;
     if (dp && (dp.error || dp.type !== "image")) return { code: 400, body: { error: dp?.error || "The display panel must be a PNG, JPEG, GIF or WebP picture." } };
+    // the exact product photo (a link to it, e.g. picked from the product list); its search thumbnail is the fallback if the shop refuses the download
+    const productImage = String(b.productImage || "").trim().slice(0, 2000), productThumb = String(b.productThumb || "").trim().slice(0, 2000);
+    if (productImage && !/^https:\/\//i.test(productImage)) return { code: 400, body: { error: "The product photo link must start with https://" } };
     const link = String(b.videoUrl || "").trim(), yid = youtubeId(b.youtubeId || link);
     if (!cv && !yid && !link) return { code: 400, body: { error: "Upload the client's video, paste its link, or pick one of the YouTube ads found." } };
     if (!cv && !yid && !/^https?:\/\//i.test(link)) return { code: 400, body: { error: "The video link must start with https://" } };
@@ -70,7 +73,7 @@ export function createTwoInOne(d) {
       else { say(3, "video", "Downloading the video from the link…"); const r = await downloadVideo(link, path.join(workDir, "assets", "upload"), { fetchImpl, maxBytes: tcfg.maxClientBytes }).catch((e) => { throw new StudioStop("failed", e.message); }); video = { kind: "file", file: r.file, name: path.basename(new URL(link).pathname) || "video" }; }
       let displayFile = null; if (dp) { displayFile = path.join(workDir, "assets", "display." + dp.ext); fs.writeFileSync(displayFile, dp.buf); }
       return makeTwoInOne({ brand, product, known, studio, cfg, store, ask, py, ffmpeg, fetchImpl, fc: fcFor(), firecrawlOpt: firecrawl(), indexDir: studioRoot, roots: [studioRoot, root], workDir, say, signal: ctl.signal,
-        video, displayFile, ytDetails, confirmBrand: !!b.confirmBrand, chromium, campaigns, record: !isLowMemory(), compact: provider() === "openai", fileUrl: (rel) => "/api/ow/twoinone/file?path=" + encodeURIComponent(dirRel + "/" + rel) });
+        video, displayFile, productImage, productThumb: /^https:\/\//i.test(productThumb) ? productThumb : "", ytDetails, confirmBrand: !!b.confirmBrand, chromium, campaigns, record: !isLowMemory(), compact: provider() === "openai", fileUrl: (rel) => "/api/ow/twoinone/file?path=" + encodeURIComponent(dirRel + "/" + rel) });
     })()
       .then((r) => { if (end("done", "success")) { j.result = r; j.pct = 100; log(j, `2-in-1 preview ready in ${r.seconds} s.`); } })
       .catch((e) => { if (end("failed", e.status || "failed", e.message)) log(j, `Stopped (${j.outcome}): ${e.message}`); try { if (!fs.existsSync(path.join(workDir, "result.json"))) fs.writeFileSync(path.join(workDir, "result.json"), JSON.stringify({ version: TWO_VERSION, brand, product, status: e.status || "failed", error: e.message, createdAt: new Date().toISOString() })); } catch { /* best effort */ } })

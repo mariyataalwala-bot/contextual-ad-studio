@@ -58,6 +58,14 @@ button:disabled{opacity:.45;cursor:default}.ghost{background:#fff;color:var(--p)
 .assets{display:flex;gap:12px;margin-top:10px}.assets img{height:70px;max-width:140px;object-fit:contain;border:1px solid var(--line);border-radius:10px;background:repeating-conic-gradient(#f1f1f5 0 25%,#fff 0 50%) 0 0/14px 14px;padding:4px}
 .note{font-size:12px;color:var(--mute);margin-top:12px}
 .err{color:var(--bad);font-weight:600;font-size:14px}
+/* the optional "Find products" list: real products of the brand, each with its picture */
+.pl{display:grid;grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:12px;margin-top:14px}
+.pl:empty{display:none}
+.pc{display:grid;grid-template-columns:64px 1fr;gap:12px;align-items:center;text-align:left;border:1.5px solid var(--line);border-radius:14px;padding:10px;background:#fff;color:var(--ink);box-shadow:none;font-weight:500;font-size:13px}
+.pc:hover{border-color:rgba(11,111,240,.45)}.pc.on{border-color:var(--p);background:#F5F9FF}
+.pc img,.pc .noimg{width:64px;height:64px;border-radius:10px;border:1px solid var(--line);object-fit:contain;background:#fff;display:grid;place-items:center;font-size:10.5px;color:var(--mute);text-align:center}
+.pc b{display:block;font-size:13.5px;font-weight:600;margin-bottom:4px;line-height:1.3}
+.tg{display:inline-block;font-size:11px;font-weight:700;padding:2px 8px;border-radius:99px;background:#F0F0F7;color:var(--mute);margin-right:6px}.tg.exact{background:#E8F7E7;color:var(--ok)}
 .gal{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:14px}
 .gal a{display:block;text-decoration:none;color:var(--ink);border:1px solid var(--line);border-radius:14px;overflow:hidden;background:#fff}
 .gal img{width:100%;height:180px;object-fit:cover;object-position:center 40%;display:block;background:#eee}.gal div{padding:9px 11px;font-size:12px}.gal b{display:block;font-size:13px}
@@ -76,6 +84,7 @@ button:disabled{opacity:.45;cursor:default}.ghost{background:#fff;color:var(--p)
     <div><label for="product">Product</label><input type="text" id="product" placeholder="e.g. Power running shoes" autocomplete="off"></div>
     <div><label for="offer">Offer text (optional)</label><input type="text" id="offer" placeholder="e.g. Flat 20% off — shown as typed" autocomplete="off"></div>
   </div>
+  <div class="row2" id="findRow"><div><div class="bar" style="margin-top:0"><button type="button" class="ghost" id="findp">Find products</button><span class="s" id="fphint">Optional — lists the brand&rsquo;s real products of this kind, with a picture. Pick one to use its name and photo.</span></div><div class="pl" id="plist"></div></div></div>
   <div class="row2" id="clientRow" hidden><label class="drop"><input type="file" id="cfile" accept="image/png,image/jpeg,image/gif,image/webp,video/mp4,video/webm"><div><b>Upload the ready ad</b><div class="s" id="cname">PNG, JPG, GIF, WebP, MP4 or WebM · up to 40 MB · shown exactly as supplied</div></div><span id="cprev"></span></label></div>
   <div class="row2" id="makeRow2"><div><label for="style">Ad style</label><select id="style"><option value="">Auto — best fit for the brand</option><option value="bold">Bold — everyday brands &amp; sales</option><option value="luxe">Luxe — jewellery &amp; beauty</option><option value="sport">Sport — footwear &amp; fitness</option><option value="fresh">Fresh — food &amp; drinks</option><option value="tech">Tech — phones &amp; gadgets</option><option value="journey">Journey — travel &amp; services</option></select></div></div>
   <div class="row2" id="makeRow"><div><label for="pimg">Product photo (optional)</label><input type="text" id="pimg" placeholder="Paste a link to the exact product photo to skip the search" autocomplete="off">
@@ -115,14 +124,40 @@ function stopped(msg, needsInput) {
   if (needsInput === "product_image") { $("makeRow").classList.add("need"); $("hint").innerHTML = `<span class="err">Add the product photo above (upload or link), then press Generate ad again.</span>`; $("makeRow").scrollIntoView({ behavior: "smooth", block: "center" }); }
   else $("hint").innerHTML = `<span class="err">Stopped — adjust and press Generate ad to try again.</span>`;
 }
+// ---- optional: find the brand's real products of this kind, pick one (its name fills the product, its photo link is used) ----
+let found = [], picked = null;   // picked: { photo, thumb } — the photo link the run will use
+const photoOf = (p) => (p && /^https:\/\//i.test(p.url || "") ? { photo: p.url, thumb: /^https:\/\//i.test(p.thumb || "") ? p.thumb : "" } : p && /^https:\/\//i.test(p.thumb || "") ? { photo: p.thumb, thumb: "" } : null);
+const forgetPick = () => { if (picked && $("pimg").value.trim() === picked.photo) $("pimg").value = ""; picked = null; for (const b of $("plist").children) b.classList.remove("on"); };
+$("brand").addEventListener("input", forgetPick); $("product").addEventListener("input", forgetPick);
+$("findp").onclick = async () => {
+  const brand = $("brand").value.trim(), product = $("product").value.trim();
+  if (!brand || !product) { $("fphint").innerHTML = `<span class="err">Type the brand and the product first.</span>`; return; }
+  $("findp").disabled = true; $("plist").innerHTML = ""; found = []; picked = null; $("fphint").textContent = "Searching for products…";
+  try {
+    const r = await api("/products?brand=" + encodeURIComponent(brand) + "&product=" + encodeURIComponent(product));
+    found = r.items;
+    $("fphint").textContent = found.length ? `${found.length} product${found.length === 1 ? "" : "s"} found for ${r.brand} — pick one, or skip this and generate as typed.` : (r.notes?.[0] || "No products found — generate as typed.");
+    $("plist").innerHTML = found.map((x, i) => `<button type="button" class="pc" data-i="${i}">${x.picture?.thumb ? `<img src="${esc(x.picture.thumb)}" alt="" loading="lazy" referrerpolicy="no-referrer">` : `<span class="noimg">no picture</span>`}<span><b>${esc(x.name)}</b><span class="tg ${x.match === "exact" ? "exact" : ""}">${x.match === "exact" ? "exact" : "related"}</span><span class="s">${esc(x.official ? "official site" : x.source)}</span></span></button>`).join("");
+  } catch (e) { $("fphint").innerHTML = `<span class="err">${esc(e.message)}</span>`; }
+  $("findp").disabled = false;
+};
+$("plist").addEventListener("click", (e) => {
+  const b = e.target.closest("button[data-i]"); if (!b) return; const x = found[+b.dataset.i]; if (!x) return;
+  const brand = $("brand").value.trim(), esc2 = brand.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  $("product").value = x.name.replace(new RegExp("^" + esc2 + "\\s+", "i"), "") || x.name;   // the real name (the brand is added again by the run)
+  picked = photoOf(x.picture); $("pimg").value = picked ? picked.photo : ""; $("makeRow").classList.remove("need");
+  for (const c of $("plist").children) c.classList.toggle("on", c === b);
+  $("fphint").textContent = `Using “${x.name}”${picked ? " and its photo" : " (no photo link — the app will search for one)"}. Press Generate ad.`;
+});
 async function go() {
   const brand = $("brand").value.trim(), product = $("product").value.trim(), offer = $("offer").value.trim(), productImage = $("pimg").value.trim(), style = $("style").value;
+  const productThumb = picked && picked.photo === productImage ? picked.thumb : "";
   $("prog").classList.remove("stopped"); $("makeRow").classList.remove("need"); $("hint").textContent = "Ready in about a minute.";
   if (!brand || !product) { $("hint").innerHTML = `<span class="err">Enter a brand and a product.</span>`; return; }
   const useClient = document.querySelector('input[name="src"]:checked').value === "client";
   if (useClient && !clientAd) { $("hint").innerHTML = `<span class="err">Upload the ad file first.</span>`; return; }
   $("go").disabled = true; $("out").hidden = true; $("prog").hidden = false; shown = 0; setPct(1); setStage("search"); $("log").textContent = "";
-  let id; try { id = (await api("/studio/start", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(useClient ? { brand, product, clientAd } : { brand, product, offer, productImage, style, productUpload }) })).id; }
+  let id; try { id = (await api("/studio/start", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(useClient ? { brand, product, clientAd } : { brand, product, offer, productImage, productThumb, style, productUpload }) })).id; }
   catch (e) { stopped(e.message); $("go").disabled = false; return; }
   for (;;) {
     await new Promise((r) => setTimeout(r, 1200));
@@ -143,7 +178,7 @@ $("pfile").addEventListener("change", () => {
 // the client's own ad: read in the browser and sent with the request (videos: their length decides how long the mock holds)
 let clientAd = null;
 for (const el of document.querySelectorAll('input[name="src"]')) el.addEventListener("change", () => { const c = document.querySelector('input[name="src"]:checked').value === "client";
-  $("clientRow").hidden = !c; $("makeRow").hidden = c; $("makeRow2").hidden = c; $("offer").disabled = c; $("offer").parentElement.hidden = c; });
+  $("clientRow").hidden = !c; $("findRow").hidden = c; $("makeRow").hidden = c; $("makeRow2").hidden = c; $("offer").disabled = c; $("offer").parentElement.hidden = c; });
 $("cfile").addEventListener("change", () => {
   const f = $("cfile").files[0]; clientAd = null; $("cprev").innerHTML = ""; if (!f) return;
   if (f.size > 40e6) { $("cname").innerHTML = `<span class="err">${esc(f.name)} is larger than 40 MB.</span>`; return; }

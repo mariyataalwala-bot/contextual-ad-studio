@@ -7,10 +7,12 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { STYLES } from "./strip.mjs";
+import { foldKey } from "./product-terms.mjs";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 export const BRANDS_FILE = "brands.v2.json";
-const key = (s) => String(s || "").toLowerCase().normalize("NFKD").replace(/[̀-ͯ]/g, "").replace(/[^a-z0-9]+/g, " ").trim();
+// Words are compared in one canonical spelling: "Facewash" = "face wash", "bodylotion" = "body lotion" (product-terms.mjs)
+const key = foldKey;
 const HEX = /^#[0-9a-f]{6}$/i;
 
 export function loadBrands(dir = path.join(HERE, "..", "config"), file = BRANDS_FILE) {

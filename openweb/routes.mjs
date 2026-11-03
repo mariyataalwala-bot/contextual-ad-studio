@@ -18,6 +18,7 @@ import { loadBrands, findBrand, namesBrand } from "./lib/brands.mjs";
 import { makeFirecrawl, discoverArticles, discoverCampaigns } from "./lib/discover.mjs";
 import { makeReader, withTimeout } from "./lib/reader.mjs";
 import { createTwoInOne } from "./twoinone-routes.mjs";
+import { discoverProducts } from "./lib/discover-products.mjs";
 import { isLowMemory, LOW_MEMORY_WHY } from "./lib/hostmem.mjs";
 
 // A creative file the client supplies, sent from the page as a data: URL. Its type is read from the file's own bytes
@@ -119,7 +120,7 @@ export function createOpenWeb({ dataDir, ask = null, provider = () => "none", ff
   // In-Image Studio: brand + product → product found online → strip creative → relevant article picture → mock video
   function studioStart(b) {
     if (isLowMemory()) return { code: 503, body: { error: "In-Image records its video in a browser. " + LOW_MEMORY_WHY } };
-    const brand = String(b.brand || "").trim().slice(0, 60), product = String(b.product || "").trim().slice(0, 100), offer = String(b.offer || "").trim().slice(0, 60), productImage = String(b.productImage || "").trim().slice(0, 2000);
+    const brand = String(b.brand || "").trim().slice(0, 60), product = String(b.product || "").trim().slice(0, 100), offer = String(b.offer || "").trim().slice(0, 60), productImage = String(b.productImage || "").trim().slice(0, 2000), productThumb = String(b.productThumb || "").trim().slice(0, 2000);
     if (!brand || !product) return { code: 400, body: { error: "Type the brand and the product." } };
     if (productImage && !/^https:\/\//i.test(productImage)) return { code: 400, body: { error: "The product photo link must start with https://" } };
     const refusal = studioRefusal(brands, brand, product);
@@ -146,7 +147,7 @@ export function createOpenWeb({ dataDir, ask = null, provider = () => "none", ff
     const end = (status, outcome, error) => { if (j.status !== "running") return false; Object.assign(j, { status, outcome, tEnd: Date.now() }); if (error) j.error = error; if (studioBusy === j.id) studioBusy = null; return true; };
     const ctl = new AbortController(), limitS = studio.budgetSeconds + 75;
     const dog = setTimeout(() => { ctl.abort(); if (end("failed", "failed", `Stopped: the run took longer than ${limitS} s (last step: ${j.stage}). Nothing was placed.`)) log(j, j.error); }, limitS * 1000);
-    makeInImage({ compact: provider() === "openai", discovery: { fc: fcFor(), campaigns: campaignsFor }, recentAds: findAds, brand, product, offer, productImage, style, clientAd, brands, workDir, indexDir: studioRoot, studio, cfg, store, ask, fetchImpl, py, ffmpeg, chromium, firecrawl: firecrawl(), signal: ctl.signal, say, productFile })
+    makeInImage({ compact: provider() === "openai", discovery: { fc: fcFor(), campaigns: campaignsFor }, recentAds: findAds, brand, product, offer, productImage, productThumb: /^https:\/\//i.test(productThumb) ? productThumb : "", style, clientAd, brands, workDir, indexDir: studioRoot, studio, cfg, store, ask, fetchImpl, py, ffmpeg, chromium, firecrawl: firecrawl(), signal: ctl.signal, say, productFile })
       .then((r) => { if (end("done", r.status || "success")) { j.result = r; j.pct = 100; log(j, `Ad ready in ${r.seconds} s (${j.outcome}${r.status === "partial" ? ": " + r.statusWhy : ""}).`); } })
       .catch((e) => { if (end("failed", e.status || "failed", e.message)) { j.needsInput = e.needsInput || null; log(j, `Stopped (${j.outcome}): ` + e.message); } try { fs.writeFileSync(path.join(workDir, "error.txt"), e.stack || e.message); } catch { /* best effort */ } })
       .finally(() => clearTimeout(dog));
@@ -163,6 +164,17 @@ export function createOpenWeb({ dataDir, ask = null, provider = () => "none", ff
     }
     const p = u.pathname.slice("/api/ow".length);
     if (p === "/studio/brands") return send(res, 200, { version: brands.version, brands: brands.brands.map((b) => ({ name: b.name, category: b.category, subBrands: (b.subBrands || []).map((x) => x.name) })) });
+    if (p === "/products" && req.method === "GET") {   // ?brand=Himalaya&product=Facewash — the brand's real products of that kind, each with a picture, for the user to pick one
+      const brand = String(u.searchParams.get("brand") || "").trim().slice(0, 60), product = String(u.searchParams.get("product") || "").trim().slice(0, 100);
+      if (!brand || !product) return send(res, 400, { error: "Type the brand and the product first." });
+      const refusal = studioRefusal(brands, brand, product); if (refusal) return send(res, 400, { error: refusal });
+      const k = `${brand}|${product}`.toLowerCase(), hit = productMemo.get(k);   // the same lookup within 15 minutes is answered from memory (search quotas are small)
+      if (hit && Date.now() - hit.t < 15 * 60e3) return send(res, 200, await hit.p);
+      const p2 = discoverProducts({ brand, product, brands, fetchImpl, ask: ask && provider() !== "none" ? ask : null, shops: { indian: studio.product?.indianShops, foreign: studio.product?.foreignShops } });
+      productMemo.set(k, { t: Date.now(), p: p2 });
+      try { const r = await p2; if (!r.items.length) productMemo.delete(k); return send(res, 200, { brand: r.brand, query: r.query, items: r.items, notes: r.notes }); }
+      catch (e) { productMemo.delete(k); return send(res, 502, { error: "The product search failed: " + String(e.message).slice(0, 160) }); }
+    }
     if (p === "/studio/discover") {   // ?brand=Zomato&product=food&days=45&months=12
       const brand = String(u.searchParams.get("brand") || "").trim().slice(0, 60), product = String(u.searchParams.get("product") || "").trim().slice(0, 100);
       if (!brand) return send(res, 400, { error: "Give a brand (…/discover?brand=Zomato)." });
@@ -299,7 +311,7 @@ export function createOpenWeb({ dataDir, ask = null, provider = () => "none", ff
   }
   // the brand's verified campaigns, for the studio and the YouTube tool (names to search its ads by); null without a
   // Firecrawl key. One lookup per brand for 30 minutes, so a studio run and its ad search share it.
-  const campaignMemo = new Map();
+  const campaignMemo = new Map(), productMemo = new Map();
   const campaignsFor = (/** @type {string} */ brand) => { const fc = fcFor(); if (!fc.enabled) return Promise.resolve(null);
     const k = brand.toLowerCase().trim(), m = campaignMemo.get(k);
     if (m && Date.now() - m.t < 30 * 60e3) return m.p;

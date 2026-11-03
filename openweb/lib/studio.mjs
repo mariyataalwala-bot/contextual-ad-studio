@@ -368,7 +368,7 @@ export const words = (s, n) => {
 };
 
 /**
- * @param {{ brand: string, product: string, discovery?: { fc: any, campaigns?: (brand: string) => Promise<any> }|null, recentAds?: ((q: { brand: string, product?: string }) => Promise<any[]>)|null, offer?: string, productImage?: string, style?: string, brands?: any, clientAd?: { file: string, type: "image"|"video", name?: string, seconds?: number }|null, workDir: string, indexDir?: string, studio: any, cfg: any, store: any,
+ * @param {{ brand: string, product: string, discovery?: { fc: any, campaigns?: (brand: string) => Promise<any> }|null, recentAds?: ((q: { brand: string, product?: string }) => Promise<any[]>)|null, offer?: string, productImage?: string, productThumb?: string, style?: string, brands?: any, clientAd?: { file: string, type: "image"|"video", name?: string, seconds?: number }|null, workDir: string, indexDir?: string, studio: any, cfg: any, store: any,
  *   ask: Function, fetchImpl?: any, py: (args: string[]) => Promise<string>, ffmpeg: (args: string[]) => Promise<any>, chromium?: any, firecrawl?: { key: string }|null, productFile?: string|null,
  *   signal?: AbortSignal, say?: (pct: number, stage: string, msg?: string) => void, qa?: boolean, compact?: boolean }} o
  */
@@ -521,7 +521,8 @@ export async function makeInImage(o) {
     if (userFile) candidates = [{ url: "upload:" + path.basename(userFile), page: null, host: "uploaded file", title: "photo uploaded by the user", n: -1, user: true, kind: "product_on_background" }];
     else if (userPic) {
       let host = ""; try { host = new URL(userPic).host.replace(/^www\./, ""); } catch { throw new StudioStop("failed", "The product photo link is not a web address (it should start with https://)."); }
-      candidates = [{ url: userPic, page: userPic, host, title: "photo link given by the user", n: -1, user: true, kind: "product_on_background" }];
+      // a picture picked from the product list keeps its search thumbnail: if the shop refuses the download, Bing's enlarged copy of the same picture is used
+      candidates = [{ url: userPic, page: userPic, host, title: "photo link given by the user", n: -1, user: true, kind: "product_on_background", thumb: o.productThumb || null }];
     }
     result.productCandidates = candidates.map((x) => ({ url: x.url, kind: x.kind, site: x.host }));
     // full-size files fetched together; a shop that refuses → Bing's enlarged copy of the same picture (source page kept)
@@ -529,7 +530,7 @@ export async function makeInImage(o) {
       const i = from + k;
       if (userFile) return { x, f: userFile, idx: i, via: "the file you uploaded", hash: sha256(fs.readFileSync(userFile).toString("base64")) };
       let f = await downloadImage(x.url, path.join(assets, `product_src${i}`), { fetchImpl, fs }).catch(() => null), via = x.user ? "the link you gave" : "the picture's own site";
-      if (!f && !x.user && bingLarge(x.thumb, 900)) { f = await downloadImage(bingLarge(x.thumb, 900), path.join(assets, `product_src${i}b`), { fetchImpl, fs }).catch(() => null); via = "Bing's copy (the site refused the download)"; }
+      if (!f && (!x.user || x.thumb) && bingLarge(x.thumb, 900)) { f = await downloadImage(bingLarge(x.thumb, 900), path.join(assets, `product_src${i}b`), { fetchImpl, fs }).catch(() => null); via = "Bing's copy (the site refused the download)"; }
       return { x, f, idx: i, via, hash: f ? sha256(fs.readFileSync(f).toString("base64")) : null };
     }));
     const fetched = await download(candidates, 0);

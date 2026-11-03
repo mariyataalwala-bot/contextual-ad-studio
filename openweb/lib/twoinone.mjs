@@ -421,7 +421,7 @@ export async function makeTwoInOne(o) {
       return fs.existsSync(base + ".jpg") ? base + ".jpg" : null;
     };
     const panelP = o.displayFile ? Promise.resolve(null)
-      : adVisual().catch(() => null).then((heroFile) => preparePanel({ brand, product, known, studio, ask: o.ask, py: o.py, ffmpeg: o.ffmpeg, fetchImpl, workDir, video: vInfo, say: (m) => say(18, "articles", m), budgetMs: 100000, heroFile, campaigns: o.campaigns || [] }))
+      : adVisual().catch(() => null).then((heroFile) => preparePanel({ brand, product, known, studio, ask: o.ask, py: o.py, ffmpeg: o.ffmpeg, fetchImpl, workDir, video: vInfo, say: (m) => say(18, "articles", m), budgetMs: 100000, heroFile, campaigns: o.campaigns || [], productImage: o.productImage || "", productThumb: o.productThumb || "" }))
         .catch((e) => ({ ...emptyPanel, flags: ["The product panel could not be prepared (" + String(e.message).slice(0, 120) + ") — it shows the brand and product name only."] }));
 
     // 2) articles

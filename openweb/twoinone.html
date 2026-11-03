@@ -58,6 +58,14 @@ button:disabled{opacity:.45;cursor:default}.ghost{background:#fff;color:var(--p)
 .assets{display:flex;gap:12px;margin-top:10px}.assets img{height:70px;max-width:140px;object-fit:contain;border:1px solid var(--line);border-radius:10px;background:repeating-conic-gradient(#f1f1f5 0 25%,#fff 0 50%) 0 0/14px 14px;padding:4px}
 .note{font-size:12px;color:var(--mute);margin-top:12px}
 .err{color:var(--bad);font-weight:600;font-size:14px}
+/* the optional "Find products" list: real products of the brand, each with its picture */
+.pl{display:grid;grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:12px;margin-top:14px}
+.pl:empty{display:none}
+.pc{display:grid;grid-template-columns:64px 1fr;gap:12px;align-items:center;text-align:left;border:1.5px solid var(--line);border-radius:14px;padding:10px;background:#fff;color:var(--ink);box-shadow:none;font-weight:500;font-size:13px}
+.pc:hover{border-color:rgba(11,111,240,.45)}.pc.on{border-color:var(--p);background:#F5F9FF}
+.pc img,.pc .noimg{width:64px;height:64px;border-radius:10px;border:1px solid var(--line);object-fit:contain;background:#fff;display:grid;place-items:center;font-size:10.5px;color:var(--mute);text-align:center}
+.pc b{display:block;font-size:13.5px;font-weight:600;margin-bottom:4px;line-height:1.3}
+.tg{display:inline-block;font-size:11px;font-weight:700;padding:2px 8px;border-radius:99px;background:#F0F0F7;color:var(--mute);margin-right:6px}.tg.exact{background:#E8F7E7;color:var(--ok)}
 .gal{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:14px}
 .gal a{display:block;text-decoration:none;color:var(--ink);border:1px solid var(--line);border-radius:14px;overflow:hidden;background:#fff}
 .gal img{width:100%;height:180px;object-fit:cover;object-position:center 40%;display:block;background:#eee}.gal div{padding:9px 11px;font-size:12px}.gal b{display:block;font-size:13px}
@@ -91,6 +99,8 @@ button:disabled{opacity:.45;cursor:default}.ghost{background:#fff;color:var(--p)
   <div class="src"><label><input type="radio" name="src" value="yt" checked> Find on YouTube</label><label><input type="radio" name="src" value="client"> Client&rsquo;s video</label></div>
   <div class="row" style="grid-template-columns:1fr 1.4fr"><div><label for="brand">Brand</label><input type="text" id="brand" placeholder="e.g. Airtel" autocomplete="off" list="brandList"><datalist id="brandList"></datalist></div>
     <div><label for="product">Product</label><input type="text" id="product" placeholder="e.g. Priority Postpaid" autocomplete="off"></div></div>
+  <div class="row2"><div><div class="bar" style="margin-top:0"><button type="button" class="ghost" id="findp">Find products</button><span class="s" id="fphint">Optional &mdash; lists the brand&rsquo;s real products of this kind, with a picture. Pick one to use its name and photo.</span></div><div class="pl" id="plist"></div></div></div>
+  <div class="row2"><div><label for="pimg">Product photo (optional)</label><input type="text" id="pimg" placeholder="Pick a product above, or paste a link to the exact product photo to skip the search" autocomplete="off"></div></div>
   <div id="ytBox"><div class="bar"><button id="find">Find the brand&rsquo;s ads</button><span class="s" id="fhint">Searches YouTube, keeps only official, current, embeddable 16:9 ads.</span></div><div class="vlist" id="vlist"></div><details class="rej" id="rej" hidden></details></div>
   <div id="clBox" hidden>
     <div class="row2"><label class="drop"><input type="file" id="vfile" accept="video/mp4,video/webm"><div><b>Upload the brand&rsquo;s video ad</b><div class="s" id="vname">MP4 or WebM · 16:9 landscape · up to 40 MB · shown exactly as supplied</div></div></label></div>
@@ -133,6 +143,32 @@ const readFile = (f, cap) => new Promise((ok, no) => { if (f.size > cap) return 
 $("vfile").addEventListener("change", async () => { const f = $("vfile").files[0]; clientVideo = null; if (!f) return; try { clientVideo = { name: f.name, data: await readFile(f, 40e6) }; $("vname").textContent = `${f.name} · ${(f.size / 1e6).toFixed(1)} MB`; } catch (e) { $("vname").innerHTML = `<span class="err">${esc(e.message)}</span>`; } });
 $("dfile").addEventListener("change", async () => { const f = $("dfile").files[0]; display = null; if (!f) return; try { display = { name: f.name, data: await readFile(f, 40e6) }; $("dname").textContent = f.name; } catch (e) { $("dname").innerHTML = `<span class="err">${esc(e.message)}</span>`; } });
 
+// ---- optional: find the brand's real products of this kind, pick one (its name fills the product, its photo link is used) ----
+let found = [], picked = null;   // picked: { photo, thumb } — the photo link the run will use
+const photoOf = (p) => (p && /^https:\/\//i.test(p.url || "") ? { photo: p.url, thumb: /^https:\/\//i.test(p.thumb || "") ? p.thumb : "" } : p && /^https:\/\//i.test(p.thumb || "") ? { photo: p.thumb, thumb: "" } : null);
+const forgetPick = () => { if (picked && $("pimg").value.trim() === picked.photo) $("pimg").value = ""; picked = null; for (const b of $("plist").children) b.classList.remove("on"); };
+$("brand").addEventListener("input", forgetPick); $("product").addEventListener("input", forgetPick);
+$("findp").onclick = async () => {
+  const brand = $("brand").value.trim(), product = $("product").value.trim();
+  if (!brand || !product) { $("fphint").innerHTML = `<span class="err">Type the brand and the product first.</span>`; return; }
+  $("findp").disabled = true; $("plist").innerHTML = ""; found = []; picked = null; $("fphint").textContent = "Searching for products…";
+  try {
+    const r = await api("/products?brand=" + encodeURIComponent(brand) + "&product=" + encodeURIComponent(product));
+    found = r.items;
+    $("fphint").textContent = found.length ? `${found.length} product${found.length === 1 ? "" : "s"} found for ${r.brand} — pick one, or skip this and continue as typed.` : (r.notes?.[0] || "No products found — continue as typed.");
+    $("plist").innerHTML = found.map((x, i) => `<button type="button" class="pc" data-i="${i}">${x.picture?.thumb ? `<img src="${esc(x.picture.thumb)}" alt="" loading="lazy" referrerpolicy="no-referrer">` : `<span class="noimg">no picture</span>`}<span><b>${esc(x.name)}</b><span class="tg ${x.match === "exact" ? "exact" : ""}">${x.match === "exact" ? "exact" : "related"}</span><span class="s">${esc(x.official ? "official site" : x.source)}</span></span></button>`).join("");
+  } catch (e) { $("fphint").innerHTML = `<span class="err">${esc(e.message)}</span>`; }
+  $("findp").disabled = false;
+};
+$("plist").addEventListener("click", (e) => {
+  const b = e.target.closest("button[data-i]"); if (!b) return; const x = found[+b.dataset.i]; if (!x) return;
+  const brand = $("brand").value.trim(), esc2 = brand.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  $("product").value = x.name.replace(new RegExp("^" + esc2 + "\\s+", "i"), "") || x.name;   // the real name (the brand is added again by the run)
+  picked = photoOf(x.picture); $("pimg").value = picked ? picked.photo : "";
+  for (const c of $("plist").children) c.classList.toggle("on", c === b);
+  $("fphint").textContent = `Using “${x.name}”${picked ? " and its photo" : " (no photo link — the app will search for one)"}.`;
+});
+
 // ---- the YouTube route: verified candidates, one is chosen ----
 async function waitJob(id, onLog) { for (;;) { await new Promise((r) => setTimeout(r, 1200)); const j = await api("/job/" + id); if (onLog) onLog(j); if (j.status !== "running") return j; } }
 $("find").onclick = async () => {
@@ -161,7 +197,8 @@ async function run(extra) {
   const brand = $("brand").value.trim(), product = $("product").value.trim();
   if (!brand || !product) { (mode === "yt" ? $("fhint") : $("hint")).innerHTML = `<span class="err">Type the brand and the product.</span>`; return; }
   $("prog").classList.remove("stopped"); $("prog").hidden = false; $("out").hidden = true; shown = 0; setPct(1); setStage("video"); $("log").textContent = ""; lock(true);
-  let id; try { id = (await post("/twoinone/start", { brand, product, ...extra })).id; } catch (e) { stopped(e.message); lock(false); return; }
+  const productImage = $("pimg").value.trim(), productThumb = picked && picked.photo === productImage ? picked.thumb : "";
+  let id; try { id = (await post("/twoinone/start", { brand, product, productImage, productThumb, ...extra })).id; } catch (e) { stopped(e.message); lock(false); return; }
   try {
     const j = await waitJob(id, (x) => { setPct(x.pct || 1); setStage(x.stage); $("log").textContent = x.log.join("\n"); $("log").scrollTop = 1e9; });
     if (j.status === "done") { setPct(100); setStage("done"); showResult(j.dir, j.result); }
