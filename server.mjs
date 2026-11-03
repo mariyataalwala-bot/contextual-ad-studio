@@ -41,6 +41,8 @@ function findFfmpeg() {
 const FF = findFfmpeg();
 const ENV = { ...process.env, NODE_PATH: path.join(APP, "node_modules"), PYTHONIOENCODING: "utf-8" };
 if (FF) ENV.PATH = FF + path.delimiter + ENV.PATH;
+// helpers start `node` by name (capture.py → yt.js): the folder of the node running this app is always on their PATH
+ENV.PATH = path.dirname(process.execPath) + path.delimiter + ENV.PATH;
 const PY = IS_WIN ? "python" : "python3";
 // Windows: an app started by a background launcher can inherit an old PATH without Python — find it in its usual
 // install folders so the cut-out and logo helpers still run
