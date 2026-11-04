@@ -365,7 +365,8 @@ function wrongKeyField(b) {
   if (c && !/^sk-ant-/.test(c)) return "That does not look like a Claude key — they start with sk-ant-. Nothing was saved.";
   return "";
 }
-setImageSearchConfig(() => ({ googleKey: loadSettings().googleCseKey || process.env.GOOGLE_CSE_KEY || "", googleCx: loadSettings().googleCseCx || process.env.GOOGLE_CSE_CX || "" }));
+setImageSearchConfig(() => ({ googleKey: loadSettings().googleCseKey || process.env.GOOGLE_CSE_KEY || "", googleCx: loadSettings().googleCseCx || process.env.GOOGLE_CSE_CX || "",
+  firecrawlKey: loadSettings().firecrawlKey || process.env.FIRECRAWL_API_KEY || "" }));
 // In-Image reads pictures. A free key whose models cannot is told so before a run starts, not halfway through it.
 let visionMemo = null;
 async function aiPicturesProblem() {

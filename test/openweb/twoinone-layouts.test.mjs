@@ -68,13 +68,21 @@ test("no product picture: a typographic opening with the logo; nothing stands in
   assert.equal(layoutOf(html), "type"); assert.doesNotMatch(html, /class="ip /); assert.match(html, /class="itype"/); assert.match(html, /class="il"/);
 });
 
-test("no drawn decoration and no looping motion anywhere in the unit, for every layout", () => {
+// 2026-11-04 the user found the panel static ("very basic, need more animation"): it now stays alive for the whole video,
+// but nothing decorative is ever drawn over the video, the product or the logo (the creative guidelines)
+test("the panel keeps moving for the whole video, but no decoration is drawn over the video, the product or the logo", () => {
   for (const p of [{ style: "bold" }, { style: "luxe" }, { range }, { product: null }, { product: null, hero: "f.jpg" }, { productMode: "photo" }]) {
-    const { html, css } = parts(p), all = html + css;
-    assert.doesNotMatch(html, /class="[^"]*\b(orbit|o2|iorb|spk|sparkle|burst|ring|rip|beam|bokeh|mesh|glow|decor|particle)\b/, JSON.stringify(p));
-    assert.doesNotMatch(css, /@keyframes (orbitSpin|spark|burst|ringOut|ripple|beam|breathe|pulse|shimmer|floaty|rise2|drift[123])\b/, JSON.stringify(p));
-    assert.doesNotMatch(all, /infinite/, "every animation plays once");
+    const { html, css } = parts(p);
+    const vid = /<div class="vid">([\s\S]*?)<\/div><div class="disp">/.exec(html)?.[1] || "";
+    assert.doesNotMatch(vid, /class="(aur|lsweep|pglow|halo|ilight)/, "nothing decorative inside the video");
+    assert.doesNotMatch(html, /class="[^"]*\b(orbit|o2|iorb|spk|sparkle|burst|beam|bokeh|particle|isweep-panel)\b/, JSON.stringify(p));
+    assert.match(css, /\.aur\{position:absolute;z-index:0/); assert.match(css, /\.lsweep\{position:absolute;inset:-10% -70%;z-index:1/);
+    assert.match(css, /\.ptop\{grid-row:1;position:relative;z-index:4/); assert.match(css, /\.pstage>\.pprod\{z-index:2\}\.vis>\.pwm\{z-index:2\}/, "the product and the logo sit above their glow");
+    if (/class="pstage"/.test(html)) assert.match(html, /<i class="pglow"><\/i><i class="pshadow"><\/i><img class="pprod/, "the podium glow is behind the product");
+    assert.match(css, /\.unit\.in \.pprod\{[^}]*float 6s ease-in-out [\d.]+s infinite/, "the product floats for the whole video");
+    assert.match(css, /\.unit\.in \.aur\.a1\{[^}]*infinite/, "the background drifts for the whole video");
     assert.doesNotMatch(css, /text-decoration:(?!none)/, "no underlines");
+    assert.doesNotMatch(css, /background-clip:text|text-fill-color:transparent/, "the words are always drawn in full (a text sheen cut letters off)");
   }
 });
 
@@ -104,4 +112,12 @@ test("copy in the opening is escaped: opener, pack names, brand and pictures", (
   }
   const full = previewHtml({ ...base, panel: { ...panel, opener: '"><img src=x onerror=alert(1)>' } });
   assert.ok(!full.includes("<img src=x"));
+});
+
+// 2026-11-04: American Tourister's suitcase photo (white background, not cut out) sat in a white box on the pink panel
+test("a product photo on a light panel is multiplied into it (no white box); on a dark panel it stays a photo", () => {
+  const light = parts({ productMode: "photo", colour: "#fde8ef", logoInk: "#c8102e" }), dark = parts({ productMode: "photo", colour: "#141821", logoInk: "#ffffff" });
+  assert.match(light.html, /class="pprod photo mul"/); assert.match(light.html, /class="pn k-prod k-mul/); assert.match(light.html, /class="intro mul L-/);
+  assert.match(light.css, /\.pn\.k-mul \.vis\{z-index:auto\}/, "the picture row is not a blend group of its own, or the white stays white"); assert.match(light.css, /\.pprod\.mul,\.ip\.mul\{mix-blend-mode:multiply;filter:none/);
+  assert.doesNotMatch(dark.html, /class="pprod photo mul"/); assert.match(dark.html, /class="pprod photo"/);
 });

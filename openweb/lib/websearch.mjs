@@ -24,9 +24,16 @@ export function parseBingImages(html) {
 // several of the first results. A list of unrelated pictures is worse than none: the AI would reject every one of them.
 const GENERIC = new Set(["with", "from", "india", "indian", "product", "photo", "image", "pack", "packshot", "official", "png", "logo", "transparent", "new"]);
 export function relevantResults(results, q) {
-  const words = [...new Set(String(q).toLowerCase().replace(/[^a-z0-9]+/g, " ").split(" ").filter((w) => w.length >= 4 && !GENERIC.has(w)))];
+  const split = (x) => [...new Set(String(x).toLowerCase().replace(/[^a-z0-9]+/g, " ").split(" ").filter((w) => w.length >= 4 && !GENERIC.has(w)))];
+  // a quoted name ("American Tourister") must be there whole; otherwise the first word (the brand) must be, and a longer
+  // query also needs half its words — "American" alone is not American Tourister, and Bing now pads its answers with
+  // pictures that share one word (flags and airlines for "American Tourister bags")
+  const phrases = [...String(q).matchAll(/"([^"]+)"/g)].map((m) => split(m[1])).filter((p) => p.length);
+  const words = split(q);
   if (!words.length) return results.length > 0;
-  const hit = results.slice(0, 12).filter((r) => { const t = `${r.title} ${r.page} ${r.url}`.toLowerCase(); return words.some((w) => t.includes(w)); }).length;
+  const need = words.length >= 3 ? Math.ceil(words.length / 2) : 1;
+  const hit = results.slice(0, 12).filter((r) => { const t = `${r.title} ${r.page} ${r.url}`.toLowerCase();
+    return phrases.every((p) => p.every((w) => t.includes(w))) && t.includes(words[0]) && words.filter((w) => t.includes(w)).length >= need; }).length;
   return hit >= Math.min(3, Math.max(1, results.length));
 }
 
@@ -50,8 +57,31 @@ export async function ddgImages(q, { transparent = false, fetchImpl = globalThis
 // Google's Programmable Search (the official image search; a free key and search-engine id give 100 searches a day). Set with
 // setImageSearchConfig(() => ({ googleKey, googleCx })) — or GOOGLE_CSE_KEY / GOOGLE_CSE_CX in the environment.
 /** @type {() => { googleKey?: string, googleCx?: string }} */
-let searchConfig = () => ({ googleKey: process.env.GOOGLE_CSE_KEY || "", googleCx: process.env.GOOGLE_CSE_CX || "" });
-export const setImageSearchConfig = (/** @type {() => { googleKey?: string, googleCx?: string }} */ fn) => { searchConfig = fn; };
+/** @type {() => { googleKey?: string, googleCx?: string, firecrawlKey?: string|null }} */
+let searchConfig = () => ({ googleKey: process.env.GOOGLE_CSE_KEY || "", googleCx: process.env.GOOGLE_CSE_CX || "", firecrawlKey: process.env.FIRECRAWL_API_KEY || "" });
+export const setImageSearchConfig = (/** @type {() => { googleKey?: string, googleCx?: string, firecrawlKey?: string|null }} */ fn) => { searchConfig = fn; };
+
+// Firecrawl's image search (an API — the scraped Bing page now answers this computer with unrelated pictures: Dubai clocks for
+// "Maggi noodles"). Results come from the brand's own shop and Indian retailers at full size; cached for 6 hours.
+const fcImageCache = new Map();
+/** @param {string} q @param {{ key: string, fetchImpl?: typeof fetch }} o */
+export async function firecrawlImages(q, { key, fetchImpl = globalThis.fetch }) {
+  const hit = fcImageCache.get(q); if (hit && Date.now() - hit.t < 6 * 3600e3) return hit.v;
+  const r = await fetchImpl("https://api.firecrawl.dev/v2/search", { method: "POST", headers: { Authorization: `Bearer ${key}`, "Content-Type": "application/json" },
+    body: JSON.stringify({ query: q, limit: 20, sources: [{ type: "images" }], location: "India" }), signal: AbortSignal.timeout(25000) });
+  const j = await r.json().catch(() => ({}));
+  if (!r.ok || j.success === false) throw new Error(`Firecrawl image search → ${String(j.error || "HTTP " + r.status).slice(0, 120)}`);
+  const out = [], seen = new Set();
+  for (const x of j.data?.images || []) {
+    if (!x.imageUrl || seen.has(x.imageUrl) || !/^https?:\/\//.test(x.imageUrl)) continue;
+    seen.add(x.imageUrl);
+    let host = ""; try { host = new URL(x.url || x.imageUrl).host.replace(/^www\./, ""); } catch { /* no page */ }
+    // the page link carries a tracking parameter (srsltid); the picture link is used as it is
+    out.push({ url: x.imageUrl.replace(/^http:/, "https:"), thumb: x.imageUrl.replace(/^http:/, "https:"), page: String(x.url || "").replace(/[?&]srsltid=[^&]*/, ""), host, title: String(x.title || "").trim(), w: x.imageWidth || null, h: x.imageHeight || null });
+  }
+  fcImageCache.set(q, { t: Date.now(), v: out });
+  return out;
+}
 
 /** @param {string} q @param {{ key: string, cx: string, transparent?: boolean, fetchImpl?: typeof fetch }} o */
 export async function googleImages(q, { key, cx, transparent = false, fetchImpl = globalThis.fetch }) {
@@ -71,6 +101,7 @@ export async function googleImages(q, { key, cx, transparent = false, fetchImpl 
 // mkt: the market whose results are wanted — Indian packs and Indian shops (en-IN), not the US / EU versions
 export async function imageSearch(q, { transparent = false, fetchImpl = globalThis.fetch, count = 35, mkt = "en-IN" } = {}) {
   const g = searchConfig();
+  if (g.firecrawlKey) { try { const r = await firecrawlImages(transparent ? `${q} transparent png` : q, { key: g.firecrawlKey, fetchImpl }); if (r.length && relevantResults(r, q)) return r; } catch { /* the next source */ } }
   if (g.googleKey && g.googleCx) { try { const r = await googleImages(q, { key: g.googleKey, cx: g.googleCx, transparent, fetchImpl }); if (r.length && relevantResults(r, q)) return r; } catch { /* the scraped pages below */ } }
   const qs = new URLSearchParams({ q, form: "IRFLTR", first: "1", count: String(count), mkt, cc: mkt.split("-")[1] || "IN" });
   if (transparent) qs.set("qft", "+filterui:photo-transparent");

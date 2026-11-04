@@ -103,8 +103,11 @@ export async function commonsLogo(brand, fetchImpl = globalThis.fetch) {
   const b = key(brand).replace(/ /g, "");
   const pages = Object.values(j?.query?.pages || {}).sort((a, c) => (a.index || 0) - (c.index || 0));
   for (const p of pages) {
-    const t = key(p.title).replace(/ /g, ""), ii = p.imageinfo?.[0];
-    if (b && t.includes(b) && t.includes("logo") && ii) { const url = ii.thumburl || ii.url; if (/\.(png|jpe?g)$/i.test(url)) return { url, thumb: url, page: ii.descriptionurl || url, host: new URL(url).host, title: p.title }; }
+    // the file's name minus "File:", "logo", "new", a year and the extension must be the brand itself ("Philips logo new.svg",
+    // not "Logo Philips Classics.png" — another logo)
+    const rest = key(String(p.title).replace(/^File:/i, "").replace(/\.(svg|png|jpe?g|gif)$/i, "")).split(" ").filter((w) => !/^(logo|logos|new|official|wordmark|\d{4}|svg|png)$/.test(w)).join("");
+    const ii = p.imageinfo?.[0];
+    if (b && rest === b && ii) { const url = String(ii.thumburl || ii.url).replace(/\?.*$/, ""); if (/\.(png|jpe?g)$/i.test(url)) return { url, thumb: url, page: ii.descriptionurl || url, host: new URL(url).host, title: p.title }; }
   }
   return null;
 }
@@ -130,8 +133,8 @@ export async function preparePanel(o) {
   // the brand's recent campaign is the reference: pictures of the product that campaign shows come first
   const extra = adQuery(o.video?.title || "", brand), sameAs = (q) => key(q) === key(`${brand} ${product}`);
   const [web, webIn, webClear, webLogos, webAd] = await Promise.all([
-    imageSearch(`${brand} ${product}`, { fetchImpl }).catch(() => []), imageSearch(`${brand} ${product} India`, { fetchImpl }).catch(() => []),
-    imageSearch(`${brand} ${product}`, { fetchImpl, transparent: true }).catch(() => []), imageSearch(`${brand} logo png`, { fetchImpl }).catch(() => []),
+    imageSearch(`"${brand}" ${product}`, { fetchImpl }).catch(() => []), imageSearch(`"${brand}" ${product} India`, { fetchImpl }).catch(() => []),
+    imageSearch(`"${brand}" ${product}`, { fetchImpl, transparent: true }).catch(() => []), imageSearch(`"${brand}" logo png`, { fetchImpl }).catch(() => []),
     extra && !sameAs(`${brand} ${extra}`) ? imageSearch(`${brand} ${extra}`, { fetchImpl }).catch(() => []) : Promise.resolve([]) ]);
   const seen = new Set(), products = [];
   for (const x of [...webAd, ...web, ...webIn, ...webClear].map((x, i) => ({ x, i, w: where(x.host) })).filter((r) => r.w >= 0).sort((a, b) => b.w - a.w || a.i - b.i).map((r) => r.x)) if (!seen.has(x.url) && x.thumb) { seen.add(x.url); products.push(x); }
@@ -184,7 +187,9 @@ export async function preparePanel(o) {
     return true;
   };
   const lx = lT.find((x) => x.n === pick?.logo);
-  if (lx) await loadLogo(lx);
+  if (researched[0]) await loadLogo(researched[0]);
+  if (!logoFile) { const alt = await commonsLogo(brand, fetchImpl).catch(() => null); if (alt) await loadLogo(alt); }
+  if (!logoFile && lx) await loadLogo(lx);
   let logoChecked = !logoFile;
   let candidates = pick ? productCandidates(pick, pT, { lifestyleOk: service }) : [];
   // the AI found no picture of the campaign's exact variant: the brand's regular packs of this product (title names brand and product)
