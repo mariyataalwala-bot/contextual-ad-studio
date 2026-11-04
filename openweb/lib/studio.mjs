@@ -385,7 +385,7 @@ export const words = (s, n) => {
 };
 
 /**
- * @param {{ brand: string, product: string, discovery?: { fc: any, campaigns?: (brand: string) => Promise<any> }|null, recentAds?: ((q: { brand: string, product?: string }) => Promise<any[]>)|null, offer?: string, productImage?: string, productThumb?: string, style?: string, brands?: any, clientAd?: { file: string, type: "image"|"video", name?: string, seconds?: number }|null, workDir: string, indexDir?: string, studio: any, cfg: any, store: any,
+ * @param {{ brand: string, product: string, discovery?: { fc: any, campaigns?: (brand: string) => Promise<any> }|null, recentAds?: ((q: { brand: string, product?: string }) => Promise<any[]>)|null, offer?: string, productImage?: string, productThumb?: string, override?: any, campaign?: any, style?: string, brands?: any, clientAd?: { file: string, type: "image"|"video", name?: string, seconds?: number }|null, workDir: string, indexDir?: string, studio: any, cfg: any, store: any,
  *   ask: Function, fetchImpl?: any, py: (args: string[]) => Promise<string>, ffmpeg: (args: string[]) => Promise<any>, chromium?: any, firecrawl?: { key: string }|null, productFile?: string|null,
  *   signal?: AbortSignal, say?: (pct: number, stage: string, msg?: string) => void, qa?: boolean, compact?: boolean }} o
  */

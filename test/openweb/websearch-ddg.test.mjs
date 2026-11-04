@@ -57,7 +57,7 @@ test("image search: with a Firecrawl key it answers from Firecrawl's image searc
   setImageSearchConfig(() => ({ firecrawlKey: "fc-test" }));
   try {
     const seen = [];
-    const out = await imageSearch("American Tourister trolley bag", { fetchImpl: async (url, init) => { seen.push(String(url));
+    const out = await imageSearch("American Tourister trolley bag", { fetchImpl: async (url, _init) => { seen.push(String(url));
       return new Response(JSON.stringify({ success: true, data: { images: [
         { title: "American Tourister Airconic 2.0 Cabin Trolley Bag", imageUrl: "https://americantourister.in/cdn/shop/files/a.jpg?v=1", imageWidth: 1080, imageHeight: 1080, url: "https://americantourister.in/products/airconic?srsltid=X" },
         { title: "American Tourister Kamiliant Trolley Bag", imageUrl: "http://m.media-amazon.com/images/I/71y.jpg", url: "https://www.amazon.in/dp/B0" },

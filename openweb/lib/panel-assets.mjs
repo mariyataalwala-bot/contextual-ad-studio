@@ -117,7 +117,7 @@ export const rangeName = (n) => words(String(n || "").split(/[,|(–—]/)[0].tr
 /**
  * @param {{ brand: string, product: string, known?: any, studio: any, ask: Function, py: (a: string[]) => Promise<string>, ffmpeg: (a: string[]) => Promise<any>, fetchImpl?: any, workDir: string,
  *   video?: { title?: string, [k: string]: any }, say?: (m: string) => void, budgetMs?: number, heroFile?: string|null, campaigns?: string[], productImage?: string, productThumb?: string }} o
- * @returns {Promise<{ style?: string|null, logoInk: string|null, highlights: string[], hero: string|null, product: string|null, logo: string|null, colour: string|null, accent: string|null, copy: { headline: string, subline: string, cta: string }, productInfo: any, logoInfo: any, flags: string[], checks: any[] }>}
+ * @returns {Promise<{ range?: { name: string, file: string }[], category?: string|null, style?: string|null, logoInk: string|null, highlights: string[], hero: string|null, product: string|null, logo: string|null, colour: string|null, accent: string|null, copy: { headline: string, subline: string, cta: string }, productInfo: any, logoInfo: any, flags: string[], checks: any[] }>}
  */
 export async function preparePanel(o) {
   const { brand, product, known = null, studio, ask, py, ffmpeg, workDir } = o, fetchImpl = o.fetchImpl || globalThis.fetch, say = o.say || (() => {}), flags = /** @type {string[]} */ ([]);
@@ -175,7 +175,7 @@ export async function preparePanel(o) {
   const accent = HEX.test(known?.colours?.accent || "") ? known.colours.accent : HEX.test(pick?.accent_colour || "") ? pick.accent_colour : null;
 
   // 2) the logo file (background keyed out) and the product picture (cut out), each checked before use
-  let logoFile = null, /** @type {any} */ logoInfo = null, productFile = null, productInfo = null, checks = [], logoRev = null, logoInk = null;
+  let logoFile = null, /** @type {any} */ logoInfo = null, productFile = null, /** @type {any} */ productInfo = null, checks = [], logoRev = null, logoInk = null;
   const loadLogo = async (lx) => {
     let f = await downloadImage(lx.url, path.join(assets, "logo"), { fetchImpl, fs }).catch(() => null);
     if (!f && bingLarge(lx.thumb, 600)) f = await downloadImage(bingLarge(lx.thumb, 600), path.join(assets, "logo"), { fetchImpl, fs }).catch(() => null);

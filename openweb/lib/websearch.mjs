@@ -122,8 +122,6 @@ export function brandHost(host, brand) {
   return b.length >= 3 && h.some((part) => part.replace(/[^a-z0-9]/g, "") === b || (part.length > 4 && part.replace(/[^a-z0-9]/g, "").startsWith(b)));
 }
 
-// Downloads one picture (JPEG / PNG / WebP only), at most 12 MB.
-/** @param {string} url @param {string} file @param {{ fetchImpl?: any, fs: typeof import("node:fs") }} o */
 // Free-licence stock photographs (Unsplash, Pexels) for a query: the image search with a site: filter (Bing ignores
 // site:, DuckDuckGo keeps it). Only pictures hosted by the two sites are returned; `page` is the photo page (attribution).
 export async function stockPhotos(q, { fetchImpl = globalThis.fetch } = {}) {
@@ -135,6 +133,8 @@ export async function stockPhotos(q, { fetchImpl = globalThis.fetch } = {}) {
   return out;
 }
 
+// Downloads one picture (JPEG / PNG / WebP only), at most 12 MB.
+/** @param {string} url @param {string} file @param {{ fetchImpl?: any, fs: typeof import("node:fs") }} o */
 export async function downloadImage(url, file, { fetchImpl = globalThis.fetch, fs }) {
   const r = await fetchImpl(url, { headers: { "User-Agent": UA, Accept: "image/png,image/jpeg,image/webp;q=0.9,image/*;q=0.5" }, redirect: "follow", signal: AbortSignal.timeout(12000) });
   const type = (r.headers.get("content-type") || "").split(";")[0];

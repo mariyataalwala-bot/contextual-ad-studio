@@ -244,7 +244,7 @@ export async function reviewFrames({ ask, frames, settleAt = 0, refs = {}, kind,
 /**
  * @param {{ file: string, kind: "2in1"|"inimage", ask: Function, workDir: string, brand: string, product: string, brandNames?: string[], productNames?: string[],
  *   texts?: { where: string, text: string }[], allowedSource?: string, expected?: { width?: number, height?: number, minSeconds?: number },
- *   geometry?: { t: number, geom: any }[]|null, transitions?: number[], settleAt?: number, region?: { x: number, y: number, w: number, h: number }|null, introSeconds?: number,
+ *   geometry?: { t: number, geom: any }[]|null, transitions?: number[], settleAt?: number, expectProduct?: boolean, requireGeometry?: boolean, region?: { x: number, y: number, w: number, h: number }|null, introSeconds?: number,
  *   refs?: { logo?: string|null, product?: string|null }, safety?: { status?: string, reasons?: string[], note?: string }|null, supplied?: string[], notes?: string[], reviewNotes?: string, frames?: number, aiTimeoutMs?: number }} o
  */
 export async function runQa(o) {

@@ -14,3 +14,4 @@ server-log.txt
 share-err.txt
 share-log.txt
 _server.log
+share-*.txt

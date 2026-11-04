@@ -103,6 +103,7 @@ export function cleanBox(b) {
  * The best frame: one vision call when ask is given (product visible, sharp, well lit, no large face, no on-screen
  * text), else the highest rule score. A frame with text (has_text from the AI, or the detector) is rejected. Returns
  * { file, by, focus, crop, why } or null; crop is true only when the AI confirmed the frame holds no text.
+ * @param {string[]} files @param {{ ffmpeg?: any, ask?: any, brand?: string, product?: string }} [o]
  */
 export async function pickCampaignFrame(files, { ffmpeg, ask = null, brand = "", product = "" } = {}) {
   const scored = [];

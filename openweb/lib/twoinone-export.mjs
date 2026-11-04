@@ -13,7 +13,7 @@ const TYPES = { ".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg"
 export const SCREEN = { w: 360, h: 640, scale: 3 };   // CSS pixels × device scale = 1080×1920
 
 /**
- * @param {{ articleUrl: string, parts: { css: string, html: string, js: string }, fallbackHtml: string, assetsDir: string, outBase: string, seconds: number,
+ * @param {{ fontCss?: string, introSeconds?: number, articleUrl: string, parts: { css: string, html: string, js: string }, fallbackHtml: string, assetsDir: string, outBase: string, seconds: number,
  *   ffmpeg: (a: string[]) => Promise<any>, chromium?: any, navTimeoutMs?: number, say?: (m: string) => void }} o
  * @returns {Promise<{ mp4: string, png: string, page: "article"|"fallback", why?: string, seconds: number, geometry: { t: number, geom: any }[] }>}
  */

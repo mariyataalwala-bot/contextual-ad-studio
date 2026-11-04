@@ -1,6 +1,7 @@
 // Contextual Ad Studio — local app. Type a brand, pick the ad, approve the three checks, get the MP4.
 // Start with start.bat (or: node server.mjs). Opens http://localhost:4777
 import http from "node:http";
+import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 import { spawn } from "node:child_process";
@@ -243,7 +244,7 @@ const youtubeKey = () => loadSettings().youtubeKey || process.env.YOUTUBE_API_KE
 let ytApiDisabledUntil = 0;   // after a quota error, use the browser until midnight Pacific time
 async function ytApi(endpoint, params) {
   const url = `https://www.googleapis.com/youtube/v3/${endpoint}?` + new URLSearchParams({ ...params, key: youtubeKey() });
-  const r = await fetch(url);
+  const r = await fetch(url, { signal: AbortSignal.timeout(20000) });
   const j = await r.json();
   if (!r.ok) { const reason = j.error?.errors?.[0]?.reason || j.error?.status || r.status; const e = new Error(`YouTube API ${reason}: ${j.error?.message || ""}`.slice(0, 240)); e.reason = reason; throw e; }
   return j;
@@ -386,7 +387,7 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const lenSec = (l) => { const p = String(l || "").split(":").map(Number); return p.some(isNaN) ? 0 : p.reduce((a, b) => a * 60 + b, 0); };
 
 // ---------- jobs ----------
-const jobs = {}, adJobs = {};
+const jobs = Object.create(null), adJobs = Object.create(null);
 let renderChain = Promise.resolve(), waiting = 0;   // one capture+render at a time; others queue
 function queued(job, fn) {
   waiting++; const ahead = waiting - 1;
@@ -953,9 +954,18 @@ async function downloadLogo(url, dir) {
   return "logo." + ext;
 }
 
+process.on("unhandledRejection", (e) => console.error("Unhandled rejection:", e && e.message ? e.message : e));
+
 // ---------- HTTP ----------
+let diagAt = 0;
 const send = (res, code, body, type = "application/json") => { res.writeHead(code, { "Content-Type": type, "Cache-Control": "no-store" }); res.end(type === "application/json" ? JSON.stringify(body) : body); };
-const body = (req) => new Promise((r) => { let d = ""; req.on("data", (c) => (d += c)); req.on("end", () => { try { r(JSON.parse(d || "{}")); } catch { r({}); } }); });
+const MAX_BODY = 60e6;
+const body = (req) => new Promise((r) => {
+  let d = "", n = 0;
+  req.on("data", (c) => { n += c.length; if (n > MAX_BODY) { req.destroy(); r({}); return; } d += c; });
+  req.on("end", () => { try { r(JSON.parse(d || "{}")); } catch { r({}); } });
+  req.on("error", () => r({})); req.on("close", () => r({}));
+});
 function saveData(dataUrl, file) { const m = /^data:[^;]+;base64,(.*)$/.exec(dataUrl || ""); if (!m) return null; fs.writeFileSync(file, Buffer.from(m[1], "base64")); return file; }
 
 // Open Web contextual placement (openweb/): its own routes and data folder; if its config is broken only that tab is off
@@ -971,17 +981,6 @@ http.createServer(async (req, res) => {
   // the MediaKart look shared by the studio pages: logo + stylesheet from assets/ (only these files)
   const brandFile = { "/brand/mediakart-logo.png": ["mediakart-logo.png", "image/png"], "/brand/mediakart.css": ["mediakart.css", "text/css; charset=utf-8"] }[u.pathname];
   if (brandFile) { res.writeHead(200, { "Content-Type": brandFile[1], "Cache-Control": "no-cache" }); return res.end(fs.readFileSync(path.join(APP, "assets", brandFile[0]))); }
-  if (u.pathname === "/api/diag") {   // memory + can this server reach YouTube?
-    const rd = (f) => { try { return fs.readFileSync(f, "utf8").trim(); } catch { return null; } };
-    const t0 = Date.now(); let yt1 = null, err = null;
-    try {
-      if (u.searchParams.get("mode") === "scan") {   // heavier: a real player frame
-        const d = path.join(OUT_ROOT, "_diag"); fs.mkdirSync(d, { recursive: true });
-        await yt(["scan", "5DW0ixWjn7U", d, "81"]); yt1 = fs.readdirSync(d);
-      } else yt1 = (await ytJson(["searchjson", "potato chips recipe", "3"])).map((r) => r.title);
-    } catch (e) { err = e.message.slice(0, 400); }
-    return send(res, 200, { youtube: yt1, error: err, seconds: (Date.now() - t0) / 1000, memLimit: rd("/sys/fs/cgroup/memory.max"), memPeak: rd("/sys/fs/cgroup/memory.peak"), memNow: rd("/sys/fs/cgroup/memory.current"), provider: provider() });
-  }
   const viaShare = !!(req.headers["cf-connecting-ip"] || req.headers["x-forwarded-for"]) || !/^(::1|127\.0\.0\.1|::ffff:127\.0\.0\.1)$/.test(req.socket.remoteAddress || "");
   const PW = sharePassword();
   const gate = accessMode({ viaShare, appPassword: process.env.APP_PASSWORD, pw: PW, openAccess: process.env.OPEN_ACCESS === "1" });
@@ -991,15 +990,33 @@ http.createServer(async (req, res) => {
       : "Sharing isn't set up yet: start share.bat on the host PC."); }
     const [, b64] = (req.headers.authorization || "").split(" ");
     const pw = b64 ? Buffer.from(b64, "base64").toString().split(":").slice(1).join(":") : "";
-    if (pw !== PW) { res.writeHead(401, { "WWW-Authenticate": 'Basic realm="Contextual Ad Studio"' }); return res.end("Login required"); }
+    const same = (x, y) => crypto.timingSafeEqual(crypto.createHash("sha256").update(String(x)).digest(), crypto.createHash("sha256").update(String(y)).digest());
+    if (!same(pw, PW)) { res.writeHead(401, { "WWW-Authenticate": 'Basic realm="Contextual Ad Studio"' }); return res.end("Login required"); }
   }
+  if (req.method !== "GET" && req.method !== "HEAD") {
+    let from = ""; try { from = req.headers.origin ? new URL(req.headers.origin).host : ""; } catch { from = "?"; }
+    if (from && from !== req.headers.host) return send(res, 403, { error: "Requests from another website are not accepted." });
+  }
+  if (!viaShare && !/^(localhost|127\.0\.0\.1|\[::1\])(:\d+)?$/.test(String(req.headers.host || ""))) return send(res, 403, { error: "Open the app as http://localhost:" + PORT + "." });
   try {
     if (req.method === "GET" && u.pathname === "/") return send(res, 200, fs.readFileSync(path.join(APP, "ui.html")), "text/html; charset=utf-8");
+    if (u.pathname === "/api/diag") {   // memory + can this server reach YouTube? (behind the login; one probe per 20 s)
+      if (Date.now() - diagAt < 20000) return send(res, 429, { error: "Wait a few seconds between checks." }); diagAt = Date.now();
+      const rd = (f) => { try { return fs.readFileSync(f, "utf8").trim(); } catch { return null; } };
+      const t0 = Date.now(); let yt1 = null, err = null;
+      try {
+        if (u.searchParams.get("mode") === "scan") {   // heavier: a real player frame
+          const d = path.join(OUT_ROOT, "_diag"); fs.mkdirSync(d, { recursive: true });
+          await yt(["scan", "5DW0ixWjn7U", d, "81"]); yt1 = fs.readdirSync(d);
+        } else yt1 = (await ytJson(["searchjson", "potato chips recipe", "3"])).map((r) => r.title);
+      } catch (e) { err = e.message.slice(0, 400); }
+      return send(res, 200, { youtube: yt1, error: err, seconds: (Date.now() - t0) / 1000, memLimit: rd("/sys/fs/cgroup/memory.max"), memPeak: rd("/sys/fs/cgroup/memory.peak"), memNow: rd("/sys/fs/cgroup/memory.current"), provider: provider() });
+    }
     const local = !req.headers["cf-connecting-ip"] && !req.headers["x-forwarded-for"] && /^(::1|127\.0\.0\.1|::ffff:127\.0\.0\.1)$/.test(req.socket.remoteAddress || "");
     if (u.pathname === "/openweb" || u.pathname === "/inimage" || u.pathname === "/twoinone" || u.pathname.startsWith("/api/ow/")) return openweb ? await openweb.handle(req, res, u, { local }) : send(res, 503, { error: "Open Web is unavailable: " + openwebError });
     if (u.pathname === "/api/status") return send(res, 200, { local, queue: waiting, hasKey: provider() !== "none", articleSearch: !!(loadSettings().firecrawlKey || process.env.FIRECRAWL_API_KEY), provider: provider(), youtube: youtubeKey() ? (Date.now() > ytApiDisabledUntil ? "api" : "browser (API paused)") : "browser", keyFromEnv: !!(process.env.ANTHROPIC_API_KEY || process.env.GEMINI_API_KEY), ffmpeg: !!FF || !IS_WIN, hosted: !IS_WIN, outDir: OUT_ROOT });
     if (req.method === "POST" && u.pathname === "/api/settings" && local) { const peek = await peekBody(req); const wrong = wrongKeyField(peek); if (wrong) return send(res, 400, { error: wrong }); }
-    if (req.method === "POST" && u.pathname === "/api/settings") { if (!local) return send(res, 403, { error: "Settings can only be changed on the computer running the app." }); const b = await peekBody(req); const s = loadSettings(); if (b.apiKey) s.apiKey = b.apiKey.trim(); if (b.geminiKey) s.geminiKey = b.geminiKey.trim(); if (b.youtubeKey) { s.youtubeKey = b.youtubeKey.trim(); ytApiDisabledUntil = 0; } if (b.firecrawlKey) s.firecrawlKey = b.firecrawlKey.trim(); if (b.openaiKey) s.openaiKey = b.openaiKey.trim(); if (b.googleCseKey) s.googleCseKey = b.googleCseKey.trim(); if (b.googleCseCx) s.googleCseCx = b.googleCseCx.trim(); if (b.openaiBaseUrl) s.openaiBaseUrl = b.openaiBaseUrl.trim(); if (b.openaiModel) s.openaiModel = b.openaiModel.trim(); if (b.provider) s.provider = b.provider; fs.writeFileSync(SETTINGS, JSON.stringify(s)); return send(res, 200, { ok: true, provider: provider() }); }
+    if (req.method === "POST" && u.pathname === "/api/settings") { if (!local) return send(res, 403, { error: "Settings can only be changed on the computer running the app." }); const b = await peekBody(req); const s = loadSettings(); if (b.apiKey) s.apiKey = b.apiKey.trim(); if (b.geminiKey) s.geminiKey = b.geminiKey.trim(); if (b.youtubeKey) { s.youtubeKey = b.youtubeKey.trim(); ytApiDisabledUntil = 0; } if (b.firecrawlKey) s.firecrawlKey = b.firecrawlKey.trim(); if (b.openaiKey) s.openaiKey = b.openaiKey.trim(); if (b.googleCseKey) s.googleCseKey = b.googleCseKey.trim(); if (b.googleCseCx) s.googleCseCx = b.googleCseCx.trim(); if (b.openaiBaseUrl && !/^(https:\/\/|http:\/\/(localhost|127\.0\.0\.1)[:/])/i.test(String(b.openaiBaseUrl).trim())) return send(res, 400, { error: "The free-AI address must start with https:// (or http://localhost for a model on this PC). Nothing was saved." }); if (b.openaiBaseUrl) s.openaiBaseUrl = b.openaiBaseUrl.trim(); if (b.openaiModel) s.openaiModel = b.openaiModel.trim(); if (b.provider) s.provider = b.provider; fs.writeFileSync(SETTINGS, JSON.stringify(s)); return send(res, 200, { ok: true, provider: provider() }); }
     if (req.method === "POST" && u.pathname === "/api/ads") {   // runs in the background (share links cut requests at ~100 s)
       const b = await body(req);
       const k = BRANDS && findBrand(BRANDS, b.brand || "", b.product || ""), why = bannedReason(k, b.product || "");
@@ -1053,7 +1070,7 @@ http.createServer(async (req, res) => {
         if (brandOwned(m, names) || mentionsBrand((m.keywords || []).join(" "), names)) return send(res, 400, { error: `That content video is from or about ${b.brand} itself (“${m.title}” — ${m.channel}). The content video must be independent of the brand — pick another one, or leave it empty and the app finds one.` });
       }
       const job = newJob({ work, candidates: ownVideo ? [ownVideo] : undefined, tried: 0, input: { preview: b.preview !== false, review: !!b.review, hq: !!b.hq, brand: b.brand, product: b.product, adId, adChannel, adTitle: adTitle || adId, adSeconds, logo: "assets/" + logoFile, packs, endcard: !!b.endcard, tagline: b.tagline, music: b.music !== false } });
-      job.adReady = prefetchAd(adId, work);   // the ad is known now → record it while the AI picks the video
+      job.adReady = prefetchAd(adId, work); job.adReady.catch(() => {});   // awaited later, where a failure is handled   // the ad is known now → record it while the AI picks the video
       (async () => {
         try {
           const ok = await proposeMoments(job);
@@ -1109,9 +1126,10 @@ http.createServer(async (req, res) => {
         const file = u.searchParams.get("hd") && job.hdOutput ? job.hdOutput : job.output;
         const st = fs.statSync(file), range = req.headers.range;
         const head = { "Content-Type": "video/mp4", "Accept-Ranges": "bytes", "Content-Disposition": u.searchParams.get("dl") ? `attachment; filename="${path.basename(file)}"` : "inline" };
-        if (range) { const [s0, e0] = range.replace(/bytes=/, "").split("-"); const s1 = +s0, e1 = e0 ? +e0 : st.size - 1;
-          res.writeHead(206, { ...head, "Content-Range": `bytes ${s1}-${e1}/${st.size}`, "Content-Length": e1 - s1 + 1 }); return fs.createReadStream(file, { start: s1, end: e1 }).pipe(res); }
-        res.writeHead(200, { ...head, "Content-Length": st.size }); return fs.createReadStream(file).pipe(res);
+        if (range) { const [s0, e0] = range.replace(/bytes=/, "").split("-"); const s1 = s0 === "" ? NaN : +s0, e1 = e0 ? +e0 : st.size - 1;
+          if (!Number.isInteger(s1) || !Number.isInteger(e1) || s1 < 0 || s1 > e1 || e1 >= st.size) { res.writeHead(416, { "Content-Range": `bytes */${st.size}` }); return res.end(); }
+          res.writeHead(206, { ...head, "Content-Range": `bytes ${s1}-${e1}/${st.size}`, "Content-Length": e1 - s1 + 1 }); return fs.createReadStream(file, { start: s1, end: e1 }).on("error", () => res.destroy()).pipe(res); }
+        res.writeHead(200, { ...head, "Content-Length": st.size }); return fs.createReadStream(file).on("error", () => res.destroy()).pipe(res);
       }
       if (act === "hd" && req.method === "POST") {   // full HD from the same captures — no AI, no re-capture
         if (job.status !== "done") return send(res, 409, { error: "Wait for the preview to finish first." });
@@ -1148,7 +1166,7 @@ http.createServer(async (req, res) => {
     }
     if (jm) return send(res, 404, { error: "That job isn't on the server any more (the app was restarted). Start again." });
     send(res, 404, { error: "not found" });
-  } catch (e) { send(res, 500, { error: e.message }); }
+  } catch (e) { if (res.headersSent) res.destroy(); else send(res, 500, { error: e.message }); }
 }).listen(PORT, HOST, () => {
   console.log(`Contextual Ad Studio running on ${HOST}:${PORT}`);
   if (IS_WIN && !process.env.PORT && !process.argv.includes("--no-open")) spawn("cmd", ["/c", "start", "", `http://localhost:${PORT}`], { detached: true, windowsHide: true });
